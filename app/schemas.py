@@ -1,0 +1,98 @@
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+# Literal types
+MemoryType = Literal["profile", "relationship", "event"]
+MemorySource = Literal["auto", "manual"]
+MemoryLayer = Literal["episodic", "stable"]
+
+
+# Input schemas
+class MessageInput(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    text: str = Field(..., min_length=1)
+
+
+class MemoryMetadata(BaseModel):
+    entities: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+
+
+class CreateMemoryRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    type: MemoryType
+    content: str
+    source: MemorySource = "manual"
+    layer: MemoryLayer
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
+    pinned: bool = False
+    archived: bool = False
+    metadata: MemoryMetadata = Field(default_factory=MemoryMetadata)
+
+
+class UpdateMemoryRequest(BaseModel):
+    content: str | None = None
+    type: MemoryType | None = None
+    source: MemorySource | None = None
+    layer: MemoryLayer | None = None
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    pinned: bool | None = None
+    archived: bool | None = None
+    metadata: MemoryMetadata | None = None
+
+
+class PinMemoryRequest(BaseModel):
+    pinned: bool
+
+
+class ArchiveMemoryRequest(BaseModel):
+    archived: bool
+
+
+# Output schemas
+class MemoryItem(BaseModel):
+    id: str
+    chat_id: str
+    character_id: str
+    type: MemoryType
+    content: str
+    normalized_content: str
+    source: MemorySource
+    layer: MemoryLayer
+    importance: float
+    created_at: str
+    updated_at: str
+    last_accessed_at: str | None = None
+    access_count: int
+    pinned: bool
+    archived: bool
+    metadata: MemoryMetadata
+
+
+class ListMemoriesResponse(BaseModel):
+    items: list[MemoryItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class UpdateMemoryResponse(BaseModel):
+    item: MemoryItem
+
+
+class PinMemoryResponse(BaseModel):
+    id: str
+    pinned: bool
+
+
+class ArchiveMemoryResponse(BaseModel):
+    id: str
+    archived: bool
+
+
+class DeleteMemoryResponse(BaseModel):
+    id: str
+    deleted: bool
