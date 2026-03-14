@@ -48,3 +48,10 @@ Response:
 ```json
 {"status": "ok"}
 ```
+
+## Web UI
+
+Access the built-in web UI at `http://localhost:8000/ui` for:
+- Viewing and filtering memories
+- Creating, editing, and deleting records
+- Pin/unpin and archive/unarchive operations

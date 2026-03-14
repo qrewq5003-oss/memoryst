@@ -123,18 +123,75 @@ Memory service отвечает за:
 
 # Текущее состояние
 
-На данный момент архитектурный каркас согласован на концептуальном уровне.
+Реализованы этапы 1–5. Система полностью функциональна.
 
-Приняты следующие решения:
-- memory service будет внешним HTTP-сервисом
-- основная рабочая логика будет вынесена на Steam Deck
-- Android остаётся клиентом
-- первая версия строится на SQLite
-- extraction в v1 — rule-based
-- ручная правка памяти нужна уже в первой версии
-- закладывается возможность дальнейшего расширения под LLM-assisted extraction, embeddings, vector retrieval, graph memory и summaries, но без реализации этих функций в MVP
-- пустые таблицы “на будущее” исключены как ложный фундамент
-- трёхслойная концептуальная модель памяти зафиксирована как архитектурный принцип
+**Реализованный стек:**
+- Python + FastAPI
+- SQLite (через sqlite3)
+- Jinja2 templates + встроенный web UI
+- Pydantic v2 schemas
+
+**Структура проекта:**
+```
+app/
+  main.py              # FastAPI app, роутеры, static
+  config.py            # конфигурация через env
+  db.py                # SQLite подключение и init
+  schemas.py           # Pydantic модели
+  repositories/
+    memory_repo.py     # CRUD операции
+  services/
+    extractor.py       # rule-based extraction (RU/EN)
+    formatter.py       # форматирование memory block
+    store_service.py   # store logic с дедупликацией
+    retrieve_service.py # retrieval scoring
+  routes/
+    memory_api.py      # API endpoints
+    ui.py              # web UI endpoints
+  templates/
+    base.html
+    memories.html
+  static/
+    styles.css
+```
+
+**API endpoints:**
+- `GET /health` — health check
+- `POST /memory/create` — создать запись
+- `GET /memory/list` — список с фильтрами
+- `GET /memory/{id}` — получить по ID
+- `PATCH /memory/{id}` — обновить
+- `POST /memory/{id}/pin` — pin/unpin
+- `POST /memory/{id}/archive` — archive/unarchive
+- `DELETE /memory/{id}` — удалить
+- `POST /memory/store` — store из сообщений (auto-extract)
+- `POST /memory/retrieve` — retrieve релевантных записей
+
+**Web UI:**
+- `/ui` — просмотр и фильтрация памяти
+- Create/Edit/Delete формы
+- Pin/unpin, archive/unarchive кнопки
+- Встроен в сервис (не отдельный frontend)
+
+**Services:**
+- `extractor` — rule-based, русские + английские маркеры
+- `formatter` — форматирование memory block
+- `store_service` — extract + dedup + store
+- `retrieve_service` — scoring (keyword/entity overlap, importance, recency, pinned floor)
+
+**Схема БД:**
+- Таблица `memories` со всеми индексами
+- Типы: profile, relationship, event
+- Слои: episodic, stable
+- Источники: auto, manual
+
+**Решения:**
+- memory service — внешний HTTP-сервис
+- SQLite как основное хранилище
+- extraction в v1 — rule-based (без LLM)
+- retrieval — scoring без embeddings/vector DB
+- встроенный web UI для ручного управления
+- трёхслойная концептуальная модель (episodic, stable, aggregated)
 
 # Изменения
 
@@ -153,24 +210,71 @@ Memory service отвечает за:
 - 2026-03-14
   Добавлена концептуальная модель памяти из трёх слоёв: episodic, stable, aggregated.
 
+- 2026-03-14
+  **Этап 1:** Инфраструктура проекта и инициализация SQLite.
+  - app/main.py, app/config.py, app/db.py
+  - requirements.txt, README.md
+  - Таблица memories со всеми индексами
+  - GET /health endpoint
+
+- 2026-03-14
+  **Этап 2:** Schemas и repository.
+  - app/schemas.py — Pydantic модели
+  - app/repositories/memory_repo.py — CRUD операции
+  - Все request/response схемы
+
+- 2026-03-14
+  **Этап 3:** API routes.
+  - app/routes/memory_api.py — CRUD endpoints
+  - POST /memory/create, GET /memory/list, GET /memory/{id}, PATCH /memory/{id}
+  - POST /memory/{id}/pin, POST /memory/{id}/archive, DELETE /memory/{id}
+
+- 2026-03-14
+  **Этап 4:** Store и retrieve services.
+  - app/services/extractor.py — rule-based extraction (RU/EN маркеры)
+  - app/services/formatter.py — форматирование memory block
+  - app/services/store_service.py — extract + dedup + store
+  - app/services/retrieve_service.py — scoring (keyword/entity overlap, importance, recency, pinned floor)
+  - POST /memory/store, POST /memory/retrieve endpoints
+
+- 2026-03-14
+  **Этап 5:** Встроенный web UI.
+  - app/routes/ui.py — UI routes
+  - app/templates/base.html, memories.html
+  - app/static/styles.css
+  - Jinja2 templates, python-multipart
+  - UI: просмотр, фильтры, create, edit, pin, archive, delete
+
 # Открытые вопросы
 
-- На каком стеке делать memory service в первой реализации: Python + FastAPI или Node.js + Express.
 - Нужен ли ручной merge memory-записей уже после базового CRUD, или это задача следующего этапа.
-- Где именно будет жить UI ручной правки: снаружи как отдельный небольшой интерфейс или через интеграцию в SillyTavern.
-- Каким будет минимальный формат `metadata_json` в v1.
+- Каким будет минимальный формат `metadata_json` в v1 (сейчас entities + keywords).
 - Как именно нормализовать entities и keywords в первой rule-based версии, чтобы не переусложнить extractor.
+- Требуется ли интеграция с SillyTavern как клиентом или UI достаточно для личного использования.
 
 # Следующий шаг
 
-Следующий логичный этап — зафиксировать технический каркас первой реализации:
+Базовый функционал реализован. Возможные направления развития:
 
-1. выбрать стек сервиса
-2. описать структуру проекта по папкам и модулям
-3. определить схему таблицы `memories`
-4. зафиксировать request/response для основных endpoint'ов
-5. определить этап 1 реализации:
-   - поднять сервис
-   - подключить SQLite
-   - реализовать базовые маршруты
-   - проверить цикл store/retrieve/list
+1. **Стабилизация и полировка**
+   - Улучшение UI (удобство, pagination)
+   - Тесты для critical paths
+   - Documentation для API
+
+2. **Улучшение extraction**
+   - Более точные rule-based маркеры
+   - LLM-assisted extraction (опционально)
+
+3. **Улучшение retrieval**
+   - Более сложная scoring формула
+   - Entity linking
+   - Graph memory (опционально)
+
+4. **Интеграция с SillyTavern**
+   - Настройка клиента для вызова API
+   - Автоматический store/retrieve цикл
+
+5. **Дополнительные возможности**
+   - Merge memory записей
+   - Summaries для длинной истории
+   - Emotional markers (опционально)
