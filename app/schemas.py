@@ -100,3 +100,33 @@ class ArchiveMemoryResponse(BaseModel):
 class DeleteMemoryResponse(BaseModel):
     id: str
     deleted: bool
+
+
+# Store schemas
+class StoreMemoryRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    messages: list[MessageInput]
+
+
+class StoreMemoryResponse(BaseModel):
+    stored: int
+    updated: int
+    skipped: int
+    items: list[MemoryItem]
+
+
+# Retrieve schemas
+class RetrieveMemoryRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    user_input: str
+    recent_messages: list[MessageInput] = Field(default_factory=list)
+    limit: int = Field(default=5, ge=1, le=20)
+    include_archived: bool = False
+
+
+class RetrieveMemoryResponse(BaseModel):
+    items: list[MemoryItem]
+    memory_block: str
+    total_candidates: int

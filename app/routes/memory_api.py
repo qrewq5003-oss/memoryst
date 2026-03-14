@@ -19,9 +19,15 @@ from app.schemas import (
     MemoryItem,
     PinMemoryRequest,
     PinMemoryResponse,
+    RetrieveMemoryRequest,
+    RetrieveMemoryResponse,
+    StoreMemoryRequest,
+    StoreMemoryResponse,
     UpdateMemoryRequest,
     UpdateMemoryResponse,
 )
+from app.services.retrieve_service import retrieve_memories
+from app.services.store_service import store_memories
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -57,6 +63,28 @@ def list_memories_endpoint(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post("/store", response_model=StoreMemoryResponse)
+def store_memory_endpoint(request: StoreMemoryRequest) -> StoreMemoryResponse:
+    """
+    Store memories from chat messages.
+
+    Extracts memory candidates from messages and stores them.
+    Duplicates are skipped.
+    """
+    return store_memories(request)
+
+
+@router.post("/retrieve", response_model=RetrieveMemoryResponse)
+def retrieve_memory_endpoint(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
+    """
+    Retrieve relevant memories for the current context.
+
+    Scores memories by keyword/entity overlap, importance, and recency.
+    Returns top-k results with formatted memory block.
+    """
+    return retrieve_memories(request)
 
 
 @router.get("/{id}", response_model=MemoryItem)

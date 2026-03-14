@@ -305,3 +305,28 @@ def set_archived(memory_id: str, archived: bool) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+
+
+def find_memory_by_normalized_content(
+    chat_id: str,
+    character_id: str,
+    normalized_content: str,
+) -> MemoryItem | None:
+    """
+    Find existing memory by normalized content for deduplication.
+
+    This is a minimal helper for store_service deduplication.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM memories
+            WHERE chat_id = ? AND character_id = ? AND normalized_content = ?
+            """,
+            (chat_id, character_id, normalized_content),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return _row_to_memory_item(dict(row))
