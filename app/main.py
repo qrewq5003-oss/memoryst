@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.config import config
 from app.db import init_schema
+from app.routes.memory_api import router as memory_router
 
 app = FastAPI(
     title="Memory Service",
@@ -20,6 +21,9 @@ async def startup_event() -> None:
 async def health_check() -> dict:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+app.include_router(memory_router)
 
 
 if __name__ == "__main__":

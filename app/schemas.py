@@ -79,6 +79,10 @@ class ListMemoriesResponse(BaseModel):
     offset: int
 
 
+class CreateMemoryResponse(BaseModel):
+    item: MemoryItem
+
+
 class UpdateMemoryResponse(BaseModel):
     item: MemoryItem
 
