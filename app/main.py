@@ -1,8 +1,12 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.config import config
 from app.db import init_schema
 from app.routes.memory_api import router as memory_router
+from app.routes.ui import router as ui_router
 
 app = FastAPI(
     title="Memory Service",
@@ -24,6 +28,11 @@ async def health_check() -> dict:
 
 
 app.include_router(memory_router)
+app.include_router(ui_router)
+
+# Mount static files
+static_path = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
 if __name__ == "__main__":
