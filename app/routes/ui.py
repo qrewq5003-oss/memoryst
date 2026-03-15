@@ -99,9 +99,15 @@ def ui_memories_page(
         }),
     }
 
+    # Convert Pydantic models to dict for Jinja2 template
+    # model_dump() recursively converts nested models (MemoryItem, MemoryMetadata)
     return templates.TemplateResponse(
         "memories.html",
-        {"request": request, "memories": memories, "filters": filters},
+        {
+            "request": request,
+            "memories": memories.model_dump(),
+            "filters": filters,
+        },
     )
 
 

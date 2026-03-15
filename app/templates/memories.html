@@ -106,8 +106,8 @@
 
 <!-- Memories List -->
 <section class="memories">
-    <h2>Memories ({{ memories.total }} total)</h2>
-    {% if memories.items %}
+    <h2>Memories ({{ memories["total"] if memories["total"] else 0 }} total)</h2>
+    {% if memories["items"] and memories["items"]|length > 0 %}
     <table>
         <thead>
             <tr>
@@ -124,63 +124,63 @@
             </tr>
         </thead>
         <tbody>
-            {% for item in memories.items %}
-            <tr class="{% if item.pinned %}pinned{% endif %} {% if item.archived %}archived{% endif %}">
-                <td class="id-cell">{{ item.id[:8] }}...</td>
-                <td>{{ item.type }}</td>
-                <td class="content-cell">{{ item.content[:100] }}{% if item.content|length > 100 %}...{% endif %}</td>
-                <td>{{ item.source }}</td>
-                <td>{{ item.layer }}</td>
-                <td>{{ item.importance }}</td>
-                <td>{% if item.pinned %}✓{% else %}✗{% endif %}</td>
-                <td>{% if item.archived %}✓{% else %}✗{% endif %}</td>
-                <td class="date-cell">{{ item.updated_at[:10] }}</td>
+            {% for item in memories["items"] %}
+            <tr class="{% if item["pinned"] %}pinned{% endif %} {% if item["archived"] %}archived{% endif %}">
+                <td class="id-cell">{{ item["id"][:8] }}...</td>
+                <td>{{ item["type"] }}</td>
+                <td class="content-cell">{{ item["content"][:100] }}{% if item["content"]|length > 100 %}...{% endif %}</td>
+                <td>{{ item["source"] }}</td>
+                <td>{{ item["layer"] }}</td>
+                <td>{{ item["importance"] }}</td>
+                <td>{% if item["pinned"] %}✓{% else %}✗{% endif %}</td>
+                <td>{% if item["archived"] %}✓{% else %}✗{% endif %}</td>
+                <td class="date-cell">{{ item["updated_at"][:10] }}</td>
                 <td class="actions-cell">
-                    <form method="POST" action="/ui/{{ item.id }}/pin" style="display:inline;">
-                        <button type="submit">{% if item.pinned %}Unpin{% else %}Pin{% endif %}</button>
+                    <form method="POST" action="/ui/{{ item["id"] }}/pin" style="display:inline;">
+                        <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
                     </form>
-                    <form method="POST" action="/ui/{{ item.id }}/archive" style="display:inline;">
-                        <button type="submit">{% if item.archived %}Unarchive{% else %}Archive{% endif %}</button>
+                    <form method="POST" action="/ui/{{ item["id"] }}/archive" style="display:inline;">
+                        <button type="submit">{% if item["archived"] %}Unarchive{% else %}Archive{% endif %}</button>
                     </form>
-                    <form method="POST" action="/ui/{{ item.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this memory?');">
+                    <form method="POST" action="/ui/{{ item["id"] }}/delete" style="display:inline;" onsubmit="return confirm('Delete this memory?');">
                         <button type="submit" class="danger">Delete</button>
                     </form>
                     <details>
                         <summary>Edit</summary>
-                        <form method="POST" action="/ui/{{ item.id }}/update" class="edit-form">
+                        <form method="POST" action="/ui/{{ item["id"] }}/update" class="edit-form">
                             <div class="form-row">
                                 <label>Type:
                                     <select name="type">
-                                        <option value="profile" {% if item.type == 'profile' %}selected{% endif %}>Profile</option>
-                                        <option value="relationship" {% if item.type == 'relationship' %}selected{% endif %}>Relationship</option>
-                                        <option value="event" {% if item.type == 'event' %}selected{% endif %}>Event</option>
+                                        <option value="profile" {% if item["type"] == 'profile' %}selected{% endif %}>Profile</option>
+                                        <option value="relationship" {% if item["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
+                                        <option value="event" {% if item["type"] == 'event' %}selected{% endif %}>Event</option>
                                     </select>
                                 </label>
                                 <label>Source:
                                     <select name="source">
-                                        <option value="auto" {% if item.source == 'auto' %}selected{% endif %}>Auto</option>
-                                        <option value="manual" {% if item.source == 'manual' %}selected{% endif %}>Manual</option>
+                                        <option value="auto" {% if item["source"] == 'auto' %}selected{% endif %}>Auto</option>
+                                        <option value="manual" {% if item["source"] == 'manual' %}selected{% endif %}>Manual</option>
                                     </select>
                                 </label>
                                 <label>Layer:
                                     <select name="layer">
-                                        <option value="episodic" {% if item.layer == 'episodic' %}selected{% endif %}>Episodic</option>
-                                        <option value="stable" {% if item.layer == 'stable' %}selected{% endif %}>Stable</option>
+                                        <option value="episodic" {% if item["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
+                                        <option value="stable" {% if item["layer"] == 'stable' %}selected{% endif %}>Stable</option>
                                     </select>
                                 </label>
                             </div>
-                            <label>Importance: <input type="number" name="importance" value="{{ item.importance }}" min="0" max="1" step="0.1"></label>
+                            <label>Importance: <input type="number" name="importance" value="{{ item["importance"] }}" min="0" max="1" step="0.1"></label>
                             <label>Content:
-                                <textarea name="content" rows="3">{{ item.content }}</textarea>
+                                <textarea name="content" rows="3">{{ item["content"] }}</textarea>
                             </label>
                             <label>Entities (comma-separated):
-                                <input type="text" name="entities" value="{{ item.metadata.entities|join(', ') }}">
+                                <input type="text" name="entities" value="{{ item["metadata"]["entities"]|join(', ') }}">
                             </label>
                             <label>Keywords (comma-separated):
-                                <input type="text" name="keywords" value="{{ item.metadata.keywords|join(', ') }}">
+                                <input type="text" name="keywords" value="{{ item["metadata"]["keywords"]|join(', ') }}">
                             </label>
-                            <label>Pinned: <input type="checkbox" name="pinned" value="true" {% if item.pinned %}checked{% endif %}></label>
-                            <label>Archived: <input type="checkbox" name="archived" value="true" {% if item.archived %}checked{% endif %}></label>
+                            <label>Pinned: <input type="checkbox" name="pinned" value="true" {% if item["pinned"] %}checked{% endif %}></label>
+                            <label>Archived: <input type="checkbox" name="archived" value="true" {% if item["archived"] %}checked{% endif %}></label>
                             <button type="submit">Save Changes</button>
                         </form>
                     </details>
@@ -191,14 +191,14 @@
     </table>
 
     <!-- Pagination -->
-    {% if memories.total > 0 %}
+    {% if memories["total"] and memories["total"] > 0 %}
     <div class="pagination">
-        {% if filters.offset > 0 %}
-        <a href="?{{ filters.query_string }}&offset={{ filters.offset - filters.limit }}" class="button">Previous</a>
+        {% if filters["offset"] and filters["offset"] > 0 %}
+        <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button">Previous</a>
         {% endif %}
-        <span>Page {{ (filters.offset / filters.limit) + 1 }} ({{ memories.total }} total)</span>
-        {% if memories.offset + memories.limit < memories.total %}
-        <a href="?{{ filters.query_string }}&offset={{ filters.offset + filters.limit }}" class="button">Next</a>
+        <span>Page {{ ((filters["offset"] or 0) // filters["limit"]) + 1 }} ({{ memories["total"] }} total)</span>
+        {% if memories["offset"] + memories["limit"] < memories["total"] %}
+        <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">Next</a>
         {% endif %}
     </div>
     {% endif %}
