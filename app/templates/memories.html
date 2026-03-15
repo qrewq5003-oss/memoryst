@@ -10,30 +10,30 @@
     <h2>Filters</h2>
     <form method="GET" action="/ui" class="filter-form">
         <div class="form-row">
-            <label>Chat ID: <input type="text" name="chat_id" value="{{ filters.chat_id or '' }}"></label>
-            <label>Character ID: <input type="text" name="character_id" value="{{ filters.character_id or '' }}"></label>
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ filters["chat_id"] or '' }}"></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ filters["character_id"] or '' }}"></label>
         </div>
         <div class="form-row">
             <label>Type:
                 <select name="type">
                     <option value="">All</option>
-                    <option value="profile" {% if filters.type == 'profile' %}selected{% endif %}>Profile</option>
-                    <option value="relationship" {% if filters.type == 'relationship' %}selected{% endif %}>Relationship</option>
-                    <option value="event" {% if filters.type == 'event' %}selected{% endif %}>Event</option>
+                    <option value="profile" {% if filters["type"] == 'profile' %}selected{% endif %}>Profile</option>
+                    <option value="relationship" {% if filters["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
+                    <option value="event" {% if filters["type"] == 'event' %}selected{% endif %}>Event</option>
                 </select>
             </label>
             <label>Source:
                 <select name="source">
                     <option value="">All</option>
-                    <option value="auto" {% if filters.source == 'auto' %}selected{% endif %}>Auto</option>
-                    <option value="manual" {% if filters.source == 'manual' %}selected{% endif %}>Manual</option>
+                    <option value="auto" {% if filters["source"] == 'auto' %}selected{% endif %}>Auto</option>
+                    <option value="manual" {% if filters["source"] == 'manual' %}selected{% endif %}>Manual</option>
                 </select>
             </label>
             <label>Layer:
                 <select name="layer">
                     <option value="">All</option>
-                    <option value="episodic" {% if filters.layer == 'episodic' %}selected{% endif %}>Episodic</option>
-                    <option value="stable" {% if filters.layer == 'stable' %}selected{% endif %}>Stable</option>
+                    <option value="episodic" {% if filters["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
+                    <option value="stable" {% if filters["layer"] == 'stable' %}selected{% endif %}>Stable</option>
                 </select>
             </label>
         </div>
@@ -41,18 +41,18 @@
             <label>Pinned:
                 <select name="pinned">
                     <option value="">All</option>
-                    <option value="true" {% if filters.pinned == 'true' %}selected{% endif %}>Yes</option>
-                    <option value="false" {% if filters.pinned == 'false' %}selected{% endif %}>No</option>
+                    <option value="true" {% if filters["pinned"] == 'true' %}selected{% endif %}>Yes</option>
+                    <option value="false" {% if filters["pinned"] == 'false' %}selected{% endif %}>No</option>
                 </select>
             </label>
             <label>Archived:
                 <select name="archived">
                     <option value="">All</option>
-                    <option value="true" {% if filters.archived == 'true' %}selected{% endif %}>Yes</option>
-                    <option value="false" {% if filters.archived == 'false' %}selected{% endif %}>No</option>
+                    <option value="true" {% if filters["archived"] == 'true' %}selected{% endif %}>Yes</option>
+                    <option value="false" {% if filters["archived"] == 'false' %}selected{% endif %}>No</option>
                 </select>
             </label>
-            <label>Limit: <input type="number" name="limit" value="{{ filters.limit or 50 }}" min="1" max="200"></label>
+            <label>Limit: <input type="number" name="limit" value="{{ filters["limit"] or 50 }}" min="1" max="200"></label>
         </div>
         <button type="submit">Apply Filters</button>
         <a href="/ui" class="button">Clear</a>

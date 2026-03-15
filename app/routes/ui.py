@@ -50,7 +50,14 @@ def ui_memories_page(
     offset: int = 0,
 ) -> Any:
     """Render memories page with filters."""
-    # Convert string booleans from query params
+    # Normalize empty strings to None for filter params
+    chat_id = chat_id or None
+    character_id = character_id or None
+    type = type or None
+    source = source or None
+    layer = layer or None
+    
+    # Convert string booleans from query params (empty string -> None)
     if archived == "true":
         archived_bool = True
     elif archived == "false":
