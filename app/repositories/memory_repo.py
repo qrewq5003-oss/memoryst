@@ -88,13 +88,15 @@ def insert_memory(memory: MemoryItem) -> MemoryItem:
 def create_memory(request: CreateMemoryRequest) -> MemoryItem:
     """Create a new memory from a request."""
     now = _get_utc_now()
+    # Normalize content: strip leading/trailing whitespace
+    content = request.content.strip()
     memory = MemoryItem(
         id=str(uuid.uuid4()),
         chat_id=request.chat_id,
         character_id=request.character_id,
         type=request.type,
-        content=request.content,
-        normalized_content=_normalize_content(request.content),
+        content=content,
+        normalized_content=_normalize_content(content),
         source=request.source,
         layer=request.layer,
         importance=request.importance,
@@ -210,10 +212,12 @@ def update_memory(memory_id: str, payload: UpdateMemoryRequest) -> MemoryItem | 
     update_params = []
 
     if payload.content is not None:
+        # Normalize content: strip leading/trailing whitespace
+        content = payload.content.strip()
         updates["content"] = "?"
-        update_params.append(payload.content)
+        update_params.append(content)
         updates["normalized_content"] = "?"
-        update_params.append(_normalize_content(payload.content))
+        update_params.append(_normalize_content(content))
 
     if payload.type is not None:
         updates["type"] = "?"
