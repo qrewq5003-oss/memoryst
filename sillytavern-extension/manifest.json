@@ -1,0 +1,11 @@
+{
+    "display_name": "Memory Service",
+    "loading_order": 5,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Memory Service",
+    "version": "1.0.0",
+    "homePage": "https://github.com/qrewq5003-oss/memoryst"
+}

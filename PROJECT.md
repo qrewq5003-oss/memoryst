@@ -123,13 +123,14 @@ Memory service отвечает за:
 
 # Текущее состояние
 
-Реализованы этапы 1–5. Система полностью функциональна.
+Реализованы этапы 1–6. Система полностью функциональна.
 
 **Реализованный стек:**
 - Python + FastAPI
 - SQLite (через sqlite3)
 - Jinja2 templates + встроенный web UI
 - Pydantic v2 schemas
+- SillyTavern extension (post-message retrieve pattern)
 
 **Структура проекта:**
 ```
@@ -153,6 +154,10 @@ app/
     memories.html
   static/
     styles.css
+sillytavern-extension/
+  manifest.json        # Extension manifest
+  memory-service.js    # SillyTavern extension script
+  README.md            # Extension documentation
 ```
 
 **API endpoints:**
@@ -192,6 +197,13 @@ app/
 - retrieval — scoring без embeddings/vector DB
 - встроенный web UI для ручного управления
 - трёхслойная концептуальная модель (episodic, stable, aggregated)
+
+**V1 Pattern для SillyTavern extension:**
+- Extension использует SillyTavern extension API (ES module, eventSource, getContext)
+- Retrieve вызывается ПОСЛЕ события CHARACTER_MESSAGE_RENDERED (post-render)
+- memory_block применяется к СЛЕДУЮЩЕЙ генерации, не к текущей
+- Это ожидаемое поведение для v1, не является pre-generation injection
+- Flow: exchange N → store → retrieve → memory_block для generation N+1
 
 # Изменения
 
@@ -245,12 +257,23 @@ app/
   - Jinja2 templates, python-multipart
   - UI: просмотр, фильтры, create, edit, pin, archive, delete
 
+- 2026-03-14
+  **Этап 6:** Cleanup, стабилизация, SillyTavern extension.
+  - sillytavern-extension/ — extension для SillyTavern
+  - ES module format, совместимый с SillyTavern extension API
+  - eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED)
+  - setExtensionPrompt(...) для установки memory block
+  - Post-render retrieve pattern (retrieve после генерации)
+  - memory_block применяется к следующей генерации (v1 pattern)
+  - Обновлены PROJECT.md и README.md
+  - Удалены stray files
+
 # Открытые вопросы
 
 - Нужен ли ручной merge memory-записей уже после базового CRUD, или это задача следующего этапа.
 - Каким будет минимальный формат `metadata_json` в v1 (сейчас entities + keywords).
 - Как именно нормализовать entities и keywords в первой rule-based версии, чтобы не переусложнить extractor.
-- Требуется ли интеграция с SillyTavern как клиентом или UI достаточно для личного использования.
+- Требуется ли pre-generation injection для более точного memory timing или v1 pattern (post-message) достаточно.
 
 # Следующий шаг
 
@@ -270,9 +293,10 @@ app/
    - Entity linking
    - Graph memory (опционально)
 
-4. **Интеграция с SillyTavern**
-   - Настройка клиента для вызова API
-   - Автоматический store/retrieve цикл
+4. **SillyTavern integration**
+   - Extension готов к использованию
+   - v1 pattern: post-message retrieve → next generation
+   - Future: pre-generation injection если SillyTavern предоставит hooks
 
 5. **Дополнительные возможности**
    - Merge memory записей

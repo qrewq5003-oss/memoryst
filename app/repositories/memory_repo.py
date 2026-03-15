@@ -330,3 +330,25 @@ def find_memory_by_normalized_content(
         if row is None:
             return None
         return _row_to_memory_item(dict(row))
+
+
+def increment_access_count(memory_id: str) -> bool:
+    """
+    Increment access_count and update last_accessed_at for a memory.
+
+    Called after retrieve to track usage metrics.
+    """
+    now = _get_utc_now()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE memories
+            SET access_count = access_count + 1,
+                last_accessed_at = ?
+            WHERE id = ?
+            """,
+            (now, memory_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0

@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timezone
 
-from app.repositories.memory_repo import list_memories
+from app.repositories.memory_repo import list_memories, increment_access_count
 from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryResponse
 from app.services.formatter import format_memory_block
 
@@ -49,10 +49,17 @@ def _compute_score(
     Formula:
     - keyword_overlap: intersection / max(1, len(input_keywords))
     - entity_overlap: intersection / max(1, len(input_entities))
-    - recency: 1 / (1 + days_since_created)
+    - recency: 1 / (1 + days_since_updated)
     - base_score = keyword_overlap * 0.35 + entity_overlap * 0.30 + importance * 0.20 + recency * 0.10
     - if pinned: score = max(base_score, 0.4)
     - cap at 1.0
+
+    V1 RECENCY BEHAVIOR:
+    Recency is calculated from updated_at, not created_at.
+    Formula: recency = 1 / (1 + days_since_updated)
+
+    This means frequently updated auto-records can stay "fresh" longer in retrieval.
+    This is intentional v1 behavior: auto-updated memories remain relevant through updates.
     """
     # Keyword overlap
     memory_keywords = set(memory.metadata.keywords)
@@ -70,11 +77,13 @@ def _compute_score(
     else:
         entity_overlap = 0.0
 
-    # Recency: 1 / (1 + days_since_created)
+    # Recency: 1 / (1 + days_since_updated)
+    # V1 behavior: uses updated_at, not created_at
+    # Frequently updated auto-records stay "fresh" longer
     try:
-        created = datetime.fromisoformat(memory.created_at.replace("Z", "+00:00"))
+        updated = datetime.fromisoformat(memory.updated_at.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
-        days_since = (now - created).days
+        days_since = (now - updated).days
         recency = 1.0 / (1.0 + days_since)
     except (ValueError, TypeError):
         recency = 0.5  # Default if parsing fails
@@ -107,7 +116,8 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     3. Filter out zero-score items
     4. Sort by score DESC
     5. Take top-k
-    6. Format memory block
+    6. Update usage metrics for top-k items
+    7. Format memory block
     """
     # Extract keywords and entities from user_input
     input_keywords = _extract_keywords(request.user_input)
@@ -142,6 +152,11 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
 
     # Take top-k
     top_items = [item for _, item in scored[: request.limit]]
+
+    # Update usage metrics for top-k items
+    # This tracks which memories are being used for retrieval
+    for item in top_items:
+        increment_access_count(item.id)
 
     # Format memory block
     memory_block = format_memory_block(top_items)
