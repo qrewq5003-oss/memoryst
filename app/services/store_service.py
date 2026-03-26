@@ -95,6 +95,9 @@ def _evaluate_memory_quality_gate(candidate: CreateMemoryRequest) -> tuple[bool,
 
 def passes_memory_quality_gate(candidate: CreateMemoryRequest) -> bool:
     """Return True when an auto-extracted candidate is informative enough to store."""
+    if candidate.source != "auto":
+        return True
+
     return _evaluate_memory_quality_gate(candidate)[0]
 
 

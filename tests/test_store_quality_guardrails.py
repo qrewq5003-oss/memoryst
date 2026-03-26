@@ -107,7 +107,6 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         ).model_copy(update={"source": "manual"})
 
         self.assertTrue(passes_memory_quality_gate(manual_candidate))
-
     def test_store_response_counters_remain_correct_for_mixed_candidates(self) -> None:
         response = self._store_candidates([
             _candidate(
