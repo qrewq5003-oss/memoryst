@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
 
@@ -58,6 +59,69 @@ def _parse_messages(value: str) -> list[MessageInput]:
     return messages
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _days_since(value: str | None) -> int | None:
+    parsed = _parse_iso_datetime(value)
+    if parsed is None:
+        return None
+    return max((_utc_now() - parsed).days, 0)
+
+
+def _get_freshness_bucket(memory: MemoryItem) -> str:
+    updated_days = _days_since(memory.updated_at)
+    if updated_days is None or updated_days <= 7:
+        return "fresh"
+    if updated_days <= 30:
+        return "warm"
+    return "stale"
+
+
+def _get_activity_bucket(memory: MemoryItem) -> str:
+    accessed_days = _days_since(memory.last_accessed_at)
+    if memory.access_count <= 0 or memory.last_accessed_at is None:
+        return "never_used"
+    if memory.access_count >= 5 or (accessed_days is not None and accessed_days <= 14):
+        return "active"
+    return "low_use"
+
+
+def _get_touch_state(memory: MemoryItem) -> str:
+    updated_days = _days_since(memory.updated_at)
+    accessed_days = _days_since(memory.last_accessed_at)
+    if accessed_days is not None and accessed_days <= 14:
+        return "recently_accessed"
+    if updated_days is not None and updated_days <= 14:
+        return "recently_updated"
+    if memory.access_count <= 0 and updated_days is not None and updated_days > 30:
+        return "stale_unused"
+    return "quiet"
+
+
+def _build_memory_card(memory: MemoryItem) -> dict[str, Any]:
+    updated_days = _days_since(memory.updated_at)
+    accessed_days = _days_since(memory.last_accessed_at)
+    return {
+        **memory.model_dump(),
+        "freshness": _get_freshness_bucket(memory),
+        "activity": _get_activity_bucket(memory),
+        "touch_state": _get_touch_state(memory),
+        "updated_days": updated_days,
+        "accessed_days": accessed_days,
+    }
+
+
 def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
     """Apply a simple text search across memory content and metadata signals."""
     query = " ".join(search.lower().split())
@@ -77,14 +141,56 @@ def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
     return query in " ".join(haystacks).lower()
 
 
-def _filter_memories_for_search(
-    memories: ListMemoriesResponse,
-    search: str,
+def _sort_memories(items: list[MemoryItem], sort: str) -> list[MemoryItem]:
+    if sort == "last_accessed_desc":
+        return sorted(
+            items,
+            key=lambda item: (
+                _parse_iso_datetime(item.last_accessed_at) or datetime.min.replace(tzinfo=timezone.utc),
+                _parse_iso_datetime(item.updated_at) or datetime.min.replace(tzinfo=timezone.utc),
+            ),
+            reverse=True,
+        )
+    if sort == "access_count_desc":
+        return sorted(
+            items,
+            key=lambda item: (item.access_count, _parse_iso_datetime(item.last_accessed_at) or datetime.min.replace(tzinfo=timezone.utc)),
+            reverse=True,
+        )
+    if sort == "stalest_first":
+        return sorted(
+            items,
+            key=lambda item: (
+                _parse_iso_datetime(item.updated_at) or _utc_now(),
+                _parse_iso_datetime(item.last_accessed_at) or _utc_now(),
+            ),
+        )
+    return sorted(
+        items,
+        key=lambda item: _parse_iso_datetime(item.updated_at) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+
+def _filter_and_page_memories(
+    items: list[MemoryItem],
+    search: str | None,
+    freshness: str | None,
+    activity: str | None,
+    sort: str,
     limit: int,
     offset: int,
 ) -> ListMemoriesResponse:
-    """Filter memories for UI text search and then paginate the filtered list."""
-    filtered_items = [item for item in memories.items if _matches_memory_search(item, search)]
+    """Apply UI-only filters and sorting, then paginate the filtered list."""
+    filtered_items = list(items)
+    if search:
+        filtered_items = [item for item in filtered_items if _matches_memory_search(item, search)]
+    if freshness:
+        filtered_items = [item for item in filtered_items if _get_freshness_bucket(item) == freshness]
+    if activity:
+        filtered_items = [item for item in filtered_items if _get_activity_bucket(item) == activity]
+
+    filtered_items = _sort_memories(filtered_items, sort)
     paginated_items = filtered_items[offset: offset + limit]
     return ListMemoriesResponse(
         items=paginated_items,
@@ -188,6 +294,9 @@ def _render_memories_page(
     source: str | None = None,
     layer: str | None = None,
     search: str | None = None,
+    freshness: str | None = None,
+    activity: str | None = None,
+    sort: str = "updated_desc",
     archived: str | None = None,
     pinned: str | None = None,
     limit: int = 50,
@@ -204,6 +313,8 @@ def _render_memories_page(
     source = source or None
     layer = layer or None
     search = search or None
+    freshness = freshness or None
+    activity = activity or None
 
     if archived == "true":
         archived_bool = True
@@ -219,31 +330,27 @@ def _render_memories_page(
     else:
         pinned_bool = None
 
-    if search:
-        unfiltered_memories = list_memories(
-            chat_id=chat_id,
-            character_id=character_id,
-            memory_type=type,
-            source=source,
-            layer=layer,
-            archived=archived_bool,
-            pinned=pinned_bool,
-            limit=UI_SEARCH_SCAN_LIMIT,
-            offset=0,
-        )
-        memories = _filter_memories_for_search(unfiltered_memories, search, limit, offset)
-    else:
-        memories = list_memories(
-            chat_id=chat_id,
-            character_id=character_id,
-            memory_type=type,
-            source=source,
-            layer=layer,
-            archived=archived_bool,
-            pinned=pinned_bool,
-            limit=limit,
-            offset=offset,
-        )
+    base_memories = list_memories(
+        chat_id=chat_id,
+        character_id=character_id,
+        memory_type=type,
+        source=source,
+        layer=layer,
+        archived=archived_bool,
+        pinned=pinned_bool,
+        limit=UI_SEARCH_SCAN_LIMIT,
+        offset=0,
+    )
+    memories = _filter_and_page_memories(
+        base_memories.items,
+        search=search,
+        freshness=freshness,
+        activity=activity,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    memory_cards = [_build_memory_card(item) for item in memories.items]
 
     filters = {
         "chat_id": chat_id,
@@ -252,6 +359,9 @@ def _render_memories_page(
         "source": source,
         "layer": layer,
         "search": search,
+        "freshness": freshness,
+        "activity": activity,
+        "sort": sort,
         "archived": archived,
         "pinned": pinned,
         "limit": limit,
@@ -263,6 +373,9 @@ def _render_memories_page(
             "source": source,
             "layer": layer,
             "search": search,
+            "freshness": freshness,
+            "activity": activity,
+            "sort": sort,
             "archived": archived,
             "pinned": pinned,
             "limit": limit,
@@ -274,6 +387,7 @@ def _render_memories_page(
         "memories.html",
         {
             "memories": memories.model_dump(),
+            "memory_cards": memory_cards,
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,
@@ -307,6 +421,9 @@ def ui_memories_page(
     source: str | None = None,
     layer: str | None = None,
     search: str | None = None,
+    freshness: str | None = None,
+    activity: str | None = None,
+    sort: str = "updated_desc",
     archived: str | None = None,
     pinned: str | None = None,
     limit: int = 50,
@@ -321,6 +438,9 @@ def ui_memories_page(
         source=source,
         layer=layer,
         search=search,
+        freshness=freshness,
+        activity=activity,
+        sort=sort,
         archived=archived,
         pinned=pinned,
         limit=limit,

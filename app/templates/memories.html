@@ -57,6 +57,32 @@
             </label>
             <label>Limit: <input type="number" name="limit" value="{{ filters["limit"] or 50 }}" min="1" max="200"></label>
         </div>
+        <div class="form-row">
+            <label>Freshness:
+                <select name="freshness">
+                    <option value="">All</option>
+                    <option value="fresh" {% if filters["freshness"] == 'fresh' %}selected{% endif %}>Fresh</option>
+                    <option value="warm" {% if filters["freshness"] == 'warm' %}selected{% endif %}>Warm</option>
+                    <option value="stale" {% if filters["freshness"] == 'stale' %}selected{% endif %}>Stale</option>
+                </select>
+            </label>
+            <label>Activity:
+                <select name="activity">
+                    <option value="">All</option>
+                    <option value="never_used" {% if filters["activity"] == 'never_used' %}selected{% endif %}>Never Used</option>
+                    <option value="low_use" {% if filters["activity"] == 'low_use' %}selected{% endif %}>Low Use</option>
+                    <option value="active" {% if filters["activity"] == 'active' %}selected{% endif %}>Active</option>
+                </select>
+            </label>
+            <label>Sort:
+                <select name="sort">
+                    <option value="updated_desc" {% if filters["sort"] == 'updated_desc' %}selected{% endif %}>Recently Updated</option>
+                    <option value="last_accessed_desc" {% if filters["sort"] == 'last_accessed_desc' %}selected{% endif %}>Recently Accessed</option>
+                    <option value="access_count_desc" {% if filters["sort"] == 'access_count_desc' %}selected{% endif %}>Most Used</option>
+                    <option value="stalest_first" {% if filters["sort"] == 'stalest_first' %}selected{% endif %}>Stalest First</option>
+                </select>
+            </label>
+        </div>
         <div class="filter-actions">
             <button type="submit">Apply Filters</button>
             <a href="/ui" class="button secondary">Clear Filters</a>
@@ -343,7 +369,7 @@
     {% endif %}
     {% if memories["items"] and memories["items"]|length > 0 %}
     <div class="memory-list">
-        {% for item in memories["items"] %}
+        {% for item in memory_cards %}
         <article class="memory-card {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
             <div class="memory-card-header">
                 <div>
@@ -354,6 +380,8 @@
                         <span class="badge badge-type">{{ item["type"] }}</span>
                         <span class="badge badge-source">{{ item["source"] }}</span>
                         <span class="badge badge-layer">{{ item["layer"] }}</span>
+                        <span class="badge badge-freshness badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace('_', ' ') }}</span>
+                        <span class="badge badge-activity badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace('_', ' ') }}</span>
                         {% if item["pinned"] %}
                         <span class="badge badge-pinned">Pinned</span>
                         {% endif %}
@@ -362,7 +390,18 @@
                         {% endif %}
                     </div>
                     <div class="memory-meta-line">
-                        Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
+                        Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }}{% if item["updated_days"] is not none %} ({{ item["updated_days"] }}d ago){% endif %} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
+                    </div>
+                    <div class="memory-touch-line">
+                        {% if item["touch_state"] == "recently_accessed" %}
+                        Recently accessed{% if item["accessed_days"] is not none %} {{ item["accessed_days"] }}d ago{% endif %}
+                        {% elif item["touch_state"] == "recently_updated" %}
+                        Recently updated
+                        {% elif item["touch_state"] == "stale_unused" %}
+                        Stale and unused
+                        {% else %}
+                        Quiet
+                        {% endif %}
                     </div>
                 </div>
                 <div class="actions-cell">
@@ -387,6 +426,8 @@
                     <div><strong>Character:</strong> <code>{{ item["character_id"] }}</code></div>
                     <div><strong>Normalized:</strong> <code>{{ item["normalized_content"] }}</code></div>
                     <div><strong>Last Accessed:</strong> {{ item["last_accessed_at"] or "never" }}</div>
+                    <div><strong>Freshness:</strong> {{ item["freshness"] }}</div>
+                    <div><strong>Activity:</strong> {{ item["activity"] }}</div>
                 </div>
                 <div class="memory-chip-group">
                     <strong>Entities:</strong>
