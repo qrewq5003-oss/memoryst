@@ -450,6 +450,25 @@ summary {
     margin-top: 12px;
 }
 
+.history-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.history-list li {
+    margin-top: 6px;
+}
+
+.history-summary {
+    margin-top: 8px;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.history-toggle {
+    margin-top: 8px;
+}
+
 .empty-value {
     color: #6b7280;
     font-style: italic;

@@ -509,6 +509,49 @@
                     {% endif %}
                 </div>
                 <div class="memory-chip-group">
+                    <strong>Consolidation History:</strong>
+                    {% if item["metadata"]["consolidation_history"] %}
+                    {% set history = item["metadata"]["consolidation_history"]|reverse|list %}
+                    {% set recent_history = history[:3] %}
+                    <ul class="history-list">
+                        {% for entry in recent_history %}
+                        <li>
+                            <code>{{ entry["timestamp"] }}</code>
+                            <span class="metric-chip">{{ entry["action"] }}</span>
+                            {% if entry["related_memory_id"] %}
+                            related=<code>{{ entry["related_memory_id"] }}</code>
+                            {% endif %}
+                            {% if entry["note"] %}
+                            note="{{ entry["note"] }}"
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% if history|length > 3 %}
+                    <div class="history-summary">Showing last {{ recent_history|length }} of {{ history|length }}</div>
+                    <details class="history-toggle">
+                        <summary>Show full history</summary>
+                        <ul class="history-list">
+                            {% for entry in history %}
+                            <li>
+                                <code>{{ entry["timestamp"] }}</code>
+                                <span class="metric-chip">{{ entry["action"] }}</span>
+                                {% if entry["related_memory_id"] %}
+                                related=<code>{{ entry["related_memory_id"] }}</code>
+                                {% endif %}
+                                {% if entry["note"] %}
+                                note="{{ entry["note"] }}"
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                    {% endif %}
+                    {% else %}
+                    <span class="empty-value">none</span>
+                    {% endif %}
+                </div>
+                <div class="memory-chip-group">
                     <strong>Entities:</strong>
                     {% if item["metadata"]["entities"] %}
                         {% for entity in item["metadata"]["entities"] %}
