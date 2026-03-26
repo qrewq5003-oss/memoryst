@@ -18,6 +18,9 @@ class MessageInput(BaseModel):
 class MemoryMetadata(BaseModel):
     entities: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+    consolidation_note: str | None = None
+    related_memory_id: str | None = None
+    review_status: str | None = None
 
 
 class CreateMemoryRequest(BaseModel):

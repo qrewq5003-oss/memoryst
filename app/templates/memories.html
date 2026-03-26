@@ -371,6 +371,19 @@
 <!-- Memories List -->
 <section class="memories">
     <h2>Memories ({{ memories["total"] if memories["total"] else 0 }} total)</h2>
+    {% if consolidation_result %}
+    <div class="result-summary">
+        <strong>Consolidation Action:</strong>
+        {{ consolidation_result["message"] }}
+        <code>{{ consolidation_result["memory_id"] }}</code>
+        {% if consolidation_result["related_memory_id"] %}
+        related=<code>{{ consolidation_result["related_memory_id"] }}</code>
+        {% endif %}
+        {% if consolidation_result["note"] %}
+        note="{{ consolidation_result["note"] }}"
+        {% endif %}
+    </div>
+    {% endif %}
     {% if consolidation_summary["total_candidates"] %}
     <div class="result-summary">
         <strong>Consolidation Candidates:</strong>
@@ -454,6 +467,24 @@
                     </div>
                     {% endfor %}
                 </div>
+                <form method="POST" action="/ui/{{ item["id"] }}/consolidate" class="consolidation-form">
+                    <div class="form-row">
+                        <label>Action:
+                            <select name="action">
+                                <option value="mark_consolidated_archive">Archive Candidate</option>
+                                <option value="mark_reviewed_keep">Reviewed Keep</option>
+                                <option value="link_to_related_memory">Link To Related</option>
+                            </select>
+                        </label>
+                        <label>Related Memory ID:
+                            <input type="text" name="related_memory_id" value="{{ item["metadata"]["related_memory_id"] or '' }}" placeholder="optional">
+                        </label>
+                    </div>
+                    <label>Note:
+                        <input type="text" name="note" value="{{ item["metadata"]["consolidation_note"] or '' }}" placeholder="optional consolidation note">
+                    </label>
+                    <button type="submit">Save Consolidation Action</button>
+                </form>
             </details>
             {% endif %}
 
@@ -466,6 +497,16 @@
                     <div><strong>Last Accessed:</strong> {{ item["last_accessed_at"] or "never" }}</div>
                     <div><strong>Freshness:</strong> {{ item["freshness"] }}</div>
                     <div><strong>Activity:</strong> {{ item["activity"] }}</div>
+                    <div><strong>Review Status:</strong> {{ item["metadata"]["review_status"] or "none" }}</div>
+                    <div><strong>Related Memory:</strong> {{ item["metadata"]["related_memory_id"] or "none" }}</div>
+                </div>
+                <div class="memory-chip-group">
+                    <strong>Consolidation Note:</strong>
+                    {% if item["metadata"]["consolidation_note"] %}
+                    {{ item["metadata"]["consolidation_note"] }}
+                    {% else %}
+                    <span class="empty-value">none</span>
+                    {% endif %}
                 </div>
                 <div class="memory-chip-group">
                     <strong>Entities:</strong>
