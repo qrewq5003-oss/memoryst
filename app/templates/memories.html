@@ -12,6 +12,9 @@
         <div class="form-row">
             <label>Chat ID: <input type="text" name="chat_id" value="{{ filters["chat_id"] or '' }}"></label>
             <label>Character ID: <input type="text" name="character_id" value="{{ filters["character_id"] or '' }}"></label>
+            <label class="search-field">Search:
+                <input type="text" name="search" value="{{ filters["search"] or '' }}" placeholder="content, normalized text, keywords, entities">
+            </label>
         </div>
         <div class="form-row">
             <label>Type:
@@ -54,8 +57,10 @@
             </label>
             <label>Limit: <input type="number" name="limit" value="{{ filters["limit"] or 50 }}" min="1" max="200"></label>
         </div>
-        <button type="submit">Apply Filters</button>
-        <a href="/ui" class="button">Clear</a>
+        <div class="filter-actions">
+            <button type="submit">Apply Filters</button>
+            <a href="/ui" class="button secondary">Clear Filters</a>
+        </div>
     </form>
 </section>
 
@@ -331,35 +336,36 @@
 <!-- Memories List -->
 <section class="memories">
     <h2>Memories ({{ memories["total"] if memories["total"] else 0 }} total)</h2>
+    {% if filters["search"] %}
+    <div class="result-summary">
+        <strong>Search:</strong> {{ filters["search"] }}
+    </div>
+    {% endif %}
     {% if memories["items"] and memories["items"]|length > 0 %}
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Type</th>
-                <th>Content</th>
-                <th>Source</th>
-                <th>Layer</th>
-                <th>Importance</th>
-                <th>Pinned</th>
-                <th>Archived</th>
-                <th>Updated</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in memories["items"] %}
-            <tr class="{% if item["pinned"] %}pinned{% endif %} {% if item["archived"] %}archived{% endif %}">
-                <td class="id-cell">{{ item["id"][:8] }}...</td>
-                <td>{{ item["type"] }}</td>
-                <td class="content-cell">{{ item["content"][:100] }}{% if item["content"]|length > 100 %}...{% endif %}</td>
-                <td>{{ item["source"] }}</td>
-                <td>{{ item["layer"] }}</td>
-                <td>{{ item["importance"] }}</td>
-                <td>{% if item["pinned"] %}✓{% else %}✗{% endif %}</td>
-                <td>{% if item["archived"] %}✓{% else %}✗{% endif %}</td>
-                <td class="date-cell">{{ item["updated_at"][:10] }}</td>
-                <td class="actions-cell">
+    <div class="memory-list">
+        {% for item in memories["items"] %}
+        <article class="memory-card {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
+            <div class="memory-card-header">
+                <div>
+                    <div class="memory-id-row">
+                        <code class="memory-id">{{ item["id"] }}</code>
+                    </div>
+                    <div class="memory-badges">
+                        <span class="badge badge-type">{{ item["type"] }}</span>
+                        <span class="badge badge-source">{{ item["source"] }}</span>
+                        <span class="badge badge-layer">{{ item["layer"] }}</span>
+                        {% if item["pinned"] %}
+                        <span class="badge badge-pinned">Pinned</span>
+                        {% endif %}
+                        {% if item["archived"] %}
+                        <span class="badge badge-archived">Archived</span>
+                        {% endif %}
+                    </div>
+                    <div class="memory-meta-line">
+                        Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
+                    </div>
+                </div>
+                <div class="actions-cell">
                     <form method="POST" action="/ui/{{ item["id"] }}/pin" style="display:inline;">
                         <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
                     </form>
@@ -369,50 +375,83 @@
                     <form method="POST" action="/ui/{{ item["id"] }}/delete" style="display:inline;" onsubmit="return confirm('Delete this memory?');">
                         <button type="submit" class="danger">Delete</button>
                     </form>
-                    <details>
-                        <summary>Edit</summary>
-                        <form method="POST" action="/ui/{{ item["id"] }}/update" class="edit-form">
-                            <div class="form-row">
-                                <label>Type:
-                                    <select name="type">
-                                        <option value="profile" {% if item["type"] == 'profile' %}selected{% endif %}>Profile</option>
-                                        <option value="relationship" {% if item["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
-                                        <option value="event" {% if item["type"] == 'event' %}selected{% endif %}>Event</option>
-                                    </select>
-                                </label>
-                                <label>Source:
-                                    <select name="source">
-                                        <option value="auto" {% if item["source"] == 'auto' %}selected{% endif %}>Auto</option>
-                                        <option value="manual" {% if item["source"] == 'manual' %}selected{% endif %}>Manual</option>
-                                    </select>
-                                </label>
-                                <label>Layer:
-                                    <select name="layer">
-                                        <option value="episodic" {% if item["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
-                                        <option value="stable" {% if item["layer"] == 'stable' %}selected{% endif %}>Stable</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <label>Importance: <input type="number" name="importance" value="{{ item["importance"] }}" min="0" max="1" step="0.1"></label>
-                            <label>Content:
-                                <textarea name="content" rows="3">{{ item["content"] }}</textarea>
-                            </label>
-                            <label>Entities (comma-separated):
-                                <input type="text" name="entities" value="{{ item["metadata"]["entities"]|join(', ') }}">
-                            </label>
-                            <label>Keywords (comma-separated):
-                                <input type="text" name="keywords" value="{{ item["metadata"]["keywords"]|join(', ') }}">
-                            </label>
-                            <label>Pinned: <input type="checkbox" name="pinned" value="true" {% if item["pinned"] %}checked{% endif %}></label>
-                            <label>Archived: <input type="checkbox" name="archived" value="true" {% if item["archived"] %}checked{% endif %}></label>
-                            <button type="submit">Save Changes</button>
-                        </form>
-                    </details>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                </div>
+            </div>
+
+            <div class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</div>
+
+            <details class="result-details memory-inspect">
+                <summary>Inspect Details</summary>
+                <div class="memory-detail-grid">
+                    <div><strong>Chat:</strong> <code>{{ item["chat_id"] }}</code></div>
+                    <div><strong>Character:</strong> <code>{{ item["character_id"] }}</code></div>
+                    <div><strong>Normalized:</strong> <code>{{ item["normalized_content"] }}</code></div>
+                    <div><strong>Last Accessed:</strong> {{ item["last_accessed_at"] or "never" }}</div>
+                </div>
+                <div class="memory-chip-group">
+                    <strong>Entities:</strong>
+                    {% if item["metadata"]["entities"] %}
+                        {% for entity in item["metadata"]["entities"] %}
+                        <span class="metric-chip">{{ entity }}</span>
+                        {% endfor %}
+                    {% else %}
+                    <span class="empty-value">none</span>
+                    {% endif %}
+                </div>
+                <div class="memory-chip-group">
+                    <strong>Keywords:</strong>
+                    {% if item["metadata"]["keywords"] %}
+                        {% for keyword in item["metadata"]["keywords"] %}
+                        <span class="metric-chip">{{ keyword }}</span>
+                        {% endfor %}
+                    {% else %}
+                    <span class="empty-value">none</span>
+                    {% endif %}
+                </div>
+            </details>
+
+            <details class="result-details">
+                <summary>Edit</summary>
+                <form method="POST" action="/ui/{{ item["id"] }}/update" class="edit-form">
+                    <div class="form-row">
+                        <label>Type:
+                            <select name="type">
+                                <option value="profile" {% if item["type"] == 'profile' %}selected{% endif %}>Profile</option>
+                                <option value="relationship" {% if item["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
+                                <option value="event" {% if item["type"] == 'event' %}selected{% endif %}>Event</option>
+                            </select>
+                        </label>
+                        <label>Source:
+                            <select name="source">
+                                <option value="auto" {% if item["source"] == 'auto' %}selected{% endif %}>Auto</option>
+                                <option value="manual" {% if item["source"] == 'manual' %}selected{% endif %}>Manual</option>
+                            </select>
+                        </label>
+                        <label>Layer:
+                            <select name="layer">
+                                <option value="episodic" {% if item["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
+                                <option value="stable" {% if item["layer"] == 'stable' %}selected{% endif %}>Stable</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label>Importance: <input type="number" name="importance" value="{{ item["importance"] }}" min="0" max="1" step="0.1"></label>
+                    <label>Content:
+                        <textarea name="content" rows="3">{{ item["content"] }}</textarea>
+                    </label>
+                    <label>Entities (comma-separated):
+                        <input type="text" name="entities" value="{{ item["metadata"]["entities"]|join(', ') }}">
+                    </label>
+                    <label>Keywords (comma-separated):
+                        <input type="text" name="keywords" value="{{ item["metadata"]["keywords"]|join(', ') }}">
+                    </label>
+                    <label>Pinned: <input type="checkbox" name="pinned" value="true" {% if item["pinned"] %}checked{% endif %}></label>
+                    <label>Archived: <input type="checkbox" name="archived" value="true" {% if item["archived"] %}checked{% endif %}></label>
+                    <button type="submit">Save Changes</button>
+                </form>
+            </details>
+        </article>
+        {% endfor %}
+    </div>
 
     <!-- Pagination -->
     {% if memories["total"] and memories["total"] > 0 %}

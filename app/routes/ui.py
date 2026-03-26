@@ -16,7 +16,9 @@ from app.repositories.memory_repo import (
 )
 from app.schemas import (
     CreateMemoryRequest,
+    ListMemoriesResponse,
     MemoryMetadata,
+    MemoryItem,
     MessageInput,
     RetrieveMemoryRequest,
     RetrieveMemoryResponse,
@@ -29,6 +31,8 @@ from app.services.store_service import store_memories
 
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["ui"])
+
+UI_SEARCH_SCAN_LIMIT = 2000
 
 
 def _parse_list(value: str) -> list[str]:
@@ -52,6 +56,42 @@ def _parse_messages(value: str) -> list[MessageInput]:
             continue
         messages.append(MessageInput(role="user", text=text))
     return messages
+
+
+def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
+    """Apply a simple text search across memory content and metadata signals."""
+    query = " ".join(search.lower().split())
+    if not query:
+        return True
+
+    haystacks = [
+        memory.id,
+        memory.content,
+        memory.normalized_content,
+        memory.type,
+        memory.source,
+        memory.layer,
+        " ".join(memory.metadata.entities),
+        " ".join(memory.metadata.keywords),
+    ]
+    return query in " ".join(haystacks).lower()
+
+
+def _filter_memories_for_search(
+    memories: ListMemoriesResponse,
+    search: str,
+    limit: int,
+    offset: int,
+) -> ListMemoriesResponse:
+    """Filter memories for UI text search and then paginate the filtered list."""
+    filtered_items = [item for item in memories.items if _matches_memory_search(item, search)]
+    paginated_items = filtered_items[offset: offset + limit]
+    return ListMemoriesResponse(
+        items=paginated_items,
+        total=len(filtered_items),
+        limit=limit,
+        offset=offset,
+    )
 
 
 def _sorted_breakdown(items: dict[str, int]) -> list[dict[str, Any]]:
@@ -147,6 +187,7 @@ def _render_memories_page(
     type: str | None = None,
     source: str | None = None,
     layer: str | None = None,
+    search: str | None = None,
     archived: str | None = None,
     pinned: str | None = None,
     limit: int = 50,
@@ -162,6 +203,7 @@ def _render_memories_page(
     type = type or None
     source = source or None
     layer = layer or None
+    search = search or None
 
     if archived == "true":
         archived_bool = True
@@ -177,17 +219,31 @@ def _render_memories_page(
     else:
         pinned_bool = None
 
-    memories = list_memories(
-        chat_id=chat_id,
-        character_id=character_id,
-        memory_type=type,
-        source=source,
-        layer=layer,
-        archived=archived_bool,
-        pinned=pinned_bool,
-        limit=limit,
-        offset=offset,
-    )
+    if search:
+        unfiltered_memories = list_memories(
+            chat_id=chat_id,
+            character_id=character_id,
+            memory_type=type,
+            source=source,
+            layer=layer,
+            archived=archived_bool,
+            pinned=pinned_bool,
+            limit=UI_SEARCH_SCAN_LIMIT,
+            offset=0,
+        )
+        memories = _filter_memories_for_search(unfiltered_memories, search, limit, offset)
+    else:
+        memories = list_memories(
+            chat_id=chat_id,
+            character_id=character_id,
+            memory_type=type,
+            source=source,
+            layer=layer,
+            archived=archived_bool,
+            pinned=pinned_bool,
+            limit=limit,
+            offset=offset,
+        )
 
     filters = {
         "chat_id": chat_id,
@@ -195,6 +251,7 @@ def _render_memories_page(
         "type": type,
         "source": source,
         "layer": layer,
+        "search": search,
         "archived": archived,
         "pinned": pinned,
         "limit": limit,
@@ -205,6 +262,7 @@ def _render_memories_page(
             "type": type,
             "source": source,
             "layer": layer,
+            "search": search,
             "archived": archived,
             "pinned": pinned,
             "limit": limit,
@@ -248,6 +306,7 @@ def ui_memories_page(
     type: str | None = None,
     source: str | None = None,
     layer: str | None = None,
+    search: str | None = None,
     archived: str | None = None,
     pinned: str | None = None,
     limit: int = 50,
@@ -261,6 +320,7 @@ def ui_memories_page(
         type=type,
         source=source,
         layer=layer,
+        search=search,
         archived=archived,
         pinned=pinned,
         limit=limit,
