@@ -1,3 +1,4 @@
+import re
 from app.repositories.memory_repo import (
     create_memory,
     find_memory_by_normalized_content,
@@ -21,10 +22,63 @@ from app.services.deduper import (
 )
 from datetime import datetime, timezone
 
+MIN_MEMORY_CONTENT_LENGTH = 12
+MIN_MEMORY_WORD_COUNT = 3
+LOW_VALUE_PATTERNS = {
+    "ok",
+    "okay",
+    "yes",
+    "yeah",
+    "yep",
+    "no",
+    "nope",
+    "i understand",
+    "understood",
+    "got it",
+    "we talked",
+    "мы говорили",
+    "понял",
+    "поняла",
+    "понятно",
+    "хорошо",
+    "ладно",
+    "да",
+    "нет",
+}
+
 
 def _get_utc_now() -> str:
     """Get current UTC time in ISO-8601 format."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _normalize_quality_text(text: str) -> str:
+    """Normalize text for lightweight quality checks."""
+    normalized = text.lower().strip()
+    normalized = re.sub(r"[^\w\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized
+
+
+def passes_memory_quality_gate(candidate: CreateMemoryRequest) -> bool:
+    """Return True when an auto-extracted candidate is informative enough to store."""
+    content = candidate.content.strip()
+    if not content:
+        return False
+
+    normalized = _normalize_quality_text(content)
+    if not normalized or normalized in LOW_VALUE_PATTERNS:
+        return False
+
+    words = normalized.split()
+    if len(content) < MIN_MEMORY_CONTENT_LENGTH or len(words) < MIN_MEMORY_WORD_COUNT:
+        return False
+
+    # Require some retrieval value: either richer content or extracted features.
+    if len(candidate.metadata.keywords) >= 2 or len(candidate.metadata.entities) >= 1:
+        return True
+
+    return len(words) >= 5
 
 
 def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
@@ -60,6 +114,10 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     skipped_count = 0
 
     for candidate in candidates:
+        if not passes_memory_quality_gate(candidate):
+            skipped_count += 1
+            continue
+
         # Check for exact duplicate using normalized content
         normalized = _normalize_content(candidate.content)
         existing = find_memory_by_normalized_content(
