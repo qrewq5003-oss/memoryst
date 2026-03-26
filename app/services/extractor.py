@@ -1,161 +1,223 @@
-from app.schemas import CreateMemoryRequest, MessageInput, MemoryMetadata, MemoryType
+import re
+
+from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
 
-
-# Russian markers
-PROFILE_MARKERS_RU = [
+PREFERENCE_MARKERS_RU = [
     "мне нравится",
-    "я люблю",
-    "я предпочитаю",
-    "мой любимый",
-    "я обожаю",
+    "люблю",
+    "обожаю",
+    "предпочитаю",
+    "предпочитает",
+    "любимый",
+    "любимая",
+    "ненавижу",
+    "не люблю",
+    "интересуюсь",
+    "интересуется",
+]
+
+PREFERENCE_MARKERS_EN = [
+    "i like",
+    "i love",
+    "my favorite",
+    "interested in",
+]
+
+PROFILE_MARKERS_RU = [
+    "владеет",
+    "говорит на",
+]
+
+PROFILE_MARKERS_EN = [
+    "is from",
+    "works as",
+    "works at",
+    "studies at",
+    "lives in",
+    "born in",
 ]
 
 RELATIONSHIP_MARKERS_RU = [
     "доверяю",
-    "обещаю",
-    "пообещал",
-    "пообещала",
-    "конфликт",
-    "поссорились",
+    "доверяет",
     "забочусь",
-    "боюсь потерять",
-    "мне важно",
-    "я переживаю за",
-]
-
-EVENT_MARKERS_RU = [
-    "хочу",
-    "буду",
-    "вчера",
-    "сегодня",
-    "обсуждали",
-    "решили",
-    "пошли",
-    "встретились",
-    "сказал",
-    "сказала",
-    "поехали",
-    "сделали",
-]
-
-# English markers
-PROFILE_MARKERS_EN = [
-    "i like",
-    "i love",
-    "i prefer",
-    "my favorite",
+    "заботится",
+    "друг",
+    "подруга",
+    "брат",
+    "сестра",
+    "муж",
+    "жена",
+    "коллега",
+    "встречается",
+    "женат",
+    "замужем",
+    "отношени",
 ]
 
 RELATIONSHIP_MARKERS_EN = [
     "trust",
-    "promise",
-    "conflict",
-    "argue",
+    "trusts",
     "care about",
-    "afraid of losing",
+    "cares about",
+    "friend",
+    "brother",
+    "sister",
+    "husband",
+    "wife",
+    "colleague",
+    "dating",
+    "married",
+    "relationship",
 ]
 
-EVENT_MARKERS_EN = [
-    "want to",
-    "will",
+TEMPORAL_MARKERS_RU = [
+    "вчера",
+    "сегодня",
+    "завтра",
+    "утром",
+    "вечером",
+    "ночью",
+    "позже",
+]
+
+TEMPORAL_MARKERS_EN = [
     "yesterday",
     "today",
-    "discussed",
-    "decided",
-    "went",
-    "met",
+    "tomorrow",
+    "this morning",
+    "this evening",
+    "tonight",
+    "later",
 ]
 
-# Episodic markers - indicate specific events/episodes
-# These override relationship type for layer determination
-EPISODIC_MARKERS_RU = [
-    "поссорились",
+EVENT_ACTION_MARKERS_RU = [
     "обсуждали",
     "решили",
     "пошли",
+    "встретил",
+    "встретила",
     "встретились",
-    "поехали",
     "сказал",
     "сказала",
+    "поехал",
+    "поехала",
+    "поехали",
+    "сделал",
+    "сделала",
     "сделали",
-    "аргументировал",
+    "запланировал",
+    "запланировала",
+    "договорились",
+    "поссорились",
     "спорили",
     "ругались",
-    "признался",
-    "призналась",
-    "рассказал",
-    "рассказала",
 ]
 
-EPISODIC_MARKERS_EN = [
-    "argued",
+EVENT_ACTION_MARKERS_EN = [
     "discussed",
     "decided",
     "went",
     "met",
-    "fought",
-    "quarreled",
-    "confessed",
-    "told",
     "said",
+    "told",
     "did",
-    "happened",
-    " in ",
-    " at ",
+    "planned",
+    "argued",
+    "fought",
+    "visited",
+    "called",
+    "booked",
 ]
 
-# Stable markers - indicate enduring states/patterns
-STABLE_MARKERS_RU = [
-    "доверяю",
-    "доверяет",
-    "люблю",
-    "любит",
-    "предпочитаю",
-    "предпочитает",
-    "забочусь",
-    "заботится",
-    "всегда",
-    "постоянно",
-    "обычно",
-    "часто",
+PREFERENCE_PATTERNS_EN = [
+    r"\b(?:i|you|we|they|he|she)\s+(?:like|likes|love|loves|prefer|prefers|enjoy|enjoys|hate|hates)\b",
 ]
 
-STABLE_MARKERS_EN = [
-    "trusts",
-    "trust",
-    "loves",
-    "love",
-    "prefers",
-    "prefer",
-    "cares about",
-    "care about",
-    "always",
-    "constantly",
-    "usually",
-    "often",
+PREFERENCE_PATTERNS_EN_CASED = [
+    r"\b[A-Z][a-z'-]+\s+(?:likes|loves|prefers|enjoys|hates)\b",
 ]
+
+PROFILE_PATTERNS_EN = [
+    r"\bis (?:a|an) [a-z][a-z\s-]{0,30}\b",
+    r"\bis from [a-z][a-z\s-]{1,30}\b",
+    r"\blives in [a-z][a-z\s-]{1,30}\b",
+    r"\bworks as [a-z][a-z\s-]{1,30}\b",
+    r"\bhas [a-z\s-]{0,20}(eyes|hair|accent)\b",
+    r"\b(?:i|you|we|they|he|she|[a-z][a-z'-]+)\s+owns [a-z][a-z\s-]{1,30}\b",
+    r"\b(?:i|you|we|they|he|she|[a-z][a-z'-]+)\s+speaks [a-z][a-z\s-]{1,30}\b",
+]
+
+PROFILE_PATTERNS_RU = [
+    r"\bработает [а-яё-]+(?:ом|ем)\b",
+    r"\bживет в [а-яё][а-яё\s-]{1,30}\b|\bживёт в [а-яё][а-яё\s-]{1,30}\b",
+    r"\bродом из [а-яё][а-яё\s-]{1,30}\b",
+    r"\bучится(?: в [а-яё][а-яё\s-]{1,30})?\b",
+    r"\b(?:[а-яё][а-яё-]+)\s+(?:врач|доктор|учитель|студент|программист)\b",
+    r"\b(?:зеленые|зелёные|карие|голубые) глаза\b",
+    r"\bвладеет\b",
+]
+
+
+def _contains_any(text_lower: str, markers: list[str]) -> bool:
+    return any(marker in text_lower for marker in markers)
+
+
+def _matches_any_pattern(text_lower: str, patterns: list[str]) -> bool:
+    return any(re.search(pattern, text_lower) for pattern in patterns)
+
+
+def _looks_like_preference(text: str, text_lower: str) -> bool:
+    if _contains_any(text_lower, PREFERENCE_MARKERS_RU + PREFERENCE_MARKERS_EN):
+        return True
+    if _matches_any_pattern(text_lower, PREFERENCE_PATTERNS_EN):
+        return True
+    return _matches_any_pattern(text, PREFERENCE_PATTERNS_EN_CASED)
+
+
+def _looks_like_profile(text_lower: str) -> bool:
+    if _contains_any(text_lower, PROFILE_MARKERS_RU + PROFILE_MARKERS_EN):
+        return True
+    return _matches_any_pattern(text_lower, PROFILE_PATTERNS_RU + PROFILE_PATTERNS_EN)
+
+
+def _looks_like_relationship(text_lower: str) -> bool:
+    return _contains_any(text_lower, RELATIONSHIP_MARKERS_RU + RELATIONSHIP_MARKERS_EN)
+
+
+def _has_temporal_context(text_lower: str) -> bool:
+    return _contains_any(text_lower, TEMPORAL_MARKERS_RU + TEMPORAL_MARKERS_EN)
+
+
+def _looks_like_event(text_lower: str) -> bool:
+    if _contains_any(text_lower, EVENT_ACTION_MARKERS_RU + EVENT_ACTION_MARKERS_EN):
+        return True
+
+    # Specific plans are episodic; generic wants/likes are not.
+    plan_markers = [
+        "хочу ",
+        "хочет ",
+        "буду ",
+        "собираюсь ",
+        "want to ",
+        "wants to ",
+        "will ",
+        "going to ",
+    ]
+    return _has_temporal_context(text_lower) or _contains_any(text_lower, plan_markers)
 
 
 def _detect_type(text: str) -> MemoryType | None:
-    """Detect memory type based on markers."""
+    """Detect memory type based on lightweight semantic markers."""
     text_lower = text.lower()
 
-    # Check profile markers
-    for marker in PROFILE_MARKERS_RU + PROFILE_MARKERS_EN:
-        if marker in text_lower:
-            return "profile"
-
-    # Check relationship markers
-    for marker in RELATIONSHIP_MARKERS_RU + RELATIONSHIP_MARKERS_EN:
-        if marker in text_lower:
-            return "relationship"
-
-    # Check event markers
-    for marker in EVENT_MARKERS_RU + EVENT_MARKERS_EN:
-        if marker in text_lower:
-            return "event"
-
+    if _looks_like_event(text_lower):
+        return "event"
+    if _looks_like_relationship(text_lower):
+        return "relationship"
+    if _looks_like_preference(text, text_lower) or _looks_like_profile(text_lower):
+        return "profile"
     return None
 
 
@@ -163,54 +225,32 @@ def _get_importance(memory_type: MemoryType) -> float:
     """Get default importance based on memory type."""
     if memory_type == "profile":
         return 0.7
-    elif memory_type == "relationship":
+    if memory_type == "relationship":
         return 0.8
-    else:  # event
-        return 0.6
+    return 0.6
 
 
 def _get_layer(memory_type: MemoryType, text: str) -> str:
     """
-    Get memory layer based on type AND content analysis.
-    
-    Key principle:
-    - Specific events, scenes, actions → episodic (even if relationship-related)
-    - Enduring states, preferences, patterns → stable
-    
-    Examples:
-    - "Elena and I argued in Rome" → relationship/episodic (specific event)
-    - "Elena trusts the user" → relationship/stable (enduring state)
-    - "I want to shoot the film in Rome" → event/episodic (specific plan)
+    Get memory layer based on type and whether the text describes a durable fact or an episode.
     """
     text_lower = text.lower()
-    
-    # If event type, always episodic
+
     if memory_type == "event":
         return "episodic"
-    
-    # Check for episodic markers first - these override relationship type
-    for marker in EPISODIC_MARKERS_RU + EPISODIC_MARKERS_EN:
-        if marker in text_lower:
-            return "episodic"
-    
-    # Check for stable markers
-    for marker in STABLE_MARKERS_RU + STABLE_MARKERS_EN:
-        if marker in text_lower:
-            return "stable"
-    
-    # Default for profile/relationship without clear markers:
-    # - relationship with conflict/argument words → episodic (it's a specific event)
-    # - profile → stable (preferences are usually enduring)
-    if memory_type == "relationship":
-        # Check for conflict/argument indicators → episodic
-        conflict_words = ["conflict", "argue", "fight", "quarrel", "конфликт", "спор", "ссора", "руг"]
-        for word in conflict_words:
-            if word in text_lower:
-                return "episodic"
-        # Default relationship without conflict → stable
+
+    if _looks_like_event(text_lower):
+        return "episodic"
+
+    if _looks_like_preference(text, text_lower) or _looks_like_profile(text_lower):
         return "stable"
-    
-    # Default for profile → stable
+
+    if memory_type == "relationship":
+        conflict_words = ["conflict", "argue", "fight", "quarrel", "конфликт", "спор", "ссора", "руг"]
+        if _contains_any(text_lower, conflict_words) or _has_temporal_context(text_lower):
+            return "episodic"
+        return "stable"
+
     return "stable"
 
 
@@ -218,7 +258,6 @@ def _is_meaningful(text: str) -> bool:
     """Check if text is meaningful enough to store."""
     if len(text.strip()) < 10:
         return False
-    # Filter out obvious noise
     if text.strip() in ["...", "???", "!!!", "???"]:
         return False
     return True
@@ -228,11 +267,10 @@ def _truncate_content(text: str, max_length: int = 500) -> str:
     """Truncate content to reasonable length."""
     if len(text) <= max_length:
         return text
-    # Try to cut at sentence boundary
     truncated = text[:max_length]
     last_period = truncated.rfind(".")
     if last_period > max_length // 2:
-        return truncated[:last_period + 1]
+        return truncated[: last_period + 1]
     return truncated + "..."
 
 
@@ -262,19 +300,19 @@ def extract_memories(
         entities = text_features.extract_entities(text)
         keywords = text_features.extract_keywords(text)
 
-        request = CreateMemoryRequest(
-            chat_id=chat_id,
-            character_id=character_id,
-            type=memory_type,
-            content=content,
-            source="auto",
-            layer=_get_layer(memory_type, text),
-            importance=_get_importance(memory_type),
-            pinned=False,
-            archived=False,
-            metadata=MemoryMetadata(entities=entities, keywords=keywords),
+        candidates.append(
+            CreateMemoryRequest(
+                chat_id=chat_id,
+                character_id=character_id,
+                type=memory_type,
+                content=content,
+                source="auto",
+                layer=_get_layer(memory_type, text),
+                importance=_get_importance(memory_type),
+                pinned=False,
+                archived=False,
+                metadata=MemoryMetadata(entities=entities, keywords=keywords),
+            )
         )
-        candidates.append(request)
 
-    # Limit to 3 items
     return candidates[:3]
