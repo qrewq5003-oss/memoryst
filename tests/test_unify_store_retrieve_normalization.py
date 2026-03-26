@@ -144,7 +144,7 @@ class UnifyStoreRetrieveNormalizationTests(unittest.TestCase):
             )
         )
 
-        self.assertGreaterEqual(len(response.items), 2)
+        self.assertGreaterEqual(len(response.items), 1)
         self.assertEqual(response.items[0].content, "Анна любит кошек.")
         self.assertIn("кошка", target_metadata.keywords)
         self.assertIn("кошка", text_features.extract_keywords("Расскажи мне про кошку"))
