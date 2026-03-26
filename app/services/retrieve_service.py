@@ -1,41 +1,9 @@
-import re
 from datetime import datetime, timezone
 
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryResponse
 from app.services.formatter import format_memory_block
-
-
-def _extract_keywords(text: str) -> list[str]:
-    """Extract keywords from text for matching."""
-    text = text.lower()
-    text = re.sub(r"[^\w\s]", " ", text)
-    words = text.split()
-    stopwords = {
-        "что", "как", "так", "вот", "уже", "еще", "ещё", "был", "была", "было", "были",
-        "the", "and", "but", "for", "with", "from", "this", "that", "have", "has", "had",
-        "was", "were", "been", "being", "are", "is", "was", "about", "just", "into",
-    }
-    keywords = []
-    seen = set()
-    for word in words:
-        if len(word) >= 3 and word not in stopwords and word not in seen:
-            keywords.append(word)
-            seen.add(word)
-    return keywords
-
-
-def _extract_entities(text: str) -> list[str]:
-    """Extract entities from text (capitalized words)."""
-    words = re.findall(r"\b([A-ZА-Я][a-zа-яё]+)\b", text)
-    seen = set()
-    entities = []
-    for word in words:
-        lower = word.lower()
-        if lower not in seen and len(word) > 1:
-            seen.add(lower)
-            entities.append(lower)
-    return entities
+from app.services import text_features
 
 
 def _compute_score(
@@ -71,7 +39,7 @@ def _compute_score(
 
     # Entity overlap
     memory_entities = set(e.lower() for e in memory.metadata.entities)
-    input_ent_set = set(input_entities)
+    input_ent_set = set(e.lower() for e in input_entities)
     if len(input_ent_set) > 0:
         entity_overlap = len(memory_entities & input_ent_set) / len(input_ent_set)
     else:
@@ -120,13 +88,13 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     7. Format memory block
     """
     # Extract keywords and entities from user_input
-    input_keywords = _extract_keywords(request.user_input)
-    input_entities = _extract_entities(request.user_input)
+    input_keywords = text_features.extract_keywords(request.user_input)
+    input_entities = text_features.extract_entities(request.user_input)
 
     # Also consider recent_messages
     for msg in request.recent_messages:
-        input_keywords.extend(_extract_keywords(msg.text))
-        input_entities.extend(_extract_entities(msg.text))
+        input_keywords.extend(text_features.extract_keywords(msg.text))
+        input_entities.extend(text_features.extract_entities(msg.text))
 
     # Get candidates without UI pagination bias
     all_candidates = list_retrieval_candidates(

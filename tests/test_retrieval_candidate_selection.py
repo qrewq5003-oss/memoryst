@@ -47,7 +47,7 @@ class RetrievalCandidateSelectionTests(unittest.TestCase):
 
     def test_retrieve_uses_retrieval_specific_repository_path(self) -> None:
         with (
-            patch("app.services.retrieve_service.list_retrieval_candidates", return_value=[] ) as candidates_mock,
+            patch("app.services.retrieve_service.list_retrieval_candidates", return_value=[]) as candidates_mock,
             patch("app.services.retrieve_service.list_memories", side_effect=AssertionError("should not use list_memories"), create=True),
         ):
             response = retrieve_memories(
@@ -64,6 +64,31 @@ class RetrievalCandidateSelectionTests(unittest.TestCase):
             chat_id="chat-1",
             character_id="char-1",
             include_archived=False,
+        )
+
+    def test_retrieve_uses_shared_text_features_for_user_input_and_recent_messages(self) -> None:
+        with (
+            patch("app.services.retrieve_service.list_retrieval_candidates", return_value=[]),
+            patch("app.services.text_features.extract_keywords", side_effect=[["alice"], ["trip"]]) as keywords_mock,
+            patch("app.services.text_features.extract_entities", side_effect=[["Alice"], ["Paris"]]) as entities_mock,
+        ):
+            retrieve_memories(
+                RetrieveMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    user_input="Tell me about Alice",
+                    recent_messages=[{"role": "user", "text": "We planned a trip to Paris"}],
+                    limit=5,
+                )
+            )
+
+        self.assertEqual(
+            [call.args[0] for call in keywords_mock.call_args_list],
+            ["Tell me about Alice", "We planned a trip to Paris"],
+        )
+        self.assertEqual(
+            [call.args[0] for call in entities_mock.call_args_list],
+            ["Tell me about Alice", "We planned a trip to Paris"],
         )
 
     def test_old_relevant_memory_beats_fresher_weaker_memory(self) -> None:
