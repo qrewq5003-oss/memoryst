@@ -373,9 +373,45 @@ summary {
     color: #374151;
 }
 
+.badge-freshness-fresh {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-freshness-warm {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge-freshness-stale {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.badge-activity-never_used {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.badge-activity-low_use {
+    background: #e0f2fe;
+    color: #075985;
+}
+
+.badge-activity-active {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
 .memory-meta-line {
     color: #4b5563;
     font-size: 13px;
+}
+
+.memory-touch-line {
+    color: #6b7280;
+    font-size: 13px;
+    margin-top: 6px;
 }
 
 .memory-preview {
