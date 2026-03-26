@@ -1,8 +1,9 @@
+import re
 from datetime import datetime, timezone
 
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryResponse
-from app.services.formatter import _normalize_for_dedup, format_memory_block
+from app.services.formatter import format_memory_block
 from app.services import text_features
 
 KEYWORD_WEIGHT = 0.50
@@ -91,10 +92,18 @@ def _compute_score(
     return min(score, 1.0)
 
 
+def _normalize_for_similarity(text: str) -> str:
+    """Normalize text for retrieval-side near-duplicate checks."""
+    normalized = text.lower().strip()
+    normalized = re.sub(r"[^\w\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized
+
+
 def _token_overlap_ratio(text1: str, text2: str) -> float:
     """Compute overlap ratio using the smaller token set as the denominator."""
-    tokens1 = set(_normalize_for_dedup(text1).split())
-    tokens2 = set(_normalize_for_dedup(text2).split())
+    tokens1 = set(_normalize_for_similarity(text1).split())
+    tokens2 = set(_normalize_for_similarity(text2).split())
     if not tokens1 or not tokens2:
         return 0.0
     return len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
@@ -102,12 +111,12 @@ def _token_overlap_ratio(text1: str, text2: str) -> float:
 
 def _is_too_similar_to_selected(candidate: MemoryItem, selected: list[MemoryItem]) -> bool:
     """Skip near-duplicate memories so top slots stay diverse."""
-    candidate_normalized = _normalize_for_dedup(candidate.content)
+    candidate_normalized = _normalize_for_similarity(candidate.content)
     if not candidate_normalized:
         return True
 
     for existing in selected:
-        existing_normalized = _normalize_for_dedup(existing.content)
+        existing_normalized = _normalize_for_similarity(existing.content)
         if candidate_normalized == existing_normalized:
             return True
 
