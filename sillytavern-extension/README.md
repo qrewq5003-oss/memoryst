@@ -21,37 +21,30 @@ External memory service integration for long-term context in roleplay chats.
 
 **Note:** Settings UI is not implemented in v1. To change settings, edit `DEFAULT_SETTINGS` in `index.js` or use SillyTavern's extension settings storage if available.
 
-## How It Works (V1 Pattern)
+## How It Works
 
-**IMPORTANT:** This extension uses a **POST-RENDER retrieve pattern**.
+**Current pattern:** retrieve runs before generation and affects the current reply. Store still runs after render for the completed exchange.
 
 ### Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Exchange N                                                  │
+│ Current turn                                                │
 │ 1. User sends message                                       │
-│ 2. Assistant generates response (WITHOUT memory injection)  │
-│ 3. CHARACTER_MESSAGE_RENDERED event fires                   │
-│ 4. Extension calls /memory/store                            │
-│ 5. Extension calls /memory/retrieve                         │
-│ 6. Extension sets memory_block for NEXT generation          │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Exchange N+1                                                │
-│ 1. User sends message                                       │
-│ 2. Assistant generates response (WITH memory_block from N)  │
-│ 3. ...                                                      │
+│ 2. Pre-generation hook fires                                │
+│ 3. Extension calls /memory/retrieve                         │
+│ 4. Extension sets memory_block for CURRENT generation       │
+│ 5. Assistant generates response (WITH memory injection)     │
+│ 6. CHARACTER_MESSAGE_RENDERED fires                         │
+│ 7. Extension calls /memory/store                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Points
 
-- **Retrieve timing:** After `CHARACTER_MESSAGE_RENDERED` event (post-render)
-- **Memory application:** The retrieved `memory_block` is used in the **NEXT** generation
-- **This is expected behavior for v1** - not pre-generation injection
+- **Retrieve timing:** before generation on a pre-generation hook
+- **Memory application:** the retrieved `memory_block` is intended for the **current** generation
+- **Store timing:** after `CHARACTER_MESSAGE_RENDERED`, so the completed exchange can be extracted safely
 
 ## Settings (in-code defaults)
 
@@ -98,10 +91,33 @@ Each audit record includes:
 - store message previews and store summary
 - retrieve query, recent message previews, returned item count
 - `memory_block` preview, length, item count
-- prompt insertion method/timing (`setExtensionPrompt`, `next_generation_post_render`)
+- retrieve stage and prompt injection stage
+- `applied_to_current_turn: true/false`
+- prompt insertion method/timing (`setExtensionPrompt`, `current_generation_pre_prompt`)
 - notes for missing steps such as `no_last_user_message`, `empty_memory_block`, `prompt_insertion_not_observed`
 
 This is intentionally opt-in and meant for local debugging, not always-on telemetry.
+
+### Manual verification in SillyTavern
+
+1. Enable `auditEnabled: true` in `index.js`.
+2. Open a Russian chat with existing stored memories.
+3. Send a user message that should clearly retrieve one of them.
+4. Before or immediately after the reply, inspect:
+
+```js
+memoryServiceAudit.getRecentAudits()[0]
+```
+
+Expected signals:
+
+- `retrieve_called: true`
+- `retrieve_stage: 'pre_generation'`
+- `prompt_injection_stage: 'pre_generation'`
+- `applied_to_current_turn: true`
+- non-empty `prompt_insertion.memory_block_preview`
+
+If current-turn injection fails, the audit record should make that visible via `notes`.
 
 ## Requirements
 
