@@ -93,8 +93,11 @@ class RetrievalFormattingPolicyTests(unittest.TestCase):
 
     def test_retrieve_items_remain_intact_while_memory_block_is_compact(self) -> None:
         memories = [
-            _memory(f"m{i}", f"Alice trip memory {i} in Rome.")
-            for i in range(1, 6)
+            _memory("m1", "Alice planned the Rome museum trip."),
+            _memory("m2", "Alice met Elena after the museum visit."),
+            _memory("m3", "Alice booked train tickets for Rome."),
+            _memory("m4", "Alice discussed the trip budget with Marcus."),
+            _memory("m5", "Alice saved the hotel address for the trip."),
         ]
 
         with (

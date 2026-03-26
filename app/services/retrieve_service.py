@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryResponse
-from app.services.formatter import format_memory_block
+from app.services.formatter import _normalize_for_dedup, format_memory_block
 from app.services import text_features
 
 KEYWORD_WEIGHT = 0.50
@@ -12,6 +12,7 @@ RECENCY_WEIGHT = 0.03
 PINNED_BONUS = 0.05
 BOTH_MATCH_BONUS = 0.10
 MIN_RETRIEVAL_SCORE = 0.15
+NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
 
 
 def _compute_score(
@@ -90,6 +91,33 @@ def _compute_score(
     return min(score, 1.0)
 
 
+def _token_overlap_ratio(text1: str, text2: str) -> float:
+    """Compute overlap ratio using the smaller token set as the denominator."""
+    tokens1 = set(_normalize_for_dedup(text1).split())
+    tokens2 = set(_normalize_for_dedup(text2).split())
+    if not tokens1 or not tokens2:
+        return 0.0
+    return len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
+
+
+def _is_too_similar_to_selected(candidate: MemoryItem, selected: list[MemoryItem]) -> bool:
+    """Skip near-duplicate memories so top slots stay diverse."""
+    candidate_normalized = _normalize_for_dedup(candidate.content)
+    if not candidate_normalized:
+        return True
+
+    for existing in selected:
+        existing_normalized = _normalize_for_dedup(existing.content)
+        if candidate_normalized == existing_normalized:
+            return True
+
+        overlap_ratio = _token_overlap_ratio(candidate.content, existing.content)
+        if overlap_ratio >= NEAR_DUPLICATE_TOKEN_OVERLAP:
+            return True
+
+    return False
+
+
 def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     """
     Retrieve relevant memories for the current context.
@@ -130,8 +158,14 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     # Sort by score DESC
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    # Take top-k
-    top_items = [item for _, item in scored[: request.limit]]
+    # Take top-k with lightweight anti-redundancy filtering.
+    top_items: list[MemoryItem] = []
+    for _, item in scored:
+        if _is_too_similar_to_selected(item, top_items):
+            continue
+        top_items.append(item)
+        if len(top_items) >= request.limit:
+            break
 
     # Update usage metrics for top-k items
     # This tracks which memories are being used for retrieval
