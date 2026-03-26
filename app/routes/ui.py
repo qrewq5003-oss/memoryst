@@ -17,8 +17,15 @@ from app.repositories.memory_repo import (
 from app.schemas import (
     CreateMemoryRequest,
     MemoryMetadata,
+    MessageInput,
+    RetrieveMemoryRequest,
+    RetrieveMemoryResponse,
+    StoreMemoryRequest,
+    StoreMemoryResponse,
     UpdateMemoryRequest,
 )
+from app.services.retrieve_service import retrieve_memories
+from app.services.store_service import store_memories
 
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["ui"])
@@ -36,9 +43,20 @@ def _build_query_string(params: dict[str, Any]) -> str:
     return urlencode({k: v for k, v in params.items() if v not in (None, "")})
 
 
-@router.get("/ui")
-def ui_memories_page(
+def _parse_messages(value: str) -> list[MessageInput]:
+    """Parse textarea input into user messages, one non-empty line per message."""
+    messages = []
+    for line in value.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        messages.append(MessageInput(role="user", text=text))
+    return messages
+
+
+def _render_memories_page(
     request: Request,
+    *,
     chat_id: str | None = None,
     character_id: str | None = None,
     type: str | None = None,
@@ -48,16 +66,18 @@ def ui_memories_page(
     pinned: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    store_result: StoreMemoryResponse | None = None,
+    retrieve_result: RetrieveMemoryResponse | None = None,
+    store_form: dict[str, Any] | None = None,
+    retrieve_form: dict[str, Any] | None = None,
 ) -> Any:
-    """Render memories page with filters."""
-    # Normalize empty strings to None for filter params
+    """Render the memories page with optional store/retrieve diagnostics sections."""
     chat_id = chat_id or None
     character_id = character_id or None
     type = type or None
     source = source or None
     layer = layer or None
-    
-    # Convert string booleans from query params (empty string -> None)
+
     if archived == "true":
         archived_bool = True
     elif archived == "false":
@@ -106,14 +126,141 @@ def ui_memories_page(
         }),
     }
 
-    # Convert Pydantic models to dict for Jinja2 template
-    # model_dump() recursively converts nested models (MemoryItem, MemoryMetadata)
     return templates.TemplateResponse(
+        request,
         "memories.html",
         {
-            "request": request,
             "memories": memories.model_dump(),
             "filters": filters,
+            "store_result": store_result.model_dump() if store_result else None,
+            "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,
+            "store_form": store_form or {
+                "chat_id": "",
+                "character_id": "",
+                "messages": "",
+                "debug": False,
+            },
+            "retrieve_form": retrieve_form or {
+                "chat_id": "",
+                "character_id": "",
+                "user_input": "",
+                "recent_messages": "",
+                "limit": 5,
+                "include_archived": False,
+                "debug": False,
+            },
+        },
+    )
+
+
+@router.get("/ui")
+def ui_memories_page(
+    request: Request,
+    chat_id: str | None = None,
+    character_id: str | None = None,
+    type: str | None = None,
+    source: str | None = None,
+    layer: str | None = None,
+    archived: str | None = None,
+    pinned: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Any:
+    """Render memories page with filters."""
+    return _render_memories_page(
+        request,
+        chat_id=chat_id,
+        character_id=character_id,
+        type=type,
+        source=source,
+        layer=layer,
+        archived=archived,
+        pinned=pinned,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/ui/store")
+def ui_store_memories(
+    request: Request,
+    chat_id: str = Form(...),
+    character_id: str = Form(...),
+    messages: str = Form(...),
+    debug: bool = Form(False),
+) -> Any:
+    """Run store pipeline from the admin UI and render results inline."""
+    store_request = StoreMemoryRequest(
+        chat_id=chat_id,
+        character_id=character_id,
+        messages=_parse_messages(messages),
+        debug=debug,
+    )
+    result = store_memories(store_request)
+    return _render_memories_page(
+        request,
+        chat_id=chat_id,
+        character_id=character_id,
+        store_result=result,
+        store_form={
+            "chat_id": chat_id,
+            "character_id": character_id,
+            "messages": messages,
+            "debug": debug,
+        },
+        retrieve_form={
+            "chat_id": chat_id,
+            "character_id": character_id,
+            "user_input": "",
+            "recent_messages": "",
+            "limit": 5,
+            "include_archived": False,
+            "debug": False,
+        },
+    )
+
+
+@router.post("/ui/retrieve")
+def ui_retrieve_memories(
+    request: Request,
+    chat_id: str = Form(...),
+    character_id: str = Form(...),
+    user_input: str = Form(...),
+    recent_messages: str = Form(""),
+    limit: int = Form(5),
+    include_archived: bool = Form(False),
+    debug: bool = Form(False),
+) -> Any:
+    """Run retrieval pipeline from the admin UI and render results inline."""
+    retrieve_request = RetrieveMemoryRequest(
+        chat_id=chat_id,
+        character_id=character_id,
+        user_input=user_input,
+        recent_messages=_parse_messages(recent_messages),
+        limit=limit,
+        include_archived=include_archived,
+        debug=debug,
+    )
+    result = retrieve_memories(retrieve_request)
+    return _render_memories_page(
+        request,
+        chat_id=chat_id,
+        character_id=character_id,
+        retrieve_result=result,
+        store_form={
+            "chat_id": chat_id,
+            "character_id": character_id,
+            "messages": "",
+            "debug": False,
+        },
+        retrieve_form={
+            "chat_id": chat_id,
+            "character_id": character_id,
+            "user_input": user_input,
+            "recent_messages": recent_messages,
+            "limit": limit,
+            "include_archived": include_archived,
+            "debug": debug,
         },
     )
 

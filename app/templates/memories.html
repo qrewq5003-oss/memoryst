@@ -59,6 +59,149 @@
     </form>
 </section>
 
+<!-- Store Pipeline -->
+<section class="debug-tools">
+    <h2>Store Pipeline</h2>
+    <form method="POST" action="/ui/store">
+        <div class="form-row">
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ store_form["chat_id"] }}" required></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ store_form["character_id"] }}" required></label>
+            <label>Debug: <input type="checkbox" name="debug" value="true" {% if store_form["debug"] %}checked{% endif %}></label>
+        </div>
+        <label>Messages:
+            <textarea name="messages" rows="5" placeholder="One message per line" required>{{ store_form["messages"] }}</textarea>
+        </label>
+        <button type="submit">Run Store</button>
+    </form>
+
+    {% if store_result %}
+    <div class="result-summary">
+        <strong>Store Result:</strong>
+        stored={{ store_result["stored"] }},
+        updated={{ store_result["updated"] }},
+        skipped={{ store_result["skipped"] }}
+    </div>
+
+    {% if store_result["items"] %}
+    <details class="result-details" open>
+        <summary>Stored/Updated Items</summary>
+        <ul class="debug-list">
+            {% for item in store_result["items"] %}
+            <li>
+                <strong>{{ item["id"][:8] }}...</strong>
+                {{ item["content"] }}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    {% if store_result["debug"] %}
+    <details class="result-details" open>
+        <summary>Store Diagnostics</summary>
+        <div class="diagnostics-grid">
+            {% for candidate in store_result["debug"]["candidates"] %}
+            <article class="diagnostic-card">
+                <div><strong>Decision:</strong> {{ candidate["decision"] }}</div>
+                <div><strong>Reason:</strong> {{ candidate["reason"] }}</div>
+                <div><strong>Branch:</strong> {{ candidate["branch"] }}</div>
+                {% if candidate["matched_existing_id"] %}
+                <div><strong>Matched ID:</strong> <code>{{ candidate["matched_existing_id"] }}</code></div>
+                {% endif %}
+                {% if candidate["normalized_content"] %}
+                <div><strong>Normalized:</strong> <code>{{ candidate["normalized_content"] }}</code></div>
+                {% endif %}
+                <div><strong>Content:</strong> {{ candidate["content"] }}</div>
+            </article>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+    {% endif %}
+</section>
+
+<!-- Retrieval Pipeline -->
+<section class="debug-tools">
+    <h2>Retrieve Pipeline</h2>
+    <form method="POST" action="/ui/retrieve">
+        <div class="form-row">
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ retrieve_form["chat_id"] }}" required></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ retrieve_form["character_id"] }}" required></label>
+            <label>Limit: <input type="number" name="limit" value="{{ retrieve_form["limit"] }}" min="1" max="20"></label>
+            <label>Include Archived: <input type="checkbox" name="include_archived" value="true" {% if retrieve_form["include_archived"] %}checked{% endif %}></label>
+            <label>Debug: <input type="checkbox" name="debug" value="true" {% if retrieve_form["debug"] %}checked{% endif %}></label>
+        </div>
+        <label>User Input:
+            <textarea name="user_input" rows="3" required>{{ retrieve_form["user_input"] }}</textarea>
+        </label>
+        <label>Recent Messages:
+            <textarea name="recent_messages" rows="4" placeholder="One message per line">{{ retrieve_form["recent_messages"] }}</textarea>
+        </label>
+        <button type="submit">Run Retrieve</button>
+    </form>
+
+    {% if retrieve_result %}
+    <div class="result-summary">
+        <strong>Retrieve Result:</strong>
+        items={{ retrieve_result["items"]|length }},
+        total_candidates={{ retrieve_result["total_candidates"] }}
+    </div>
+
+    {% if retrieve_result["memory_block"] %}
+    <details class="result-details" open>
+        <summary>Formatted Memory Block</summary>
+        <pre class="memory-block">{{ retrieve_result["memory_block"] }}</pre>
+    </details>
+    {% endif %}
+
+    {% if retrieve_result["items"] %}
+    <details class="result-details" open>
+        <summary>Selected Items</summary>
+        <ul class="debug-list">
+            {% for item in retrieve_result["items"] %}
+            <li>
+                <strong>{{ item["id"][:8] }}...</strong>
+                {{ item["content"] }}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    {% if retrieve_result["debug"] %}
+    <details class="result-details" open>
+        <summary>Retrieve Diagnostics</summary>
+        <div class="feature-summary">
+            <div><strong>Query Keywords:</strong> {{ retrieve_result["debug"]["query_keywords"]|join(", ") }}</div>
+            <div><strong>Query Entities:</strong> {{ retrieve_result["debug"]["query_entities"]|join(", ") }}</div>
+            <div><strong>Recent Keywords:</strong> {{ retrieve_result["debug"]["recent_keywords"]|join(", ") }}</div>
+            <div><strong>Recent Entities:</strong> {{ retrieve_result["debug"]["recent_entities"]|join(", ") }}</div>
+            <div><strong>All Input Keywords:</strong> {{ retrieve_result["debug"]["input_keywords"]|join(", ") }}</div>
+            <div><strong>All Input Entities:</strong> {{ retrieve_result["debug"]["input_entities"]|join(", ") }}</div>
+        </div>
+        <div class="diagnostics-grid">
+            {% for candidate in retrieve_result["debug"]["candidates"] %}
+            <article class="diagnostic-card">
+                <div><strong>Memory ID:</strong> <code>{{ candidate["memory_id"] }}</code></div>
+                <div><strong>Score:</strong> {{ "%.3f"|format(candidate["score"]) }}</div>
+                <div><strong>Keyword Overlap:</strong> {{ "%.3f"|format(candidate["keyword_overlap"]) }}</div>
+                <div><strong>Entity Overlap:</strong> {{ "%.3f"|format(candidate["entity_overlap"]) }}</div>
+                <div><strong>Recency:</strong> {{ "%.3f"|format(candidate["recency"]) }}</div>
+                <div><strong>Passed Threshold:</strong> {{ candidate["passed_threshold"] }}</div>
+                <div><strong>Filtered by Diversity:</strong> {{ candidate["filtered_by_diversity"] }}</div>
+                <div><strong>Selected:</strong> {{ candidate["selected"] }}</div>
+                {% if candidate["rank"] %}
+                <div><strong>Rank:</strong> {{ candidate["rank"] }}</div>
+                {% endif %}
+                <div><strong>Reason:</strong> {{ candidate["reason"] }}</div>
+            </article>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+    {% endif %}
+</section>
+
 <!-- Create Form -->
 <section class="create-form">
     <h2>Create Memory</h2>

@@ -177,3 +177,60 @@ summary {
     gap: 10px;
     align-items: center;
 }
+
+.debug-tools textarea {
+    margin-top: 6px;
+}
+
+.result-summary {
+    margin-top: 15px;
+    padding: 10px 12px;
+    background: #eef6ff;
+    border: 1px solid #cfe0f5;
+    border-radius: 6px;
+}
+
+.result-details {
+    display: block;
+    margin-top: 12px;
+}
+
+.diagnostics-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    margin-top: 12px;
+}
+
+.diagnostic-card {
+    padding: 12px;
+    background: #f8f9fa;
+    border: 1px solid #e0e3e7;
+    border-radius: 6px;
+}
+
+.diagnostic-card div {
+    margin-bottom: 6px;
+    word-break: break-word;
+}
+
+.feature-summary {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.debug-list {
+    margin: 12px 0 0;
+    padding-left: 18px;
+}
+
+.memory-block {
+    margin-top: 12px;
+    padding: 12px;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
