@@ -1,18 +1,18 @@
 /**
  * Memory Service Extension for SillyTavern
  * 
- * V1 LIMITATION - IMPORTANT:
- * This extension uses a POST-RENDER retrieve pattern.
+ * Current timing policy:
+ * - retrieve happens before generation for current-turn prompt injection
+ * - store happens after CHARACTER_MESSAGE_RENDERED for the completed exchange
  * 
  * Flow:
- * 1. User sends message -> Assistant generates and renders response
- * 2. CHARACTER_MESSAGE_RENDERED event fires
- * 3. Extension calls /memory/store to save the exchange
- * 4. Extension calls /memory/retrieve to get relevant memories
- * 5. Retrieved memory_block is set via setExtensionPrompt() for the NEXT generation
- * 
- * This means: memory_block from exchange N is used in generation N+1.
- * This is the expected v1 pattern. NOT a pre-generation injection.
+ * 1. User sends message
+ * 2. Pre-generation hook fires
+ * 3. Extension calls /memory/retrieve
+ * 4. Retrieved memory_block is set via setExtensionPrompt() for CURRENT generation
+ * 5. Assistant generates and renders response
+ * 6. CHARACTER_MESSAGE_RENDERED fires
+ * 7. Extension calls /memory/store to save the completed exchange
  */
 
 import { getContext, extension_settings } from '../../extensions.js';
@@ -21,9 +21,11 @@ import {
     buildPromptInsertionAuditSection,
     buildRetrieveAuditSection,
     buildStoreAuditSection,
+    buildTurnKey,
     createIntegrationAuditRecord,
     finalizeIntegrationAuditRecord,
     pushAuditRecord,
+    resolvePreGenerationHookNames,
 } from './audit.mjs';
 
 // === CONFIGURATION ===
@@ -42,7 +44,18 @@ const DEFAULT_SETTINGS = {
 let settings = {};
 
 // === STATE ===
-let isProcessing = false;
+let isStoreProcessing = false;
+let isRetrieveProcessing = false;
+let pendingInteractionAudit = null;
+let pendingTurnKey = null;
+
+function setMemoryPrompt(memoryBlock) {
+    setExtensionPrompt('memory-service', memoryBlock || '', 0, 0, true, 'system');
+}
+
+function clearMemoryPrompt() {
+    setMemoryPrompt('');
+}
 
 /**
  * Load extension settings from SillyTavern extension_settings
@@ -196,10 +209,7 @@ async function storeMemories() {
 }
 
 /**
- * Call Memory Service /memory/retrieve endpoint
- * 
- * V1 NOTE: This is called AFTER the current generation completes.
- * The retrieved memory_block will be used for the NEXT generation.
+ * Call Memory Service /memory/retrieve endpoint for current-turn injection.
  */
 async function retrieveMemories() {
     if (!settings.enabled) {
@@ -245,12 +255,11 @@ async function retrieveMemories() {
             const result = await response.json();
             console.log('[Memory Service] Retrieved:', result.items.length, 'items');
 
-            // Set the memory block for the NEXT generation
-            // V1 PATTERN: post-render retrieve -> next generation
             if (result.memory_block) {
-                // setExtensionPrompt signature: (name, content, priority, depth, scan, role)
-                setExtensionPrompt('memory-service', result.memory_block, 0, 0, true, 'system');
-                console.log('[Memory Service] Memory block set for NEXT generation');
+                setMemoryPrompt(result.memory_block);
+                console.log('[Memory Service] Memory block set for CURRENT generation');
+            } else {
+                clearMemoryPrompt();
             }
 
             return {
@@ -263,6 +272,7 @@ async function retrieveMemories() {
             };
         } else {
             console.error('[Memory Service] Retrieve failed:', response.status);
+            clearMemoryPrompt();
             return {
                 called: true,
                 userInput: user_input,
@@ -274,6 +284,7 @@ async function retrieveMemories() {
         }
     } catch (error) {
         console.error('[Memory Service] Retrieve error:', error);
+        clearMemoryPrompt();
         return {
             called: true,
             userInput: user_input,
@@ -319,32 +330,90 @@ function exposeAuditHelpers() {
 }
 
 /**
- * Main handler called after message is rendered
- * 
- * V1 PATTERN EXPLANATION:
- * This handler runs AFTER the assistant's response is generated and rendered.
- * Therefore:
- * - The current generation did NOT have access to retrieved memories
- * - Retrieved memories will be available for the NEXT generation
- * 
- * This is the safe and expected v1 pattern.
+ * Retrieve and inject memories before the current generation starts.
  */
-async function onMessageRendered() {
-    if (!settings.enabled || isProcessing) {
+async function onBeforeGeneration() {
+    if (!settings.enabled || isRetrieveProcessing) {
         return;
     }
 
-    isProcessing = true;
+    const chatContext = getChatContext();
+    const userInput = getLastUserMessage();
+    const turnKey = buildTurnKey({
+        chatId: chatContext?.chatId || null,
+        characterId: chatContext?.characterId || chatContext?.chatId || null,
+        chatLength: chatContext?.chat?.length || 0,
+        userInput,
+    });
+
+    if (pendingTurnKey === turnKey && pendingInteractionAudit?.retrieve_called) {
+        return;
+    }
+
+    isRetrieveProcessing = true;
 
     try {
-        const chatContext = getChatContext();
         const auditRecord = createIntegrationAuditRecord({
             chatId: chatContext?.chatId || null,
             characterId: chatContext?.characterId || chatContext?.chatId || null,
             recentMessagesCount: settings.recentMessagesCount,
         });
+        auditRecord.retrieve_stage = 'pre_generation';
+        auditRecord.prompt_injection_stage = 'pre_generation';
 
-        // Step 1: Store the just-completed exchange
+        const retrieveResult = await retrieveMemories();
+        if (retrieveResult.called) {
+            auditRecord.retrieve_called = true;
+            auditRecord.retrieve = buildRetrieveAuditSection({
+                userInput: retrieveResult.userInput || '',
+                recentMessages: retrieveResult.recentMessages || [],
+                result: retrieveResult.result || null,
+                error: retrieveResult.error || null,
+                previewChars: settings.auditPreviewChars,
+                stage: 'pre_generation',
+            });
+            auditRecord.prompt_insertion_observed = true;
+            auditRecord.applied_to_current_turn = Boolean(retrieveResult.promptApplied);
+            auditRecord.prompt_insertion = buildPromptInsertionAuditSection({
+                memoryBlock: retrieveResult.memoryBlock || '',
+                applied: retrieveResult.promptApplied,
+                reason: retrieveResult.promptApplied ? 'memory_block_set_for_current_turn' : 'empty_or_missing_memory_block',
+                previewChars: settings.auditPreviewChars,
+                stage: 'pre_generation',
+                appliedToCurrentTurn: true,
+            });
+        } else {
+            clearMemoryPrompt();
+            if (retrieveResult.reason) {
+                auditRecord.notes.push(retrieveResult.reason);
+            }
+        }
+
+        pendingInteractionAudit = auditRecord;
+        pendingTurnKey = turnKey;
+    } finally {
+        isRetrieveProcessing = false;
+    }
+}
+
+/**
+ * Store the completed exchange after the assistant message is rendered.
+ */
+async function onMessageRendered() {
+    if (!settings.enabled || isStoreProcessing) {
+        return;
+    }
+
+    isStoreProcessing = true;
+
+    try {
+        const chatContext = getChatContext();
+        const auditRecord = pendingInteractionAudit || createIntegrationAuditRecord({
+            chatId: chatContext?.chatId || null,
+            characterId: chatContext?.characterId || chatContext?.chatId || null,
+            recentMessagesCount: settings.recentMessagesCount,
+        });
+
         const storeResult = await storeMemories();
         if (storeResult.called) {
             auditRecord.store_called = true;
@@ -358,31 +427,12 @@ async function onMessageRendered() {
             auditRecord.notes.push(storeResult.reason);
         }
 
-        // Step 2: Retrieve memories for NEXT generation
-        const retrieveResult = await retrieveMemories();
-        if (retrieveResult.called) {
-            auditRecord.retrieve_called = true;
-            auditRecord.retrieve = buildRetrieveAuditSection({
-                userInput: retrieveResult.userInput || '',
-                recentMessages: retrieveResult.recentMessages || [],
-                result: retrieveResult.result || null,
-                error: retrieveResult.error || null,
-                previewChars: settings.auditPreviewChars,
-            });
-            auditRecord.prompt_insertion_observed = true;
-            auditRecord.prompt_insertion = buildPromptInsertionAuditSection({
-                memoryBlock: retrieveResult.memoryBlock || '',
-                applied: retrieveResult.promptApplied,
-                reason: retrieveResult.promptApplied ? 'memory_block_set' : 'empty_or_missing_memory_block',
-                previewChars: settings.auditPreviewChars,
-            });
-        } else if (retrieveResult.reason) {
-            auditRecord.notes.push(retrieveResult.reason);
-        }
-
         persistIntegrationAudit(auditRecord);
+        clearMemoryPrompt();
+        pendingInteractionAudit = null;
+        pendingTurnKey = null;
     } finally {
-        isProcessing = false;
+        isStoreProcessing = false;
     }
 }
 
@@ -390,31 +440,36 @@ async function onMessageRendered() {
  * Handle chat change - clear prompt if chat changes
  */
 function onChatChanged() {
-    setExtensionPrompt('memory-service', '', 0, 0, true, 'system');
+    clearMemoryPrompt();
+    pendingInteractionAudit = null;
+    pendingTurnKey = null;
 }
 
 /**
  * Initialize extension
- * 
- * Event wiring uses eventSource.makeLast() directly with event_types.CHARACTER_MESSAGE_RENDERED.
- * This ensures the handler runs after core rendering is complete.
- * Pattern confirmed from local SillyTavern extension samples.
  */
 function init() {
     console.log('[Memory Service] Extension initializing...');
 
     loadSettings();
 
-    // Register event listener using makeLast for post-render execution
-    // This is the confirmed pattern from local SillyTavern extension samples
+    // Register likely pre-generation hooks for current-turn retrieval.
+    for (const hookName of resolvePreGenerationHookNames(event_types)) {
+        if (typeof eventSource.makeFirst === 'function') {
+            eventSource.makeFirst(hookName, onBeforeGeneration);
+        } else {
+            eventSource.on(hookName, onBeforeGeneration);
+        }
+    }
+
+    // Store happens after render because the assistant reply is only complete at this point.
     eventSource.makeLast(event_types.CHARACTER_MESSAGE_RENDERED, onMessageRendered);
 
-    // Also handle chat changes to clear old prompts
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     exposeAuditHelpers();
 
     console.log('[Memory Service] Extension initialized');
-    console.log('[Memory Service] V1 PATTERN: retrieve happens AFTER render, memory_block applies to NEXT generation');
+    console.log('[Memory Service] Current-turn pattern: retrieve happens before generation, store after render');
     if (settings.auditEnabled) {
         console.log('[Memory Service] Integration audit mode enabled');
     }
