@@ -54,6 +54,91 @@ def _parse_messages(value: str) -> list[MessageInput]:
     return messages
 
 
+def _sorted_breakdown(items: dict[str, int]) -> list[dict[str, Any]]:
+    """Convert a counter dict into a stable list for template rendering."""
+    return [
+        {"label": label, "count": count}
+        for label, count in sorted(items.items())
+    ]
+
+
+def _build_store_summary(store_result: StoreMemoryResponse | None) -> dict[str, Any] | None:
+    """Build compact aggregate summary for a store run."""
+    if store_result is None:
+        return None
+
+    summary = {
+        "stored": store_result.stored,
+        "updated": store_result.updated,
+        "skipped": store_result.skipped,
+        "debug_breakdown": None,
+    }
+
+    if store_result.debug is None:
+        return summary
+
+    decision_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    branch_counts: dict[str, int] = {}
+
+    for candidate in store_result.debug.candidates:
+        decision_counts[candidate.decision] = decision_counts.get(candidate.decision, 0) + 1
+        reason_counts[candidate.reason] = reason_counts.get(candidate.reason, 0) + 1
+        branch_counts[candidate.branch] = branch_counts.get(candidate.branch, 0) + 1
+
+    summary["debug_breakdown"] = {
+        "decisions": _sorted_breakdown(decision_counts),
+        "reasons": _sorted_breakdown(reason_counts),
+        "branches": _sorted_breakdown(branch_counts),
+    }
+    return summary
+
+
+def _build_retrieve_summary(retrieve_result: RetrieveMemoryResponse | None) -> dict[str, Any] | None:
+    """Build compact aggregate summary for a retrieval run."""
+    if retrieve_result is None:
+        return None
+
+    summary = {
+        "total_candidates": retrieve_result.total_candidates,
+        "selected_count": len(retrieve_result.items),
+        "top_score": None,
+        "avg_selected_score": None,
+        "debug_breakdown": None,
+    }
+
+    if retrieve_result.debug is None:
+        return summary
+
+    reason_counts: dict[str, int] = {}
+    below_threshold = 0
+    filtered_by_diversity = 0
+    selected_top = 0
+    selected_scores: list[float] = []
+
+    for candidate in retrieve_result.debug.candidates:
+        reason_counts[candidate.reason] = reason_counts.get(candidate.reason, 0) + 1
+        if not candidate.passed_threshold:
+            below_threshold += 1
+        if candidate.filtered_by_diversity:
+            filtered_by_diversity += 1
+        if candidate.selected:
+            selected_top += 1
+            selected_scores.append(candidate.score)
+
+    if selected_scores:
+        summary["top_score"] = max(selected_scores)
+        summary["avg_selected_score"] = sum(selected_scores) / len(selected_scores)
+
+    summary["debug_breakdown"] = {
+        "below_threshold": below_threshold,
+        "filtered_by_diversity": filtered_by_diversity,
+        "selected_top": selected_top,
+        "reasons": _sorted_breakdown(reason_counts),
+    }
+    return summary
+
+
 def _render_memories_page(
     request: Request,
     *,
@@ -134,6 +219,8 @@ def _render_memories_page(
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,
+            "store_summary": _build_store_summary(store_result),
+            "retrieve_summary": _build_retrieve_summary(retrieve_result),
             "store_form": store_form or {
                 "chat_id": "",
                 "character_id": "",

@@ -75,6 +75,23 @@
     </form>
 
     {% if store_result %}
+    {% if store_summary %}
+    <div class="summary-grid">
+        <article class="summary-card">
+            <div class="summary-label">Stored</div>
+            <div class="summary-value">{{ store_summary["stored"] }}</div>
+        </article>
+        <article class="summary-card">
+            <div class="summary-label">Updated</div>
+            <div class="summary-value">{{ store_summary["updated"] }}</div>
+        </article>
+        <article class="summary-card">
+            <div class="summary-label">Skipped</div>
+            <div class="summary-value">{{ store_summary["skipped"] }}</div>
+        </article>
+    </div>
+    {% endif %}
+
     <div class="result-summary">
         <strong>Store Result:</strong>
         stored={{ store_result["stored"] }},
@@ -97,6 +114,29 @@
     {% endif %}
 
     {% if store_result["debug"] %}
+    {% if store_summary["debug_breakdown"] %}
+    <details class="result-details" open>
+        <summary>Store Summary Breakdown</summary>
+        <div class="feature-summary">
+            <div><strong>Decisions:</strong>
+                {% for item in store_summary["debug_breakdown"]["decisions"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+            <div><strong>Branches:</strong>
+                {% for item in store_summary["debug_breakdown"]["branches"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+            <div><strong>Reasons:</strong>
+                {% for item in store_summary["debug_breakdown"]["reasons"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+    {% endif %}
+
     <details class="result-details" open>
         <summary>Store Diagnostics</summary>
         <div class="diagnostics-grid">
@@ -141,6 +181,31 @@
     </form>
 
     {% if retrieve_result %}
+    {% if retrieve_summary %}
+    <div class="summary-grid">
+        <article class="summary-card">
+            <div class="summary-label">Total Candidates</div>
+            <div class="summary-value">{{ retrieve_summary["total_candidates"] }}</div>
+        </article>
+        <article class="summary-card">
+            <div class="summary-label">Selected</div>
+            <div class="summary-value">{{ retrieve_summary["selected_count"] }}</div>
+        </article>
+        {% if retrieve_summary["top_score"] is not none %}
+        <article class="summary-card">
+            <div class="summary-label">Top Score</div>
+            <div class="summary-value">{{ "%.3f"|format(retrieve_summary["top_score"]) }}</div>
+        </article>
+        {% endif %}
+        {% if retrieve_summary["avg_selected_score"] is not none %}
+        <article class="summary-card">
+            <div class="summary-label">Avg Selected Score</div>
+            <div class="summary-value">{{ "%.3f"|format(retrieve_summary["avg_selected_score"]) }}</div>
+        </article>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="result-summary">
         <strong>Retrieve Result:</strong>
         items={{ retrieve_result["items"]|length }},
@@ -169,6 +234,22 @@
     {% endif %}
 
     {% if retrieve_result["debug"] %}
+    {% if retrieve_summary["debug_breakdown"] %}
+    <details class="result-details" open>
+        <summary>Retrieve Summary Breakdown</summary>
+        <div class="feature-summary">
+            <div><strong>Below Threshold:</strong> {{ retrieve_summary["debug_breakdown"]["below_threshold"] }}</div>
+            <div><strong>Filtered by Diversity:</strong> {{ retrieve_summary["debug_breakdown"]["filtered_by_diversity"] }}</div>
+            <div><strong>Selected Top:</strong> {{ retrieve_summary["debug_breakdown"]["selected_top"] }}</div>
+            <div><strong>Reasons:</strong>
+                {% for item in retrieve_summary["debug_breakdown"]["reasons"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+    {% endif %}
+
     <details class="result-details" open>
         <summary>Retrieve Diagnostics</summary>
         <div class="feature-summary">

@@ -234,3 +234,38 @@ summary {
     overflow-x: auto;
     white-space: pre-wrap;
 }
+
+.summary-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    margin-top: 15px;
+}
+
+.summary-card {
+    padding: 12px;
+    background: #f4f7fb;
+    border: 1px solid #d7e0ea;
+    border-radius: 6px;
+}
+
+.summary-label {
+    color: #4b5563;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.summary-value {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.metric-chip {
+    display: inline-block;
+    margin: 4px 6px 0 0;
+    padding: 3px 8px;
+    background: #eef2f7;
+    border-radius: 999px;
+    font-size: 12px;
+}
