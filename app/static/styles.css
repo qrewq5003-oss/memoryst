@@ -459,6 +459,16 @@ summary {
     margin-top: 6px;
 }
 
+.history-summary {
+    margin-top: 8px;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.history-toggle {
+    margin-top: 8px;
+}
+
 .empty-value {
     color: #6b7280;
     font-style: italic;

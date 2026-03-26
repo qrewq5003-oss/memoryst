@@ -221,6 +221,75 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         self.assertIn("mark_reviewed_keep", body)
         self.assertIn("keep for manual context", body)
 
+    def test_short_history_renders_without_compact_toggle(self) -> None:
+        kept = _memory(
+            "memory-1",
+            "Alice planned the Rome museum trip.",
+            metadata=MemoryMetadata(
+                entities=["Alice"],
+                keywords=["rome", "trip"],
+                review_status="reviewed_keep",
+                consolidation_note="keep for manual context",
+                consolidation_history=[
+                    ConsolidationHistoryEntry(
+                        action="mark_reviewed_keep",
+                        timestamp="2026-03-20T00:00:00+00:00",
+                        note="keep for manual context",
+                    ),
+                    ConsolidationHistoryEntry(
+                        action="link_to_related_memory",
+                        timestamp="2026-03-19T00:00:00+00:00",
+                        related_memory_id="memory-2",
+                        note="same topic as profile memory",
+                    ),
+                ],
+            ),
+        )
+
+        with patch(
+            "app.routes.ui.list_memories",
+            return_value=ListMemoriesResponse(items=[kept], total=1, limit=50, offset=0),
+        ):
+            response = ui_memories_page(_request("/ui"))
+
+        body = response.body.decode()
+        self.assertIn("Consolidation History", body)
+        self.assertNotIn("Showing last 3 of", body)
+        self.assertNotIn("Show full history", body)
+
+    def test_long_history_renders_compact_with_full_toggle(self) -> None:
+        history = [
+            ConsolidationHistoryEntry(
+                action=f"action_{index}",
+                timestamp=f"2026-03-{20 - index:02d}T00:00:00+00:00",
+                note=f"note_{index}",
+            )
+            for index in range(5)
+        ]
+        kept = _memory(
+            "memory-1",
+            "Alice planned the Rome museum trip.",
+            metadata=MemoryMetadata(
+                entities=["Alice"],
+                keywords=["rome", "trip"],
+                review_status="reviewed_keep",
+                consolidation_note="keep for manual context",
+                consolidation_history=history,
+            ),
+        )
+
+        with patch(
+            "app.routes.ui.list_memories",
+            return_value=ListMemoriesResponse(items=[kept], total=1, limit=50, offset=0),
+        ):
+            response = ui_memories_page(_request("/ui"))
+
+        body = response.body.decode()
+        self.assertIn("Showing last 3 of 5", body)
+        self.assertIn("Show full history", body)
+        self.assertIn("action_0", body)
+        self.assertIn("action_4", body)
+
     def test_reviewed_keep_state_suppresses_candidate_badge_and_keeps_render_working(self) -> None:
         kept = _memory(
             "memory-1",
