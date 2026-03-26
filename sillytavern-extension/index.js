@@ -17,6 +17,14 @@
 
 import { getContext, extension_settings } from '../../extensions.js';
 import { eventSource, event_types, saveSettingsDebounced, setExtensionPrompt } from '../../../script.js';
+import {
+    buildPromptInsertionAuditSection,
+    buildRetrieveAuditSection,
+    buildStoreAuditSection,
+    createIntegrationAuditRecord,
+    finalizeIntegrationAuditRecord,
+    pushAuditRecord,
+} from './audit.mjs';
 
 // === CONFIGURATION ===
 const DEFAULT_SETTINGS = {
@@ -25,6 +33,10 @@ const DEFAULT_SETTINGS = {
     apiKey: '',
     retrieveLimit: 5,
     recentMessagesCount: 8,
+    auditEnabled: false,
+    auditMaxRecords: 20,
+    auditPreviewChars: 240,
+    recentAudits: [],
 };
 
 let settings = {};
@@ -123,17 +135,17 @@ function getRecentMessagesForRetrieve(count) {
  */
 async function storeMemories() {
     if (!settings.enabled) {
-        return;
+        return { called: false, reason: 'extension_disabled' };
     }
 
     const chatContext = getChatContext();
     if (!chatContext || !chatContext.chatId) {
-        return;
+        return { called: false, reason: 'missing_chat_context' };
     }
 
     const messages = getRecentMessages(settings.recentMessagesCount);
     if (messages.length === 0) {
-        return;
+        return { called: false, reason: 'no_messages' };
     }
 
     try {
@@ -153,17 +165,33 @@ async function storeMemories() {
                 chat_id: chatContext.chatId,
                 character_id: chatContext.characterId || chatContext.chatId,
                 messages: messages,
+                debug: settings.auditEnabled,
             }),
         });
 
         if (response.ok) {
             const result = await response.json();
             console.log('[Memory Service] Stored:', result.stored, 'Skipped:', result.skipped);
+            return {
+                called: true,
+                messages,
+                result,
+            };
         } else {
             console.error('[Memory Service] Store failed:', response.status);
+            return {
+                called: true,
+                messages,
+                error: `store_http_${response.status}`,
+            };
         }
     } catch (error) {
         console.error('[Memory Service] Store error:', error);
+        return {
+            called: true,
+            messages,
+            error: error?.message || String(error),
+        };
     }
 }
 
@@ -175,17 +203,17 @@ async function storeMemories() {
  */
 async function retrieveMemories() {
     if (!settings.enabled) {
-        return '';
+        return { called: false, reason: 'extension_disabled', memoryBlock: '' };
     }
 
     const chatContext = getChatContext();
     if (!chatContext || !chatContext.chatId) {
-        return '';
+        return { called: false, reason: 'missing_chat_context', memoryBlock: '' };
     }
 
     const user_input = getLastUserMessage();
     if (!user_input) {
-        return '';
+        return { called: false, reason: 'no_last_user_message', memoryBlock: '' };
     }
 
     const recent_messages = getRecentMessagesForRetrieve(3);
@@ -209,6 +237,7 @@ async function retrieveMemories() {
                 user_input: user_input,
                 recent_messages: recent_messages,
                 limit: settings.retrieveLimit,
+                debug: settings.auditEnabled,
             }),
         });
 
@@ -224,15 +253,69 @@ async function retrieveMemories() {
                 console.log('[Memory Service] Memory block set for NEXT generation');
             }
 
-            return result.memory_block || '';
+            return {
+                called: true,
+                userInput: user_input,
+                recentMessages: recent_messages,
+                result,
+                memoryBlock: result.memory_block || '',
+                promptApplied: Boolean(result.memory_block),
+            };
         } else {
             console.error('[Memory Service] Retrieve failed:', response.status);
+            return {
+                called: true,
+                userInput: user_input,
+                recentMessages: recent_messages,
+                error: `retrieve_http_${response.status}`,
+                memoryBlock: '',
+                promptApplied: false,
+            };
         }
     } catch (error) {
         console.error('[Memory Service] Retrieve error:', error);
+        return {
+            called: true,
+            userInput: user_input,
+            recentMessages: recent_messages,
+            error: error?.message || String(error),
+            memoryBlock: '',
+            promptApplied: false,
+        };
     }
 
-    return '';
+    return { called: false, reason: 'unknown', memoryBlock: '' };
+}
+
+function persistIntegrationAudit(record) {
+    if (!settings.auditEnabled) {
+        return;
+    }
+
+    const finalized = finalizeIntegrationAuditRecord(record);
+    pushAuditRecord(settings, finalized);
+    saveSettings();
+    console.log('[Memory Service][Audit]', finalized);
+}
+
+function exposeAuditHelpers() {
+    globalThis.memoryServiceAudit = {
+        getRecentAudits: () => settings.recentAudits || [],
+        clearRecentAudits: () => {
+            settings.recentAudits = [];
+            saveSettings();
+        },
+        printRecentAudits: () => {
+            console.table((settings.recentAudits || []).map(item => ({
+                timestamp: item.timestamp,
+                chat_id: item.chat_id,
+                store_called: item.store_called,
+                retrieve_called: item.retrieve_called,
+                prompt_insertion_observed: item.prompt_insertion_observed,
+                notes: (item.notes || []).join(','),
+            })));
+        },
+    };
 }
 
 /**
@@ -254,11 +337,50 @@ async function onMessageRendered() {
     isProcessing = true;
 
     try {
+        const chatContext = getChatContext();
+        const auditRecord = createIntegrationAuditRecord({
+            chatId: chatContext?.chatId || null,
+            characterId: chatContext?.characterId || chatContext?.chatId || null,
+            recentMessagesCount: settings.recentMessagesCount,
+        });
+
         // Step 1: Store the just-completed exchange
-        await storeMemories();
+        const storeResult = await storeMemories();
+        if (storeResult.called) {
+            auditRecord.store_called = true;
+            auditRecord.store = buildStoreAuditSection({
+                messages: storeResult.messages || [],
+                result: storeResult.result || null,
+                error: storeResult.error || null,
+                previewChars: settings.auditPreviewChars,
+            });
+        } else if (storeResult.reason) {
+            auditRecord.notes.push(storeResult.reason);
+        }
 
         // Step 2: Retrieve memories for NEXT generation
-        await retrieveMemories();
+        const retrieveResult = await retrieveMemories();
+        if (retrieveResult.called) {
+            auditRecord.retrieve_called = true;
+            auditRecord.retrieve = buildRetrieveAuditSection({
+                userInput: retrieveResult.userInput || '',
+                recentMessages: retrieveResult.recentMessages || [],
+                result: retrieveResult.result || null,
+                error: retrieveResult.error || null,
+                previewChars: settings.auditPreviewChars,
+            });
+            auditRecord.prompt_insertion_observed = true;
+            auditRecord.prompt_insertion = buildPromptInsertionAuditSection({
+                memoryBlock: retrieveResult.memoryBlock || '',
+                applied: retrieveResult.promptApplied,
+                reason: retrieveResult.promptApplied ? 'memory_block_set' : 'empty_or_missing_memory_block',
+                previewChars: settings.auditPreviewChars,
+            });
+        } else if (retrieveResult.reason) {
+            auditRecord.notes.push(retrieveResult.reason);
+        }
+
+        persistIntegrationAudit(auditRecord);
     } finally {
         isProcessing = false;
     }
@@ -289,9 +411,13 @@ function init() {
 
     // Also handle chat changes to clear old prompts
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    exposeAuditHelpers();
 
     console.log('[Memory Service] Extension initialized');
     console.log('[Memory Service] V1 PATTERN: retrieve happens AFTER render, memory_block applies to NEXT generation');
+    if (settings.auditEnabled) {
+        console.log('[Memory Service] Integration audit mode enabled');
+    }
 }
 
 // Start the extension

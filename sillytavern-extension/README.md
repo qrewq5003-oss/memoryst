@@ -62,8 +62,46 @@ External memory service integration for long-term context in roleplay chats.
 | `apiKey` | `''` | API key (sent as X-API-Key header) |
 | `retrieveLimit` | `5` | Number of memory items to retrieve |
 | `recentMessagesCount` | `8` | Messages to send for extraction |
+| `auditEnabled` | `false` | Enable per-interaction ST integration audit |
+| `auditMaxRecords` | `20` | Keep only the latest N audit records |
+| `auditPreviewChars` | `240` | Preview length for messages and memory blocks in audit |
 
 To change settings, edit `DEFAULT_SETTINGS` in `index.js`.
+
+## Integration Audit Mode
+
+For Russian long-chat debugging, enable:
+
+```js
+auditEnabled: true
+```
+
+Each rendered interaction then stores one recent audit record in:
+
+```js
+extension_settings['memory-service'].recentAudits
+```
+
+You can also inspect it in browser devtools:
+
+```js
+memoryServiceAudit.getRecentAudits()
+memoryServiceAudit.printRecentAudits()
+memoryServiceAudit.clearRecentAudits()
+```
+
+Each audit record includes:
+
+- `timestamp`
+- `chat_id`, `character_id`
+- `store_called`, `retrieve_called`
+- store message previews and store summary
+- retrieve query, recent message previews, returned item count
+- `memory_block` preview, length, item count
+- prompt insertion method/timing (`setExtensionPrompt`, `next_generation_post_render`)
+- notes for missing steps such as `no_last_user_message`, `empty_memory_block`, `prompt_insertion_not_observed`
+
+This is intentionally opt-in and meant for local debugging, not always-on telemetry.
 
 ## Requirements
 
