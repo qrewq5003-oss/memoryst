@@ -11,6 +11,7 @@ IMPORTANCE_WEIGHT = 0.12
 RECENCY_WEIGHT = 0.03
 PINNED_BONUS = 0.05
 BOTH_MATCH_BONUS = 0.10
+MIN_RETRIEVAL_SCORE = 0.15
 
 
 def _compute_score(
@@ -96,7 +97,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     Algorithm:
     1. Get candidates via list_memories
     2. Compute score for each
-    3. Filter out zero-score items
+    3. Filter out weak items below minimum retrieval threshold
     4. Sort by score DESC
     5. Take top-k
     6. Update usage metrics for top-k items
@@ -123,7 +124,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     scored = []
     for memory in all_candidates:
         score = _compute_score(memory, input_keywords, input_entities)
-        if score > 0:
+        if score >= MIN_RETRIEVAL_SCORE:
             scored.append((score, memory))
 
     # Sort by score DESC
