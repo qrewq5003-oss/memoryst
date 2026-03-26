@@ -152,7 +152,7 @@ def _build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[d
     }
 
     for index, item in enumerate(items):
-        if item.pinned:
+        if item.pinned or item.metadata.review_status == "reviewed_keep":
             continue
 
         freshness = _get_freshness_bucket(item)
@@ -220,6 +220,21 @@ def _build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[d
     summary_counts["total_candidates"] = total_candidates
     summary_counts.update(unique_type_counts)
     return candidate_map, summary_counts
+
+
+def _build_consolidation_result(action: str, memory_id: str, related_memory_id: str | None, note: str | None) -> dict[str, Any]:
+    labels = {
+        "mark_consolidated_archive": "Candidate archived for consolidation review.",
+        "mark_reviewed_keep": "Candidate marked as reviewed and kept.",
+        "link_to_related_memory": "Candidate linked to related memory.",
+    }
+    return {
+        "memory_id": memory_id,
+        "action": action,
+        "message": labels.get(action, "Consolidation action applied."),
+        "related_memory_id": related_memory_id or None,
+        "note": note or None,
+    }
 
 
 def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
@@ -413,6 +428,7 @@ def _render_memories_page(
     offset: int = 0,
     store_result: StoreMemoryResponse | None = None,
     retrieve_result: RetrieveMemoryResponse | None = None,
+    consolidation_result: dict[str, Any] | None = None,
     store_form: dict[str, Any] | None = None,
     retrieve_form: dict[str, Any] | None = None,
 ) -> Any:
@@ -515,6 +531,7 @@ def _render_memories_page(
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,
+            "consolidation_result": consolidation_result,
             "store_summary": _build_store_summary(store_result),
             "retrieve_summary": _build_retrieve_summary(retrieve_result),
             "store_form": store_form or {
@@ -746,3 +763,57 @@ def ui_delete_memory(memory_id: str) -> RedirectResponse:
     """Delete a memory and redirect back to UI."""
     delete_memory(memory_id)
     return RedirectResponse(url="/ui", status_code=303)
+
+
+@router.post("/ui/{memory_id}/consolidate")
+def ui_consolidate_memory(
+    request: Request,
+    memory_id: str,
+    action: str = Form(...),
+    related_memory_id: str = Form(""),
+    note: str = Form(""),
+) -> Any:
+    """Apply manual consolidation triage workflow from the admin UI."""
+    memory = get_memory_by_id(memory_id)
+    if memory is None:
+        return _render_memories_page(
+            request,
+            consolidation_result={
+                "memory_id": memory_id,
+                "action": action,
+                "message": "Memory not found.",
+                "related_memory_id": None,
+                "note": None,
+            },
+        )
+
+    related_memory_id = related_memory_id.strip()
+    note = note.strip()
+
+    updated_metadata = memory.metadata.model_copy(
+        update={
+            "review_status": {
+                "mark_consolidated_archive": "consolidated_archive",
+                "mark_reviewed_keep": "reviewed_keep",
+                "link_to_related_memory": "linked_to_related",
+            }.get(action, memory.metadata.review_status),
+            "related_memory_id": related_memory_id or memory.metadata.related_memory_id,
+            "consolidation_note": note or memory.metadata.consolidation_note,
+        }
+    )
+
+    update_payload = UpdateMemoryRequest(metadata=updated_metadata)
+    if action == "mark_consolidated_archive":
+        update_payload.archived = True
+    update_memory(memory_id, update_payload)
+
+    updated_memory = get_memory_by_id(memory_id)
+    chat_id = updated_memory.chat_id if updated_memory else memory.chat_id
+    character_id = updated_memory.character_id if updated_memory else memory.character_id
+
+    return _render_memories_page(
+        request,
+        chat_id=chat_id,
+        character_id=character_id,
+        consolidation_result=_build_consolidation_result(action, memory_id, related_memory_id, note),
+    )
