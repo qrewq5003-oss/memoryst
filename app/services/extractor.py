@@ -19,55 +19,23 @@ PREFERENCE_MARKERS_RU = [
 
 PREFERENCE_MARKERS_EN = [
     "i like",
-    "likes",
     "i love",
-    "loves",
-    "prefer",
-    "prefers",
-    "favorite",
-    "enjoy",
-    "enjoys",
-    "hate",
-    "hates",
+    "my favorite",
     "interested in",
 ]
 
 PROFILE_MARKERS_RU = [
-    "работает",
-    "учится",
-    "живет",
-    "живёт",
-    "родом из",
-    "из рима",
-    "врач",
-    "доктор",
-    "актриса",
-    "актер",
-    "актёр",
-    "студент",
-    "учитель",
-    "программист",
     "владеет",
     "говорит на",
 ]
 
 PROFILE_MARKERS_EN = [
-    "is a ",
-    "is an ",
     "is from",
     "works as",
     "works at",
     "studies at",
     "lives in",
     "born in",
-    "doctor",
-    "teacher",
-    "engineer",
-    "designer",
-    "student",
-    "developer",
-    "owns",
-    "speaks",
 ]
 
 RELATIONSHIP_MARKERS_RU = [
@@ -163,21 +131,30 @@ EVENT_ACTION_MARKERS_EN = [
     "booked",
 ]
 
+PREFERENCE_PATTERNS_EN = [
+    r"\b(?:i|you|we|they|he|she)\s+(?:like|likes|love|loves|prefer|prefers|enjoy|enjoys|hate|hates)\b",
+]
+
+PREFERENCE_PATTERNS_EN_CASED = [
+    r"\b[A-Z][a-z'-]+\s+(?:likes|loves|prefers|enjoys|hates)\b",
+]
+
 PROFILE_PATTERNS_EN = [
     r"\bis (?:a|an) [a-z][a-z\s-]{0,30}\b",
     r"\bis from [a-z][a-z\s-]{1,30}\b",
     r"\blives in [a-z][a-z\s-]{1,30}\b",
     r"\bworks as [a-z][a-z\s-]{1,30}\b",
     r"\bhas [a-z\s-]{0,20}(eyes|hair|accent)\b",
-    r"\bowns [a-z][a-z\s-]{1,30}\b",
+    r"\b(?:i|you|we|they|he|she|[a-z][a-z'-]+)\s+owns [a-z][a-z\s-]{1,30}\b",
+    r"\b(?:i|you|we|they|he|she|[a-z][a-z'-]+)\s+speaks [a-z][a-z\s-]{1,30}\b",
 ]
 
 PROFILE_PATTERNS_RU = [
-    r"\bработает\b",
-    r"\bживет в\b|\bживёт в\b",
-    r"\bродом из\b",
-    r"\bучится\b",
-    r"\b(?:врач|доктор|учитель|студент|программист)\b",
+    r"\bработает [а-яё-]+(?:ом|ем)\b",
+    r"\bживет в [а-яё][а-яё\s-]{1,30}\b|\bживёт в [а-яё][а-яё\s-]{1,30}\b",
+    r"\bродом из [а-яё][а-яё\s-]{1,30}\b",
+    r"\bучится(?: в [а-яё][а-яё\s-]{1,30})?\b",
+    r"\b(?:[а-яё][а-яё-]+)\s+(?:врач|доктор|учитель|студент|программист)\b",
     r"\b(?:зеленые|зелёные|карие|голубые) глаза\b",
     r"\bвладеет\b",
 ]
@@ -191,8 +168,12 @@ def _matches_any_pattern(text_lower: str, patterns: list[str]) -> bool:
     return any(re.search(pattern, text_lower) for pattern in patterns)
 
 
-def _looks_like_preference(text_lower: str) -> bool:
-    return _contains_any(text_lower, PREFERENCE_MARKERS_RU + PREFERENCE_MARKERS_EN)
+def _looks_like_preference(text: str, text_lower: str) -> bool:
+    if _contains_any(text_lower, PREFERENCE_MARKERS_RU + PREFERENCE_MARKERS_EN):
+        return True
+    if _matches_any_pattern(text_lower, PREFERENCE_PATTERNS_EN):
+        return True
+    return _matches_any_pattern(text, PREFERENCE_PATTERNS_EN_CASED)
 
 
 def _looks_like_profile(text_lower: str) -> bool:
@@ -235,7 +216,7 @@ def _detect_type(text: str) -> MemoryType | None:
         return "event"
     if _looks_like_relationship(text_lower):
         return "relationship"
-    if _looks_like_preference(text_lower) or _looks_like_profile(text_lower):
+    if _looks_like_preference(text, text_lower) or _looks_like_profile(text_lower):
         return "profile"
     return None
 
@@ -261,7 +242,7 @@ def _get_layer(memory_type: MemoryType, text: str) -> str:
     if _looks_like_event(text_lower):
         return "episodic"
 
-    if _looks_like_preference(text_lower) or _looks_like_profile(text_lower):
+    if _looks_like_preference(text, text_lower) or _looks_like_profile(text_lower):
         return "stable"
 
     if memory_type == "relationship":

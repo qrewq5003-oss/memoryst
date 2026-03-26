@@ -62,6 +62,16 @@ class MemoryTypeLayerHeuristicsTests(unittest.TestCase):
         self.assertEqual(candidate.type, "profile")
         self.assertEqual(candidate.layer, "stable")
 
+    def test_profession_word_without_profile_context_does_not_force_profile(self) -> None:
+        candidate = _extract("We met the doctor yesterday in Rome.")
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.type, "event")
+        self.assertEqual(candidate.layer, "episodic")
+
+    def test_likes_noun_does_not_trigger_preference_classification(self) -> None:
+        candidate = _extract("The post has many likes.")
+        self.assertIsNone(candidate)
+
 
 if __name__ == "__main__":
     unittest.main()
