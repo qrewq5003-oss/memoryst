@@ -2,8 +2,10 @@ import re
 
 import pymorphy3
 
+# Initialize pymorphy3 morphological analyzer lazily for Russian normalization
 _morph = None
 
+# Russian pronouns and service words to exclude from entities
 RUSSIAN_PRONOUNS = {
     "я", "мы", "ты", "вы", "он", "она", "оно", "они",
     "меня", "нас", "тебя", "вас", "его", "её", "их",
@@ -47,7 +49,11 @@ def _is_russian_word(word: str) -> bool:
 
 
 def _normalize_russian_word(word: str) -> str:
-    """Normalize Russian word to its normal form using pymorphy3."""
+    """
+    Normalize Russian word to its normal form using pymorphy3.
+
+    Falls back to the original token if normalization looks suspicious.
+    """
     if not _is_russian_word(word):
         return word
 

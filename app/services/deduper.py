@@ -20,36 +20,13 @@ def _is_better_content(new_content: str, old_content: str) -> bool:
     return len(new_content) > len(old_content) + 10
 
 
-def check_exact_match(
-    candidate: CreateMemoryRequest,
-    existing: MemoryItem,
-    candidate_normalized: str | None = None,
-) -> bool:
-    """
-    Check if candidate exactly matches existing memory.
-
-    Exact match criteria:
-    - Same chat_id
-    - Same character_id
-    - Same type
-    - Same normalized_content
-
-    If candidate_normalized is provided, use it. Otherwise compare existing.normalized_content.
-    """
-    if (
-        candidate.chat_id != existing.chat_id
-        or candidate.character_id != existing.character_id
-        or candidate.type != existing.type
-    ):
-        return False
-
-    # Compare normalized content
-    if candidate_normalized is not None:
-        return candidate_normalized == existing.normalized_content
-    
-    # Fallback: compare existing normalized_content directly
-    # (candidate doesn't have normalized_content, so this is for soft-match branch)
-    return False
+def can_auto_update(existing: MemoryItem) -> bool:
+    """Return True when an existing memory is eligible for automatic updates."""
+    return (
+        existing.source == "auto"
+        and not existing.pinned
+        and not existing.archived
+    )
 
 
 def check_soft_match(
@@ -63,20 +40,13 @@ def check_soft_match(
     - Same chat_id
     - Same character_id
     - Same type
-    - existing.source = "auto"
-    - existing.pinned = false
-    - existing.archived = false
+    - existing is eligible for auto-update
     - entity_overlap >= 1
     - keyword_overlap >= 2
     
     # Эвристика может давать ложные совпадения при большом объёме памяти
     """
-    # Check basic filters
-    if existing.source != "auto":
-        return False
-    if existing.pinned:
-        return False
-    if existing.archived:
+    if not can_auto_update(existing):
         return False
     
     if (
@@ -98,7 +68,6 @@ def check_soft_match(
     candidate_keywords = set(candidate.metadata.keywords)
     existing_keywords = set(existing.metadata.keywords)
     keyword_overlap = len(candidate_keywords & existing_keywords)
-    
     if keyword_overlap < 2:
         return False
     

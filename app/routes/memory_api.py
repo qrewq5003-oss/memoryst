@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth import require_api_key
 from app.repositories.memory_repo import (
     create_memory,
     delete_memory,
@@ -29,7 +30,11 @@ from app.schemas import (
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
 
-router = APIRouter(prefix="/memory", tags=["memory"])
+router = APIRouter(
+    prefix="/memory",
+    tags=["memory"],
+    dependencies=[Depends(require_api_key)],
+)
 
 
 @router.post("/create", response_model=CreateMemoryResponse)
