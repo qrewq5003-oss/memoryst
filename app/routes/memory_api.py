@@ -70,7 +70,7 @@ def list_memories_endpoint(
     )
 
 
-@router.post("/store", response_model=StoreMemoryResponse)
+@router.post("/store", response_model=StoreMemoryResponse, response_model_exclude_none=True)
 def store_memory_endpoint(request: StoreMemoryRequest) -> StoreMemoryResponse:
     """
     Store memories from chat messages.
@@ -81,7 +81,7 @@ def store_memory_endpoint(request: StoreMemoryRequest) -> StoreMemoryResponse:
     return store_memories(request)
 
 
-@router.post("/retrieve", response_model=RetrieveMemoryResponse)
+@router.post("/retrieve", response_model=RetrieveMemoryResponse, response_model_exclude_none=True)
 def retrieve_memory_endpoint(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     """
     Retrieve relevant memories for the current context.
