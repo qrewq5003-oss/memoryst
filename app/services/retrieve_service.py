@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.repositories.memory_repo import list_memories, increment_access_count
+from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryResponse
 from app.services.formatter import format_memory_block
 from app.services import text_features
@@ -96,16 +96,12 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
         input_keywords.extend(text_features.extract_keywords(msg.text))
         input_entities.extend(text_features.extract_entities(msg.text))
 
-    # Get candidates
-    result = list_memories(
+    # Get candidates without UI pagination bias
+    all_candidates = list_retrieval_candidates(
         chat_id=request.chat_id,
         character_id=request.character_id,
-        archived=None if request.include_archived else False,
-        limit=200,  # Get enough candidates for scoring
-        offset=0,
+        include_archived=request.include_archived,
     )
-
-    all_candidates = result.items
     total_candidates = len(all_candidates)
 
     # Score each candidate

@@ -202,6 +202,35 @@ def list_memories(
     )
 
 
+def list_retrieval_candidates(
+    chat_id: str,
+    character_id: str,
+    include_archived: bool = False,
+) -> list[MemoryItem]:
+    """
+    List all retrieval candidates for a chat/character pair without UI pagination bias.
+
+    Retrieval scoring should operate on the full candidate set rather than the
+    recency-ordered paginated listing used by the UI/API.
+    """
+    params: list[object] = [chat_id, character_id]
+    archived_sql = ""
+    if not include_archived:
+        archived_sql = " AND archived = 0"
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT * FROM memories
+            WHERE chat_id = ? AND character_id = ?{archived_sql}
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [_row_to_memory_item(dict(row)) for row in rows]
+
+
 def update_memory(memory_id: str, payload: UpdateMemoryRequest) -> MemoryItem | None:
     """Update a memory record. Only updates provided fields."""
     existing = get_memory_by_id(memory_id)

@@ -70,8 +70,8 @@ class UnifyStoreRetrieveNormalizationTests(unittest.TestCase):
 
         with (
             patch(
-                "app.services.retrieve_service.list_memories",
-                return_value=ListMemoriesResponse(items=[memory], total=1, limit=200, offset=0),
+                "app.services.retrieve_service.list_retrieval_candidates",
+                return_value=[memory],
             ),
             patch("app.services.retrieve_service.increment_access_count"),
             patch("app.services.retrieve_service.format_memory_block", return_value="formatted"),
