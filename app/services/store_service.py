@@ -1,6 +1,7 @@
 from app.repositories.memory_repo import (
     create_memory,
     find_memory_by_normalized_content,
+    list_memories,
     update_memory,
     _normalize_content,
 )
@@ -14,7 +15,7 @@ from app.schemas import (
 )
 from app.services.extractor import extract_memories
 from app.services.deduper import (
-    check_exact_match,
+    can_auto_update,
     check_soft_match,
     merge_candidate_with_existing,
 )
@@ -69,6 +70,10 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
 
         if existing is not None:
             # Exact match found (by normalized_content)
+            if not can_auto_update(existing):
+                skipped_count += 1
+                continue
+
             # Merge and update - pass is_exact=True for importance boost
             merged, _ = merge_candidate_with_existing(candidate, existing, is_exact=True)
 
@@ -91,7 +96,6 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         else:
             # No exact match - check for soft match
             # Get all memories for this chat/character to check soft matches
-            from app.repositories.memory_repo import list_memories
             all_memories = list_memories(
                 chat_id=request.chat_id,
                 character_id=request.character_id,
