@@ -5,6 +5,13 @@ from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryRespons
 from app.services.formatter import format_memory_block
 from app.services import text_features
 
+KEYWORD_WEIGHT = 0.50
+ENTITY_WEIGHT = 0.25
+IMPORTANCE_WEIGHT = 0.12
+RECENCY_WEIGHT = 0.03
+PINNED_BONUS = 0.05
+BOTH_MATCH_BONUS = 0.10
+
 
 def _compute_score(
     memory: MemoryItem,
@@ -18,16 +25,13 @@ def _compute_score(
     - keyword_overlap: intersection / max(1, len(input_keywords))
     - entity_overlap: intersection / max(1, len(input_entities))
     - recency: 1 / (1 + days_since_updated)
-    - base_score = keyword_overlap * 0.35 + entity_overlap * 0.30 + importance * 0.20 + recency * 0.10
-    - if pinned: score = max(base_score, 0.4)
+    - relevance_score is driven primarily by keyword/entity overlap
+    - support_score = importance + recency + pinned bonus, scaled down for weak matches
+    - bonus for memories matching both keywords and entities
     - cap at 1.0
 
-    V1 RECENCY BEHAVIOR:
     Recency is calculated from updated_at, not created_at.
-    Formula: recency = 1 / (1 + days_since_updated)
-
-    This means frequently updated auto-records can stay "fresh" longer in retrieval.
-    This is intentional v1 behavior: auto-updated memories remain relevant through updates.
+    It is intentionally weak so freshness only helps between otherwise similar candidates.
     """
     # Keyword overlap
     memory_keywords = set(memory.metadata.keywords)
@@ -45,9 +49,10 @@ def _compute_score(
     else:
         entity_overlap = 0.0
 
+    if keyword_overlap == 0.0 and entity_overlap == 0.0:
+        return 0.0
+
     # Recency: 1 / (1 + days_since_updated)
-    # V1 behavior: uses updated_at, not created_at
-    # Frequently updated auto-records stay "fresh" longer
     try:
         updated = datetime.fromisoformat(memory.updated_at.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
@@ -56,19 +61,29 @@ def _compute_score(
     except (ValueError, TypeError):
         recency = 0.5  # Default if parsing fails
 
-    # Base score
-    base_score = (
-        keyword_overlap * 0.35 +
-        entity_overlap * 0.30 +
-        memory.importance * 0.20 +
-        recency * 0.10
+    relevance_score = (
+        keyword_overlap * KEYWORD_WEIGHT +
+        entity_overlap * ENTITY_WEIGHT
     )
 
-    # Pinned floor
-    if memory.pinned:
-        score = max(base_score, 0.4)
+    both_match_bonus = BOTH_MATCH_BONUS if keyword_overlap > 0.0 and entity_overlap > 0.0 else 0.0
+
+    # Weak matches should not climb mainly on importance or freshness.
+    combined_overlap = (keyword_overlap * 0.65) + (entity_overlap * 0.35)
+    if combined_overlap >= 0.60:
+        support_multiplier = 1.0
+    elif combined_overlap >= 0.30:
+        support_multiplier = 0.6
     else:
-        score = base_score
+        support_multiplier = 0.25
+
+    support_score = (
+        memory.importance * IMPORTANCE_WEIGHT +
+        recency * RECENCY_WEIGHT +
+        (PINNED_BONUS if memory.pinned else 0.0)
+    ) * support_multiplier
+
+    score = relevance_score + both_match_bonus + support_score
 
     # Cap at 1.0
     return min(score, 1.0)
