@@ -16,6 +16,7 @@ from app.repositories.memory_repo import (
     update_memory,
 )
 from app.schemas import (
+    ConsolidationHistoryEntry,
     CreateMemoryRequest,
     ListMemoriesResponse,
     MemoryMetadata,
@@ -235,6 +236,21 @@ def _build_consolidation_result(action: str, memory_id: str, related_memory_id: 
         "related_memory_id": related_memory_id or None,
         "note": note or None,
     }
+
+
+def _append_consolidation_history(
+    metadata: MemoryMetadata,
+    action: str,
+    related_memory_id: str | None,
+    note: str | None,
+) -> list[ConsolidationHistoryEntry]:
+    entry = ConsolidationHistoryEntry(
+        action=action,
+        timestamp=_utc_now().isoformat(),
+        related_memory_id=related_memory_id or None,
+        note=note or None,
+    )
+    return [*metadata.consolidation_history, entry]
 
 
 def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
@@ -799,6 +815,12 @@ def ui_consolidate_memory(
             }.get(action, memory.metadata.review_status),
             "related_memory_id": related_memory_id or memory.metadata.related_memory_id,
             "consolidation_note": note or memory.metadata.consolidation_note,
+            "consolidation_history": _append_consolidation_history(
+                memory.metadata,
+                action,
+                related_memory_id,
+                note,
+            ),
         }
     )
 

@@ -509,6 +509,27 @@
                     {% endif %}
                 </div>
                 <div class="memory-chip-group">
+                    <strong>Consolidation History:</strong>
+                    {% if item["metadata"]["consolidation_history"] %}
+                    <ul class="history-list">
+                        {% for entry in item["metadata"]["consolidation_history"]|reverse %}
+                        <li>
+                            <code>{{ entry["timestamp"] }}</code>
+                            <span class="metric-chip">{{ entry["action"] }}</span>
+                            {% if entry["related_memory_id"] %}
+                            related=<code>{{ entry["related_memory_id"] }}</code>
+                            {% endif %}
+                            {% if entry["note"] %}
+                            note="{{ entry["note"] }}"
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <span class="empty-value">none</span>
+                    {% endif %}
+                </div>
+                <div class="memory-chip-group">
                     <strong>Entities:</strong>
                     {% if item["metadata"]["entities"] %}
                         {% for entity in item["metadata"]["entities"] %}

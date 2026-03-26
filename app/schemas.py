@@ -15,12 +15,20 @@ class MessageInput(BaseModel):
     text: str = Field(..., min_length=1)
 
 
+class ConsolidationHistoryEntry(BaseModel):
+    action: str
+    timestamp: str
+    related_memory_id: str | None = None
+    note: str | None = None
+
+
 class MemoryMetadata(BaseModel):
     entities: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     consolidation_note: str | None = None
     related_memory_id: str | None = None
     review_status: str | None = None
+    consolidation_history: list[ConsolidationHistoryEntry] = Field(default_factory=list)
 
 
 class CreateMemoryRequest(BaseModel):
