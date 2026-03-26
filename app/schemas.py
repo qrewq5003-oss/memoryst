@@ -102,11 +102,25 @@ class DeleteMemoryResponse(BaseModel):
     deleted: bool
 
 
+class StoreCandidateDebug(BaseModel):
+    content: str
+    normalized_content: str | None = None
+    decision: str
+    reason: str
+    branch: str
+    matched_existing_id: str | None = None
+
+
+class StoreDebugPayload(BaseModel):
+    candidates: list[StoreCandidateDebug] = Field(default_factory=list)
+
+
 # Store schemas
 class StoreMemoryRequest(BaseModel):
     chat_id: str
     character_id: str
     messages: list[MessageInput]
+    debug: bool = False
 
 
 class StoreMemoryResponse(BaseModel):
@@ -114,6 +128,30 @@ class StoreMemoryResponse(BaseModel):
     updated: int
     skipped: int
     items: list[MemoryItem]
+    debug: StoreDebugPayload | None = None
+
+
+class RetrieveCandidateDebug(BaseModel):
+    memory_id: str
+    score: float
+    keyword_overlap: float
+    entity_overlap: float
+    recency: float
+    passed_threshold: bool
+    filtered_by_diversity: bool = False
+    selected: bool = False
+    rank: int | None = None
+    reason: str
+
+
+class RetrieveDebugPayload(BaseModel):
+    query_keywords: list[str] = Field(default_factory=list)
+    query_entities: list[str] = Field(default_factory=list)
+    recent_keywords: list[str] = Field(default_factory=list)
+    recent_entities: list[str] = Field(default_factory=list)
+    input_keywords: list[str] = Field(default_factory=list)
+    input_entities: list[str] = Field(default_factory=list)
+    candidates: list[RetrieveCandidateDebug] = Field(default_factory=list)
 
 
 # Retrieve schemas
@@ -124,9 +162,11 @@ class RetrieveMemoryRequest(BaseModel):
     recent_messages: list[MessageInput] = Field(default_factory=list)
     limit: int = Field(default=5, ge=1, le=20)
     include_archived: bool = False
+    debug: bool = False
 
 
 class RetrieveMemoryResponse(BaseModel):
     items: list[MemoryItem]
     memory_block: str
     total_candidates: int
+    debug: RetrieveDebugPayload | None = None

@@ -9,10 +9,12 @@ from app.repositories.memory_repo import (
 from app.schemas import (
     CreateMemoryRequest,
     MemoryItem,
+    MemoryMetadata,
+    StoreCandidateDebug,
+    StoreDebugPayload,
     StoreMemoryRequest,
     StoreMemoryResponse,
     UpdateMemoryRequest,
-    MemoryMetadata,
 )
 from app.services.extractor import extract_memories
 from app.services.deduper import (
@@ -60,25 +62,43 @@ def _normalize_quality_text(text: str) -> str:
     return normalized
 
 
-def passes_memory_quality_gate(candidate: CreateMemoryRequest) -> bool:
-    """Return True when an auto-extracted candidate is informative enough to store."""
+def _evaluate_memory_quality_gate(candidate: CreateMemoryRequest) -> tuple[bool, str]:
+    """Explain whether an extracted candidate is strong enough to store."""
+    if candidate.source != "auto":
+        return True, "non_auto_bypass"
+
     content = candidate.content.strip()
     if not content:
-        return False
+        return False, "empty_content"
 
     normalized = _normalize_quality_text(content)
-    if not normalized or normalized in LOW_VALUE_PATTERNS:
-        return False
+    if not normalized:
+        return False, "empty_after_normalization"
+    if normalized in LOW_VALUE_PATTERNS:
+        return False, "low_value_pattern"
 
     words = normalized.split()
-    if len(content) < MIN_MEMORY_CONTENT_LENGTH or len(words) < MIN_MEMORY_WORD_COUNT:
-        return False
+    if len(content) < MIN_MEMORY_CONTENT_LENGTH:
+        return False, "content_too_short"
+    if len(words) < MIN_MEMORY_WORD_COUNT:
+        return False, "too_few_words"
 
-    # Require some retrieval value: either richer content or extracted features.
-    if len(candidate.metadata.keywords) >= 2 or len(candidate.metadata.entities) >= 1:
+    if len(candidate.metadata.keywords) >= 2:
+        return True, "has_keywords"
+    if len(candidate.metadata.entities) >= 1:
+        return True, "has_entities"
+    if len(words) >= 5:
+        return True, "rich_content"
+
+    return False, "insufficient_retrieval_signal"
+
+
+def passes_memory_quality_gate(candidate: CreateMemoryRequest) -> bool:
+    """Return True when an auto-extracted candidate is informative enough to store."""
+    if candidate.source != "auto":
         return True
 
-    return len(words) >= 5
+    return _evaluate_memory_quality_gate(candidate)[0]
 
 
 def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
@@ -112,14 +132,26 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     stored_count = 0
     updated_count = 0
     skipped_count = 0
+    debug_candidates: list[StoreCandidateDebug] = []
 
     for candidate in candidates:
-        if not passes_memory_quality_gate(candidate):
+        normalized = _normalize_content(candidate.content)
+        quality_ok, quality_reason = _evaluate_memory_quality_gate(candidate)
+        if not quality_ok:
             skipped_count += 1
+            if request.debug:
+                debug_candidates.append(
+                    StoreCandidateDebug(
+                        content=candidate.content,
+                        normalized_content=normalized,
+                        decision="skipped_low_value",
+                        reason=quality_reason,
+                        branch="quality_gate",
+                    )
+                )
             continue
 
         # Check for exact duplicate using normalized content
-        normalized = _normalize_content(candidate.content)
         existing = find_memory_by_normalized_content(
             chat_id=request.chat_id,
             character_id=request.character_id,
@@ -130,6 +162,17 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
             # Exact match found (by normalized_content)
             if not can_auto_update(existing):
                 skipped_count += 1
+                if request.debug:
+                    debug_candidates.append(
+                        StoreCandidateDebug(
+                            content=candidate.content,
+                            normalized_content=normalized,
+                            decision="skipped_exact_protected",
+                            reason="exact_match_not_auto_updatable",
+                            branch="exact",
+                            matched_existing_id=existing.id,
+                        )
+                    )
                 continue
 
             # Merge and update - pass is_exact=True for importance boost
@@ -149,8 +192,30 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
             if updated:
                 stored_items.append(updated)
                 updated_count += 1
+                if request.debug:
+                    debug_candidates.append(
+                        StoreCandidateDebug(
+                            content=candidate.content,
+                            normalized_content=normalized,
+                            decision="updated",
+                            reason="exact_match_auto_updated",
+                            branch="exact",
+                            matched_existing_id=existing.id,
+                        )
+                    )
             else:
                 skipped_count += 1
+                if request.debug:
+                    debug_candidates.append(
+                        StoreCandidateDebug(
+                            content=candidate.content,
+                            normalized_content=normalized,
+                            decision="skipped_other",
+                            reason="exact_match_update_failed",
+                            branch="exact",
+                            matched_existing_id=existing.id,
+                        )
+                    )
         else:
             # No exact match - check for soft match
             # Get all memories for this chat/character to check soft matches
@@ -178,8 +243,30 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                     if updated:
                         stored_items.append(updated)
                         updated_count += 1
+                        if request.debug:
+                            debug_candidates.append(
+                                StoreCandidateDebug(
+                                    content=candidate.content,
+                                    normalized_content=normalized,
+                                    decision="updated",
+                                    reason="soft_match_auto_updated",
+                                    branch="soft",
+                                    matched_existing_id=existing_memory.id,
+                                )
+                            )
                     else:
                         skipped_count += 1
+                        if request.debug:
+                            debug_candidates.append(
+                                StoreCandidateDebug(
+                                    content=candidate.content,
+                                    normalized_content=normalized,
+                                    decision="skipped_other",
+                                    reason="soft_match_update_failed",
+                                    branch="soft",
+                                    matched_existing_id=existing_memory.id,
+                                )
+                            )
                     soft_match_found = True
                     break
             
@@ -188,10 +275,21 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                 created = create_memory(candidate)
                 stored_items.append(created)
                 stored_count += 1
+                if request.debug:
+                    debug_candidates.append(
+                        StoreCandidateDebug(
+                            content=candidate.content,
+                            normalized_content=normalized,
+                            decision="stored",
+                            reason="new_memory_created",
+                            branch="new",
+                        )
+                    )
 
     return StoreMemoryResponse(
         stored=stored_count,
         updated=updated_count,
         skipped=skipped_count,
         items=stored_items,
+        debug=StoreDebugPayload(candidates=debug_candidates) if request.debug else None,
     )

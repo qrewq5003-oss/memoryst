@@ -7,7 +7,7 @@ from app.config import config
 from app.db import init_schema
 from app.repositories.memory_repo import create_memory, list_memories
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MessageInput, StoreMemoryRequest
-from app.services.store_service import store_memories
+from app.services.store_service import passes_memory_quality_gate, store_memories
 
 
 def _candidate(
@@ -99,6 +99,14 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         self.assertEqual(response.skipped, 1)
         self.assertEqual(list_memories().total, 0)
 
+    def test_manual_candidate_explicitly_passes_quality_gate(self) -> None:
+        manual_candidate = _candidate(
+            "ok",
+            keywords=[],
+            entities=[],
+        ).model_copy(update={"source": "manual"})
+
+        self.assertTrue(passes_memory_quality_gate(manual_candidate))
     def test_store_response_counters_remain_correct_for_mixed_candidates(self) -> None:
         response = self._store_candidates([
             _candidate(

@@ -2,7 +2,13 @@ import re
 from datetime import datetime, timezone
 
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
-from app.schemas import MemoryItem, RetrieveMemoryRequest, RetrieveMemoryResponse
+from app.schemas import (
+    MemoryItem,
+    RetrieveCandidateDebug,
+    RetrieveDebugPayload,
+    RetrieveMemoryRequest,
+    RetrieveMemoryResponse,
+)
 from app.services.formatter import format_memory_block
 from app.services import text_features
 
@@ -16,13 +22,13 @@ MIN_RETRIEVAL_SCORE = 0.15
 NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
 
 
-def _compute_score(
+def _compute_score_details(
     memory: MemoryItem,
     input_keywords: list[str],
     input_entities: list[str],
-) -> float:
+) -> dict[str, float]:
     """
-    Compute relevance score for a memory item.
+    Compute relevance score components for a memory item.
 
     Formula:
     - keyword_overlap: intersection / max(1, len(input_keywords))
@@ -53,7 +59,12 @@ def _compute_score(
         entity_overlap = 0.0
 
     if keyword_overlap == 0.0 and entity_overlap == 0.0:
-        return 0.0
+        return {
+            "keyword_overlap": keyword_overlap,
+            "entity_overlap": entity_overlap,
+            "recency": 0.0,
+            "score": 0.0,
+        }
 
     # Recency: 1 / (1 + days_since_updated)
     try:
@@ -89,7 +100,20 @@ def _compute_score(
     score = relevance_score + both_match_bonus + support_score
 
     # Cap at 1.0
-    return min(score, 1.0)
+    return {
+        "keyword_overlap": keyword_overlap,
+        "entity_overlap": entity_overlap,
+        "recency": recency,
+        "score": min(score, 1.0),
+    }
+
+
+def _compute_score(
+    memory: MemoryItem,
+    input_keywords: list[str],
+    input_entities: list[str],
+) -> float:
+    return _compute_score_details(memory, input_keywords, input_entities)["score"]
 
 
 def _normalize_for_similarity(text: str) -> str:
@@ -141,13 +165,21 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     7. Format memory block
     """
     # Extract keywords and entities from user_input
-    input_keywords = text_features.extract_keywords(request.user_input)
-    input_entities = text_features.extract_entities(request.user_input)
+    query_keywords = text_features.extract_keywords(request.user_input)
+    query_entities = text_features.extract_entities(request.user_input)
+    input_keywords = list(query_keywords)
+    input_entities = list(query_entities)
+    recent_keywords: list[str] = []
+    recent_entities: list[str] = []
 
     # Also consider recent_messages
     for msg in request.recent_messages:
-        input_keywords.extend(text_features.extract_keywords(msg.text))
-        input_entities.extend(text_features.extract_entities(msg.text))
+        msg_keywords = text_features.extract_keywords(msg.text)
+        msg_entities = text_features.extract_entities(msg.text)
+        recent_keywords.extend(msg_keywords)
+        recent_entities.extend(msg_entities)
+        input_keywords.extend(msg_keywords)
+        input_entities.extend(msg_entities)
 
     # Get candidates without UI pagination bias
     all_candidates = list_retrieval_candidates(
@@ -159,10 +191,26 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
 
     # Score each candidate
     scored = []
+    debug_candidates: list[RetrieveCandidateDebug] = []
+    debug_by_id: dict[str, RetrieveCandidateDebug] = {}
     for memory in all_candidates:
-        score = _compute_score(memory, input_keywords, input_entities)
-        if score >= MIN_RETRIEVAL_SCORE:
+        details = _compute_score_details(memory, input_keywords, input_entities)
+        score = details["score"]
+        passed_threshold = score >= MIN_RETRIEVAL_SCORE
+        if passed_threshold:
             scored.append((score, memory))
+        if request.debug:
+            debug_entry = RetrieveCandidateDebug(
+                memory_id=memory.id,
+                score=score,
+                keyword_overlap=details["keyword_overlap"],
+                entity_overlap=details["entity_overlap"],
+                recency=details["recency"],
+                passed_threshold=passed_threshold,
+                reason="threshold_passed" if passed_threshold else "below_threshold",
+            )
+            debug_candidates.append(debug_entry)
+            debug_by_id[memory.id] = debug_entry
 
     # Sort by score DESC
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -171,10 +219,19 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     top_items: list[MemoryItem] = []
     for _, item in scored:
         if _is_too_similar_to_selected(item, top_items):
+            if request.debug:
+                debug_by_id[item.id].filtered_by_diversity = True
+                debug_by_id[item.id].reason = "filtered_near_duplicate"
+            continue
+        if len(top_items) >= request.limit:
+            if request.debug:
+                debug_by_id[item.id].reason = "not_in_top_limit"
             continue
         top_items.append(item)
-        if len(top_items) >= request.limit:
-            break
+        if request.debug:
+            debug_by_id[item.id].selected = True
+            debug_by_id[item.id].rank = len(top_items)
+            debug_by_id[item.id].reason = "selected_top"
 
     # Update usage metrics for top-k items
     # This tracks which memories are being used for retrieval
@@ -188,4 +245,17 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
         items=top_items,
         memory_block=memory_block,
         total_candidates=total_candidates,
+        debug=(
+            RetrieveDebugPayload(
+                query_keywords=query_keywords,
+                query_entities=query_entities,
+                recent_keywords=recent_keywords,
+                recent_entities=recent_entities,
+                input_keywords=input_keywords,
+                input_entities=input_entities,
+                candidates=debug_candidates,
+            )
+            if request.debug
+            else None
+        ),
     )
