@@ -122,6 +122,106 @@ def _build_memory_card(memory: MemoryItem) -> dict[str, Any]:
     }
 
 
+def _normalize_for_similarity(text: str) -> str:
+    normalized = text.lower().strip()
+    normalized = " ".join(normalized.split())
+    return "".join(char if char.isalnum() or char.isspace() else " " for char in normalized)
+
+
+def _token_overlap_ratio(text1: str, text2: str) -> float:
+    tokens1 = set(_normalize_for_similarity(text1).split())
+    tokens2 = set(_normalize_for_similarity(text2).split())
+    if not tokens1 or not tokens2:
+        return 0.0
+    return len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
+
+
+def _shared_signal_count(left: MemoryItem, right: MemoryItem) -> int:
+    left_signals = set(item.lower() for item in left.metadata.entities + left.metadata.keywords)
+    right_signals = set(item.lower() for item in right.metadata.entities + right.metadata.keywords)
+    return len(left_signals & right_signals)
+
+
+def _build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    candidate_map: dict[str, list[dict[str, Any]]] = {item.id: [] for item in items}
+    summary_counts = {
+        "total_candidates": 0,
+        "near_duplicate": 0,
+        "stale_low_value_episode": 0,
+        "shadowed_by_stable": 0,
+    }
+
+    for index, item in enumerate(items):
+        if item.pinned:
+            continue
+
+        freshness = _get_freshness_bucket(item)
+        activity = _get_activity_bucket(item)
+
+        if item.layer == "episodic" and freshness == "stale" and activity in {"never_used", "low_use"}:
+            candidate_map[item.id].append(
+                {
+                    "type": "stale_low_value_episode",
+                    "reason": "Stale episodic memory with low retrieval activity.",
+                }
+            )
+
+        for other_index in range(index + 1, len(items)):
+            other = items[other_index]
+            if item.pinned or other.pinned:
+                continue
+
+            overlap = _token_overlap_ratio(item.content, other.content)
+            exact_duplicate = _normalize_for_similarity(item.content) == _normalize_for_similarity(other.content)
+            if exact_duplicate or overlap >= 0.85:
+                reason = "Near-duplicate content cluster."
+                candidate_map[item.id].append(
+                    {
+                        "type": "near_duplicate",
+                        "reason": reason,
+                        "related_id": other.id,
+                    }
+                )
+                candidate_map[other.id].append(
+                    {
+                        "type": "near_duplicate",
+                        "reason": reason,
+                        "related_id": item.id,
+                    }
+                )
+
+        if item.layer == "episodic" and activity != "active":
+            for other in items:
+                if other.id == item.id or other.layer != "stable":
+                    continue
+                if _shared_signal_count(item, other) >= 2:
+                    candidate_map[item.id].append(
+                        {
+                            "type": "shadowed_by_stable",
+                            "reason": "Similar topic already represented by a stable memory.",
+                            "related_id": other.id,
+                        }
+                    )
+                    break
+
+    unique_type_counts = {
+        "near_duplicate": 0,
+        "stale_low_value_episode": 0,
+        "shadowed_by_stable": 0,
+    }
+    total_candidates = 0
+    for candidate_list in candidate_map.values():
+        if candidate_list:
+            total_candidates += 1
+        for candidate_type in unique_type_counts:
+            if any(candidate["type"] == candidate_type for candidate in candidate_list):
+                unique_type_counts[candidate_type] += 1
+
+    summary_counts["total_candidates"] = total_candidates
+    summary_counts.update(unique_type_counts)
+    return candidate_map, summary_counts
+
+
 def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
     """Apply a simple text search across memory content and metadata signals."""
     query = " ".join(search.lower().split())
@@ -177,9 +277,11 @@ def _filter_and_page_memories(
     search: str | None,
     freshness: str | None,
     activity: str | None,
+    consolidation: str | None,
     sort: str,
     limit: int,
     offset: int,
+    candidate_map: dict[str, list[dict[str, Any]]] | None = None,
 ) -> ListMemoriesResponse:
     """Apply UI-only filters and sorting, then paginate the filtered list."""
     filtered_items = list(items)
@@ -189,6 +291,13 @@ def _filter_and_page_memories(
         filtered_items = [item for item in filtered_items if _get_freshness_bucket(item) == freshness]
     if activity:
         filtered_items = [item for item in filtered_items if _get_activity_bucket(item) == activity]
+    if consolidation == "candidates_only" and candidate_map is not None:
+        filtered_items = [item for item in filtered_items if candidate_map.get(item.id)]
+    elif consolidation and consolidation != "candidates_only" and candidate_map is not None:
+        filtered_items = [
+            item for item in filtered_items
+            if any(candidate["type"] == consolidation for candidate in candidate_map.get(item.id, []))
+        ]
 
     filtered_items = _sort_memories(filtered_items, sort)
     paginated_items = filtered_items[offset: offset + limit]
@@ -296,6 +405,7 @@ def _render_memories_page(
     search: str | None = None,
     freshness: str | None = None,
     activity: str | None = None,
+    consolidation: str | None = None,
     sort: str = "updated_desc",
     archived: str | None = None,
     pinned: str | None = None,
@@ -315,6 +425,7 @@ def _render_memories_page(
     search = search or None
     freshness = freshness or None
     activity = activity or None
+    consolidation = consolidation or None
 
     if archived == "true":
         archived_bool = True
@@ -341,16 +452,26 @@ def _render_memories_page(
         limit=UI_SEARCH_SCAN_LIMIT,
         offset=0,
     )
+    candidate_map, consolidation_summary = _build_consolidation_data(base_memories.items)
     memories = _filter_and_page_memories(
         base_memories.items,
         search=search,
         freshness=freshness,
         activity=activity,
+        consolidation=consolidation,
         sort=sort,
         limit=limit,
         offset=offset,
+        candidate_map=candidate_map,
     )
-    memory_cards = [_build_memory_card(item) for item in memories.items]
+    memory_cards = [
+        {
+            **_build_memory_card(item),
+            "consolidation_candidates": candidate_map.get(item.id, []),
+            "is_consolidation_candidate": bool(candidate_map.get(item.id)),
+        }
+        for item in memories.items
+    ]
 
     filters = {
         "chat_id": chat_id,
@@ -361,6 +482,7 @@ def _render_memories_page(
         "search": search,
         "freshness": freshness,
         "activity": activity,
+        "consolidation": consolidation,
         "sort": sort,
         "archived": archived,
         "pinned": pinned,
@@ -375,6 +497,7 @@ def _render_memories_page(
             "search": search,
             "freshness": freshness,
             "activity": activity,
+            "consolidation": consolidation,
             "sort": sort,
             "archived": archived,
             "pinned": pinned,
@@ -388,6 +511,7 @@ def _render_memories_page(
         {
             "memories": memories.model_dump(),
             "memory_cards": memory_cards,
+            "consolidation_summary": consolidation_summary,
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,
@@ -423,6 +547,7 @@ def ui_memories_page(
     search: str | None = None,
     freshness: str | None = None,
     activity: str | None = None,
+    consolidation: str | None = None,
     sort: str = "updated_desc",
     archived: str | None = None,
     pinned: str | None = None,
@@ -440,6 +565,7 @@ def ui_memories_page(
         search=search,
         freshness=freshness,
         activity=activity,
+        consolidation=consolidation,
         sort=sort,
         archived=archived,
         pinned=pinned,

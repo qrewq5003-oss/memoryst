@@ -82,6 +82,15 @@
                     <option value="stalest_first" {% if filters["sort"] == 'stalest_first' %}selected{% endif %}>Stalest First</option>
                 </select>
             </label>
+            <label>Consolidation:
+                <select name="consolidation">
+                    <option value="">All</option>
+                    <option value="candidates_only" {% if filters["consolidation"] == 'candidates_only' %}selected{% endif %}>Candidates Only</option>
+                    <option value="near_duplicate" {% if filters["consolidation"] == 'near_duplicate' %}selected{% endif %}>Near Duplicates</option>
+                    <option value="stale_low_value_episode" {% if filters["consolidation"] == 'stale_low_value_episode' %}selected{% endif %}>Stale Episodic Cleanup</option>
+                    <option value="shadowed_by_stable" {% if filters["consolidation"] == 'shadowed_by_stable' %}selected{% endif %}>Shadowed By Stable</option>
+                </select>
+            </label>
         </div>
         <div class="filter-actions">
             <button type="submit">Apply Filters</button>
@@ -362,6 +371,15 @@
 <!-- Memories List -->
 <section class="memories">
     <h2>Memories ({{ memories["total"] if memories["total"] else 0 }} total)</h2>
+    {% if consolidation_summary["total_candidates"] %}
+    <div class="result-summary">
+        <strong>Consolidation Candidates:</strong>
+        total={{ consolidation_summary["total_candidates"] }}
+        <span class="metric-chip">near_duplicate={{ consolidation_summary["near_duplicate"] }}</span>
+        <span class="metric-chip">stale_low_value_episode={{ consolidation_summary["stale_low_value_episode"] }}</span>
+        <span class="metric-chip">shadowed_by_stable={{ consolidation_summary["shadowed_by_stable"] }}</span>
+    </div>
+    {% endif %}
     {% if filters["search"] %}
     <div class="result-summary">
         <strong>Search:</strong> {{ filters["search"] }}
@@ -382,6 +400,9 @@
                         <span class="badge badge-layer">{{ item["layer"] }}</span>
                         <span class="badge badge-freshness badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace('_', ' ') }}</span>
                         <span class="badge badge-activity badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace('_', ' ') }}</span>
+                        {% if item["is_consolidation_candidate"] %}
+                        <span class="badge badge-consolidation">Consolidation Candidate</span>
+                        {% endif %}
                         {% if item["pinned"] %}
                         <span class="badge badge-pinned">Pinned</span>
                         {% endif %}
@@ -418,6 +439,23 @@
             </div>
 
             <div class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</div>
+
+            {% if item["consolidation_candidates"] %}
+            <details class="result-details consolidation-details" open>
+                <summary>Consolidation Signals</summary>
+                <div class="feature-summary">
+                    {% for candidate in item["consolidation_candidates"] %}
+                    <div>
+                        <span class="metric-chip">{{ candidate["type"] }}</span>
+                        {{ candidate["reason"] }}
+                        {% if candidate.get("related_id") %}
+                        <code>{{ candidate["related_id"] }}</code>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
 
             <details class="result-details memory-inspect">
                 <summary>Inspect Details</summary>
