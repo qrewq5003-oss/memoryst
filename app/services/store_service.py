@@ -62,6 +62,9 @@ def _normalize_quality_text(text: str) -> str:
 
 def passes_memory_quality_gate(candidate: CreateMemoryRequest) -> bool:
     """Return True when an auto-extracted candidate is informative enough to store."""
+    if candidate.source != "auto":
+        return True
+
     content = candidate.content.strip()
     if not content:
         return False
