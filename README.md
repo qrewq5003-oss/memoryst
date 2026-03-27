@@ -87,3 +87,4 @@ The repeated verification pass after the Russian relationship retrieval fixes is
 The local-scene focused repeat verification pass is in [docs/live_st_verification_report_v3.md](docs/live_st_verification_report_v3.md).
 The richer seeded relationship-arc verification is in [docs/live_st_relationship_arc_report.md](docs/live_st_relationship_arc_report.md).
 The durable relationship formation live verification is in [docs/live_st_durable_relationship_report.md](docs/live_st_durable_relationship_report.md).
+The focused re-check after the question-form durable relationship guardrail is in [docs/live_st_question_guardrail_recheck.md](docs/live_st_question_guardrail_recheck.md).
