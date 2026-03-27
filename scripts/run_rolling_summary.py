@@ -28,12 +28,13 @@ def main() -> int:
     print(f"character_id={result.character_id}")
     print(f"summary_memory_id={result.summary_memory_id}")
     print(f"summarized_count={result.summarized_count}")
+    print(f"new_input_count={result.new_input_count}")
     print(f"source_memory_ids={result.source_memory_ids}")
     if result.summary_text:
         print("summary_text:")
         print(result.summary_text)
 
-    return 0 if result.action in {"created", "updated"} else 1
+    return 0
 
 
 if __name__ == "__main__":

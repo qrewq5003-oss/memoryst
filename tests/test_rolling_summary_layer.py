@@ -74,7 +74,8 @@ class RollingSummaryLayerTests(unittest.TestCase):
         second = generate_rolling_summary("chat-1", "char-1", window_size=5)
 
         self.assertEqual(first.summary_text, second.summary_text)
-        self.assertEqual(second.action, "updated")
+        self.assertEqual(second.action, "skipped_not_enough_new_inputs")
+        self.assertEqual(second.new_input_count, 0)
         self.assertIn("Краткая сводка последних эпизодов", first.summary_text)
         self.assertIn("Изменения в отношениях", first.summary_text)
         self.assertIn("Текущие цели и состояние", first.summary_text)
@@ -197,9 +198,9 @@ class RollingSummaryLayerTests(unittest.TestCase):
         )
 
         self.assertEqual(first.action, "created")
-        self.assertEqual(second.action, "updated")
+        self.assertEqual(second.action, "skipped_not_enough_new_inputs")
         self.assertEqual(summary.type, "summary")
-        self.assertEqual(summary.id, second.summary_memory_id)
+        self.assertEqual(summary.id, first.summary_memory_id)
 
     def test_summary_memory_formats_with_summary_label(self) -> None:
         _create_memory(
@@ -247,8 +248,86 @@ class RollingSummaryLayerTests(unittest.TestCase):
 
         result = generate_rolling_summary("chat-1", "char-1", window_size=5)
 
-        self.assertEqual(result.action, "skipped")
+        self.assertEqual(result.action, "skipped_not_enough_inputs")
         self.assertEqual(result.summarized_count, 1)
+        self.assertEqual(result.new_input_count, 1)
+
+    def test_summary_updates_only_after_enough_new_episodic_memories(self) -> None:
+        for content in (
+            "Алиса поссорилась с Маркусом из-за бюджета.",
+            "Позже они договорились не отменять поездку.",
+            "Алиса хочет удержать проект на плаву.",
+        ):
+            _create_memory(
+                chat_id="chat-1",
+                character_id="char-1",
+                content=content,
+                layer="episodic",
+            )
+
+        first = generate_rolling_summary("chat-1", "char-1", window_size=8)
+
+        for content in (
+            "Алиса переживает из-за новых сроков.",
+            "Маркус пообещал помочь с графиком.",
+        ):
+            _create_memory(
+                chat_id="chat-1",
+                character_id="char-1",
+                content=content,
+                layer="episodic",
+            )
+
+        skipped = generate_rolling_summary("chat-1", "char-1", window_size=8)
+
+        _create_memory(
+            chat_id="chat-1",
+            character_id="char-1",
+            content="Они решили провести встречу утром.",
+            layer="episodic",
+        )
+
+        updated = generate_rolling_summary("chat-1", "char-1", window_size=8)
+
+        self.assertEqual(first.action, "created")
+        self.assertEqual(skipped.action, "skipped_not_enough_new_inputs")
+        self.assertEqual(skipped.new_input_count, 2)
+        self.assertEqual(updated.action, "updated")
+        self.assertEqual(updated.new_input_count, 3)
+        self.assertEqual(updated.summary_memory_id, first.summary_memory_id)
+
+    def test_stable_memories_do_not_count_toward_refresh_threshold(self) -> None:
+        for content in (
+            "Алиса поссорилась с Маркусом из-за бюджета.",
+            "Позже они договорились не отменять поездку.",
+            "Алиса хочет удержать проект на плаву.",
+        ):
+            _create_memory(
+                chat_id="chat-1",
+                character_id="char-1",
+                content=content,
+                layer="episodic",
+            )
+
+        first = generate_rolling_summary("chat-1", "char-1", window_size=8)
+
+        for content in (
+            "Алиса любит джаз.",
+            "Маркус доверяет Алисе.",
+        ):
+            _create_memory(
+                chat_id="chat-1",
+                character_id="char-1",
+                content=content,
+                layer="stable",
+                memory_type="profile",
+            )
+
+        skipped = generate_rolling_summary("chat-1", "char-1", window_size=8)
+
+        self.assertEqual(first.action, "created")
+        self.assertEqual(skipped.action, "skipped_not_enough_new_inputs")
+        self.assertEqual(skipped.new_input_count, 0)
 
     def test_summary_text_builder_is_stable_for_russian_long_chat_case(self) -> None:
         memories = [

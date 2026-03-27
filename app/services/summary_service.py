@@ -8,6 +8,7 @@ from app.services import text_features
 ROLLING_SUMMARY_KIND = "rolling_v1"
 DEFAULT_SUMMARY_WINDOW = 8
 MIN_SUMMARY_INPUTS = 3
+MIN_NEW_MEMORIES_FOR_REFRESH = 3
 SUMMARY_MAX_SEGMENTS = 3
 
 RELATIONSHIP_HINTS = (
@@ -50,6 +51,7 @@ class RollingSummaryResult:
     summary_text: str
     source_memory_ids: list[str]
     summarized_count: int
+    new_input_count: int
 
 
 def _get_utc_now() -> str:
@@ -139,39 +141,7 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
     )
 
 
-def generate_rolling_summary(
-    chat_id: str,
-    character_id: str,
-    window_size: int = DEFAULT_SUMMARY_WINDOW,
-) -> RollingSummaryResult:
-    """
-    Create or update one rolling summary for the recent episodic memories of a chat/character.
-    """
-    episodic_memories = list_memories(
-        chat_id=chat_id,
-        character_id=character_id,
-        layer="episodic",
-        archived=False,
-        limit=max(window_size, 1),
-        offset=0,
-    ).items
-    episodic_memories = [memory for memory in episodic_memories if not memory.metadata.is_summary]
-
-    if len(episodic_memories) < MIN_SUMMARY_INPUTS:
-        return RollingSummaryResult(
-            action="skipped",
-            chat_id=chat_id,
-            character_id=character_id,
-            summary_memory_id=None,
-            summary_text="",
-            source_memory_ids=[memory.id for memory in episodic_memories],
-            summarized_count=len(episodic_memories),
-        )
-
-    selected_memories = list(reversed(episodic_memories[:window_size]))
-    summary_text = build_rolling_summary_text(selected_memories)
-    summary_metadata = _build_summary_metadata(selected_memories, summary_text)
-
+def _list_existing_summary(chat_id: str, character_id: str) -> MemoryItem | None:
     existing_summaries = [
         memory
         for memory in list_memories(
@@ -183,7 +153,64 @@ def generate_rolling_summary(
         ).items
         if _is_rolling_summary(memory)
     ]
-    existing_summary = existing_summaries[0] if existing_summaries else None
+    return existing_summaries[0] if existing_summaries else None
+
+
+def _count_new_inputs(memories: list[MemoryItem], existing_summary: MemoryItem | None) -> int:
+    if existing_summary is None:
+        return len(memories)
+    known_ids = set(existing_summary.metadata.summary_source_memory_ids)
+    return sum(1 for memory in memories if memory.id not in known_ids)
+
+
+def generate_rolling_summary(
+    chat_id: str,
+    character_id: str,
+    window_size: int = DEFAULT_SUMMARY_WINDOW,
+) -> RollingSummaryResult:
+    """
+    Create or update one rolling summary for the recent episodic memories of a chat/character.
+    """
+    existing_summary = _list_existing_summary(chat_id, character_id)
+
+    episodic_memories = list_memories(
+        chat_id=chat_id,
+        character_id=character_id,
+        layer="episodic",
+        archived=False,
+        limit=max(window_size, 1),
+        offset=0,
+    ).items
+    episodic_memories = [memory for memory in episodic_memories if not memory.metadata.is_summary]
+    selected_memories = list(reversed(episodic_memories[:window_size]))
+    new_input_count = _count_new_inputs(selected_memories, existing_summary)
+
+    if len(selected_memories) < MIN_SUMMARY_INPUTS:
+        return RollingSummaryResult(
+            action="skipped_not_enough_inputs",
+            chat_id=chat_id,
+            character_id=character_id,
+            summary_memory_id=existing_summary.id if existing_summary else None,
+            summary_text=existing_summary.content if existing_summary else "",
+            source_memory_ids=[memory.id for memory in selected_memories],
+            summarized_count=len(selected_memories),
+            new_input_count=new_input_count,
+        )
+
+    if existing_summary is not None and new_input_count < MIN_NEW_MEMORIES_FOR_REFRESH:
+        return RollingSummaryResult(
+            action="skipped_not_enough_new_inputs",
+            chat_id=chat_id,
+            character_id=character_id,
+            summary_memory_id=existing_summary.id,
+            summary_text=existing_summary.content,
+            source_memory_ids=[memory.id for memory in selected_memories],
+            summarized_count=len(selected_memories),
+            new_input_count=new_input_count,
+        )
+
+    summary_text = build_rolling_summary_text(selected_memories)
+    summary_metadata = _build_summary_metadata(selected_memories, summary_text)
 
     if existing_summary is None:
         created = create_memory(
@@ -208,6 +235,7 @@ def generate_rolling_summary(
             summary_text=created.content,
             source_memory_ids=summary_metadata.summary_source_memory_ids,
             summarized_count=len(selected_memories),
+            new_input_count=new_input_count,
         )
 
     updated = update_memory(
@@ -220,11 +248,12 @@ def generate_rolling_summary(
         ),
     )
     return RollingSummaryResult(
-        action="updated" if updated is not None else "skipped",
+        action="updated" if updated is not None else "skipped_update_failed",
         chat_id=chat_id,
         character_id=character_id,
         summary_memory_id=existing_summary.id if updated is None else updated.id,
         summary_text=summary_text,
         source_memory_ids=summary_metadata.summary_source_memory_ids,
         summarized_count=len(selected_memories),
+        new_input_count=new_input_count,
     )

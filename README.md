@@ -63,3 +63,16 @@ Generate or update one rolling summary memory for a chat/character:
 ```bash
 python scripts/run_rolling_summary.py --chat-id <chat_id> --character-id <character_id> --window 8
 ```
+
+The CLI reports one of:
+
+- `created`: first rolling summary was created
+- `updated`: enough new episodic memories accumulated, so the summary was refreshed
+- `skipped_not_enough_inputs`: there are still too few episodic memories to build a useful summary
+- `skipped_not_enough_new_inputs`: the existing summary is still fresh enough; not enough new episodic inputs accumulated yet
+
+It also prints:
+
+- `summarized_count`
+- `new_input_count`
+- `source_memory_ids`
