@@ -101,9 +101,22 @@ GENERAL_STATE_QUERY_PATTERNS = [
     r"\bони снова .*вместе\b",
 ]
 
-# Narrow local-scene query family for concrete episodic retrieval.
-# This is not a new general event parser. It only exists to prefer
-# concrete scene outcomes over low-value query-echo episodic lines.
+# Narrow Russian local-scene precision channel.
+# This layer is intentionally bounded:
+# - it activates only for local-scene query families
+# - it only helps episodic selection become more concrete
+# - it is not a general event-semantics layer
+# - it must not replace the main lexical/entity ranking signal
+#
+# Allowed local-scene intent families for v1:
+# - decision / agreement
+# - saying / reply / statement
+# - meeting outcome
+# - recent concrete scene outcome
+#
+# Maintenance rule:
+# - add a pattern only inside an existing intent family and only with eval-backed justification
+# - add a new intent family only with a dedicated scenario/test explaining why the current set is insufficient
 LOCAL_SCENE_QUERY_PATTERNS = [
     r"\bчто .* реш\w*",
     r"\bчто .* сказа\w*",
@@ -115,6 +128,8 @@ LOCAL_SCENE_QUERY_PATTERNS = [
     r"\bутром\b",
 ]
 
+# Concrete scene outcome markers used by the narrow local-scene helper.
+# Keep this list intentionally small and tied to the intent families above.
 LOCAL_SCENE_DETAIL_PATTERNS = [
     r"\bреш\w*",
     r"\bсказа\w*",
@@ -243,7 +258,7 @@ def is_relationship_state_query(text: str) -> bool:
 
 
 def is_local_scene_query(text: str) -> bool:
-    """Gate a narrow local-scene episodic precision helper."""
+    """Gate the narrow local-scene precision layer for eligible Russian queries."""
     if not text:
         return False
     text_lower = text.lower()
@@ -256,6 +271,7 @@ def extract_local_scene_detail_score(text: str) -> float:
 
     This is intentionally lightweight: it rewards explicit action/outcome markers
     and time/context anchors so concrete event lines beat generic query echoes.
+    It is not a general event detail parser.
     """
     if not text:
         return 0.0

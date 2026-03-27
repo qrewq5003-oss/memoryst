@@ -35,6 +35,12 @@ EPISODIC_LOW_VALUE_PENALTY = 0.12
 # - uses only the bounded cue groups from text_features
 # - cannot replace the main lexical/entity ranking signal
 # - must stay regression/eval-backed rather than becoming a general retrieval crutch
+#
+# Narrow support-only policy for Russian local-scene episodic precision:
+# - gated by `local_scene_query_like`
+# - only affects episodic candidates
+# - helps concrete scene outcomes beat low-value query echoes
+# - must not become a generic event heuristic or override a clearly stronger raw match
 LAYER_SELECTION_CAPS = {
     "summary": 1,
     "stable": 2,
@@ -141,10 +147,12 @@ def _compute_score_details(
     episodic_low_value_penalty = 0.0
     if memory.layer == "episodic":
         episodic_detail_score = text_features.extract_local_scene_detail_score(memory.content)
+        # Keep this as a bounded support bonus for concrete scene outcomes only.
         if local_scene_query_like and episodic_detail_score >= 0.45:
             episodic_specificity_bonus = EPISODIC_SPECIFICITY_BONUS
 
         # Penalize question-like or query-echo episodic lines that add little scene value.
+        # This is an anti-noise guardrail, not a universal episodic penalty.
         normalized_query = _normalize_for_similarity(user_input_text)
         normalized_memory = _normalize_for_similarity(memory.content)
         question_like_memory = memory.content.strip().endswith("?")

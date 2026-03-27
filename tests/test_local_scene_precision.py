@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from app.schemas import MemoryItem, MemoryMetadata, MessageInput, RetrieveMemoryRequest
 from app.services import text_features
-from app.services.retrieve_service import retrieve_memories
+from app.services.retrieve_service import _compute_score_details, retrieve_memories
 
 
 def _memory(
@@ -134,3 +134,92 @@ class LocalScenePrecisionTests(unittest.TestCase):
         debug_by_id = {item.memory_id: item for item in response.debug.candidates}
         self.assertEqual(debug_by_id["episodic"].episodic_low_value_penalty, 0.0)
         self.assertIn("summary", {item.id for item in response.items})
+
+    def test_generic_profile_query_does_not_activate_local_scene_mode(self) -> None:
+        profile = _memory(
+            "profile",
+            "Алина любит джаз и часто слушает его ночью.",
+            memory_type="profile",
+            layer="stable",
+        )
+        episodic = _memory(
+            "episodic",
+            "Вчера Алина говорила о джазе после встречи.",
+        )
+
+        response = self._retrieve(
+            [profile, episodic],
+            user_input="Что любит Алина?",
+            limit=2,
+        )
+
+        assert response.debug is not None
+        self.assertFalse(response.debug.local_scene_query_like)
+        debug_by_id = {item.memory_id: item for item in response.debug.candidates}
+        self.assertEqual(debug_by_id["episodic"].episodic_specificity_bonus, 0.0)
+        self.assertEqual(debug_by_id["episodic"].episodic_low_value_penalty, 0.0)
+
+    def test_local_scene_bonus_does_not_override_large_raw_score_gap(self) -> None:
+        strong = _memory(
+            "strong",
+            "На встрече с Леной они договорились перенести общий созвон на утро.",
+        )
+        weak = _memory(
+            "weak",
+            "Вчера они решили кое-что.",
+        )
+
+        strong_details = _compute_score_details(
+            strong,
+            text_features.extract_keywords("Что произошло на встрече с Леной?"),
+            text_features.extract_entities("Что произошло на встрече с Леной?"),
+            user_input_text="Что произошло на встрече с Леной?",
+            local_scene_query_like=True,
+        )
+        weak_details = _compute_score_details(
+            weak,
+            text_features.extract_keywords("Что произошло на встрече с Леной?"),
+            text_features.extract_entities("Что произошло на встрече с Леной?"),
+            user_input_text="Что произошло на встрече с Леной?",
+            local_scene_query_like=True,
+        )
+
+        self.assertGreater(strong_details["score"], weak_details["score"])
+        self.assertGreater(strong_details["keyword_overlap"], weak_details["keyword_overlap"])
+
+    def test_local_scene_policy_keeps_summary_context_in_layered_mix(self) -> None:
+        summary = _memory(
+            "summary",
+            "Краткая сводка: Алина и Маркус стараются удержать проект и не сорвать общий график.",
+            memory_type="summary",
+            layer="stable",
+            importance=0.9,
+        )
+        stable = _memory(
+            "stable",
+            "Маркус снова доверяет Алине в вопросах проекта.",
+            memory_type="relationship",
+            layer="stable",
+            importance=0.82,
+        )
+        episodic = _memory(
+            "episodic",
+            "Только что они решили перенести встречу по проекту на утро и позвать Лену позже.",
+        )
+        query_echo = _memory(
+            "query-echo",
+            "Что они решили про встречу по проекту?",
+        )
+
+        response = self._retrieve(
+            [summary, stable, episodic, query_echo],
+            user_input="Что они решили про встречу по проекту?",
+            limit=3,
+        )
+
+        self.assertIn("summary", {item.id for item in response.items})
+        self.assertIn("stable", {item.id for item in response.items})
+        assert response.debug is not None
+        debug_by_id = {item.memory_id: item for item in response.debug.candidates}
+        self.assertGreater(debug_by_id["query-echo"].episodic_low_value_penalty, 0.0)
+        self.assertGreater(debug_by_id["episodic"].episodic_specificity_bonus, 0.0)
