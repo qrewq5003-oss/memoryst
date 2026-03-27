@@ -28,6 +28,11 @@ RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
     "stable": 0.03,
     "episodic": 0.015,
 }
+# Narrow support-only policy for Russian relationship/general-state phrasing:
+# - gated by `relationship_query_like`
+# - uses only the bounded cue groups from text_features
+# - cannot replace the main lexical/entity ranking signal
+# - must stay regression/eval-backed rather than becoming a general retrieval crutch
 LAYER_SELECTION_CAPS = {
     "summary": 1,
     "stable": 2,
@@ -79,6 +84,9 @@ def _compute_score_details(
     else:
         entity_overlap = 0.0
 
+    # Auxiliary cue overlap only exists for the explicitly gated Russian
+    # relationship/general-state query family. It supports wording variation,
+    # but should never turn retrieval into generic semantic matching.
     input_relationship_cue_set = set(input_relationship_cues or [])
     memory_relationship_cues = set(text_features.extract_relationship_state_cues(memory.content))
     if relationship_query_like and input_relationship_cue_set:
@@ -114,6 +122,9 @@ def _compute_score_details(
     )
 
     both_match_bonus = BOTH_MATCH_BONUS if keyword_overlap > 0.0 and entity_overlap > 0.0 else 0.0
+    # Keep this as a narrow support bonus. It should help eligible summary/stable
+    # relationship memories survive thresholding, not override a clearly stronger
+    # raw lexical match from another candidate.
     relationship_support_bonus = 0.0
     if relationship_query_like and relationship_cue_overlap > 0.0:
         relationship_support_bonus = RELATIONSHIP_SUPPORT_BONUS_BY_LAYER[_get_retrieval_layer(memory)]

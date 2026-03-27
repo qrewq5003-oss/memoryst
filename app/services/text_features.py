@@ -34,6 +34,23 @@ KEYWORD_STOPWORDS = {
     "всегда", "часто", "обычно", "постоянно", "никогда",
 }
 
+# Narrow Russian relationship/general-state robustness channel.
+# This is intentionally not a general semantic layer and should stay small:
+# - it only helps relationship/general-state query families
+# - it only supports retrieval after the main lexical/entity signals are computed
+# - it must grow through eval-backed regressions, not ad hoc regex accumulation
+#
+# Allowed cue groups for v1:
+# - conflict
+# - repair
+# - trust
+# - distance
+# - together
+# - attitude
+#
+# Maintenance rule:
+# - adding a pattern inside an existing group requires an eval-backed justification
+# - adding a new group requires a dedicated long-chat/eval scenario explaining why
 RELATIONSHIP_STATE_CUE_PATTERNS = {
     "conflict": [
         r"\bзл\w*",
@@ -73,6 +90,8 @@ RELATIONSHIP_STATE_CUE_PATTERNS = {
     ],
 }
 
+# Broad Russian phrasings that should gate the narrow cue channel for
+# relationship/general-state questions. Keep this list intentionally small.
 GENERAL_STATE_QUERY_PATTERNS = [
     r"\bчто у (?:них|неё|нее|него) сейчас\b",
     r"\bчто у них вообще\b",
@@ -167,7 +186,12 @@ def extract_keywords(text: str) -> list[str]:
 
 
 def extract_relationship_state_cues(text: str) -> list[str]:
-    """Extract narrow, explicit Russian relationship/general-state cues."""
+    """
+    Extract narrow, explicit Russian relationship/general-state cues.
+
+    This helper is a bounded robustness channel for relationship phrasing
+    variation. It is not a general-purpose semantic tagger.
+    """
     if not text:
         return []
 
@@ -185,5 +209,5 @@ def extract_relationship_state_cues(text: str) -> list[str]:
 
 
 def is_relationship_state_query(text: str) -> bool:
-    """Detect broad relationship/general-state Russian queries."""
+    """Gate the narrow cue layer for Russian relationship/general-state queries."""
     return bool(extract_relationship_state_cues(text))
