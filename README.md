@@ -92,3 +92,4 @@ The focused re-check after the question-form local-scene guardrail is in [docs/l
 The first NanoGPT model adaptation pass for `GLM 4.7` and `Kimi K2.5` is in [docs/model_adaptation_report_nanogpt.md](docs/model_adaptation_report_nanogpt.md).
 The full-prompt follow-up check for `GLM 4.7` and `Kimi K2.5` is in [docs/full_prompt_model_adaptation_report.md](docs/full_prompt_model_adaptation_report.md).
 The lorebook-triggered ephemeral anchor bridge note is in [docs/lorebook_ephemeral_anchor_report.md](docs/lorebook_ephemeral_anchor_report.md).
+The short live usefulness check for lorebook-triggered ephemeral anchors is in [docs/lorebook_anchor_usefulness_report.md](docs/lorebook_anchor_usefulness_report.md).
