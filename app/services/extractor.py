@@ -219,14 +219,14 @@ def _looks_like_event(text_lower: str) -> bool:
     return _has_temporal_context(text_lower) or _contains_any(text_lower, plan_markers)
 
 
-def _detect_type(text: str) -> MemoryType | None:
+def _detect_type(text: str, *, allow_durable_relationship: bool = True) -> MemoryType | None:
     """Detect memory type based on lightweight semantic markers."""
     text_lower = text.lower()
 
     # Bounded carry-over gate for Russian long-chat relationship state.
     # This should only promote durable state shifts to `relationship`, not
     # absorb ordinary conflict/meeting scenes that belong in episodic memory.
-    if text_features.is_durable_relationship_statement(text):
+    if allow_durable_relationship and text_features.is_durable_relationship_statement(text):
         return "relationship"
     if _looks_like_event(text_lower):
         return "event"
@@ -246,7 +246,12 @@ def _get_importance(memory_type: MemoryType) -> float:
     return 0.6
 
 
-def _get_layer(memory_type: MemoryType, text: str) -> str:
+def _get_layer(
+    memory_type: MemoryType,
+    text: str,
+    *,
+    allow_durable_relationship: bool = True,
+) -> str:
     """
     Get memory layer based on type and whether the text describes a durable fact or an episode.
     """
@@ -258,7 +263,11 @@ def _get_layer(memory_type: MemoryType, text: str) -> str:
     # Durable relationship gate: keep stable relation memories for longer-arc
     # state carry-over, while letting scene-like relationship mentions stay
     # episodic through the normal checks below.
-    if memory_type == "relationship" and text_features.is_durable_relationship_statement(text):
+    if (
+        memory_type == "relationship"
+        and allow_durable_relationship
+        and text_features.is_durable_relationship_statement(text)
+    ):
         return "stable"
 
     if _looks_like_event(text_lower):
@@ -314,7 +323,25 @@ def extract_memories(
         if not _is_meaningful(text):
             continue
 
-        memory_type = _detect_type(text)
+        # Durable relationship formation is carry-over oriented. Question-form
+        # user prompts are not valid relationship memories by default, so skip
+        # them before they can fall through to the generic relationship branch.
+        if (
+            msg.role == "user"
+            and text_features.is_question_like_text(text)
+            and (
+                text_features.is_question_form_relationship_prompt(text)
+                or _looks_like_relationship(text.lower())
+            )
+        ):
+            continue
+
+        allow_durable_relationship = True
+
+        memory_type = _detect_type(
+            text,
+            allow_durable_relationship=allow_durable_relationship,
+        )
         if memory_type is None:
             continue
 
@@ -329,7 +356,11 @@ def extract_memories(
                 type=memory_type,
                 content=content,
                 source="auto",
-                layer=_get_layer(memory_type, text),
+                layer=_get_layer(
+                    memory_type,
+                    text,
+                    allow_durable_relationship=allow_durable_relationship,
+                ),
                 importance=_get_importance(memory_type),
                 pinned=False,
                 archived=False,

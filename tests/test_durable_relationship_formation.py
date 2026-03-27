@@ -40,6 +40,25 @@ class DurableRelationshipFormationTests(unittest.TestCase):
         self.assertEqual(created.type, "relationship")
         self.assertEqual(created.layer, "stable")
 
+    def test_question_form_user_prompt_does_not_become_stable_relationship(self) -> None:
+        response = store_memories(
+            StoreMemoryRequest(
+                chat_id="chat-1",
+                character_id="char-1",
+                messages=[
+                    MessageInput(
+                        role="user",
+                        text="Они хоть немного помирились после разговора?",
+                    )
+                ],
+            )
+        )
+
+        self.assertEqual(response.stored, 0)
+        self.assertEqual(response.updated, 0)
+        self.assertEqual(response.skipped, 0)
+        self.assertEqual(list_memories(chat_id="chat-1", character_id="char-1").total, 0)
+
     def test_one_off_meeting_episode_does_not_turn_into_stable_relationship(self) -> None:
         response = store_memories(
             StoreMemoryRequest(

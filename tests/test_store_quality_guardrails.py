@@ -174,6 +174,20 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         self.assertEqual(candidates[0].type, "event")
         self.assertEqual(candidates[0].layer, "episodic")
 
+    def test_question_form_user_relationship_prompt_is_not_extracted(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="user",
+                    text="Был момент, когда он её поддержал?",
+                )
+            ],
+        )
+
+        self.assertEqual(candidates, [])
+
 
 if __name__ == "__main__":
     unittest.main()

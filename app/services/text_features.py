@@ -218,6 +218,15 @@ DURABLE_RELATIONSHIP_EPISODIC_BLOCKERS = [
     r"\bвстрет\w* .*вчера\b",
 ]
 
+# Narrow question-form guardrail for durable relationship formation.
+# This blocks low-value user prompts from being stored as carry-over
+# relationship state. It is intentionally not a generic question filter.
+QUESTION_PREFIX_PATTERNS = [
+    r"^\s*(?:что|как|когда|где|почему|зачем|кто|кого|кому|чего|чему)\b",
+    r"^\s*(?:был|была|было|были|есть|ли)\b",
+    r"^\s*они\b",
+]
+
 
 def _get_morph():
     """Lazy initialization of pymorphy3 morph."""
@@ -330,6 +339,19 @@ def is_relationship_state_query(text: str) -> bool:
     return bool(extract_relationship_state_cues(text))
 
 
+def is_question_like_text(text: str) -> bool:
+    """Detect compact interrogative phrasing without turning this into a full parser."""
+    if not text:
+        return False
+
+    text_lower = text.strip().lower()
+    if not text_lower:
+        return False
+    if text_lower.endswith("?"):
+        return True
+    return any(re.search(pattern, text_lower) for pattern in QUESTION_PREFIX_PATTERNS)
+
+
 def is_local_scene_query(text: str) -> bool:
     """Gate the narrow local-scene precision layer for eligible Russian queries."""
     if not text:
@@ -406,3 +428,19 @@ def is_durable_relationship_statement(text: str) -> bool:
         return False
 
     return True
+
+
+def is_question_form_relationship_prompt(text: str) -> bool:
+    """
+    Guard against storing user-side relationship questions as stable carry-over memories.
+
+    This remains intentionally narrow: only interrogative phrasing with
+    relationship-state semantics should be blocked.
+    """
+    if not is_question_like_text(text):
+        return False
+
+    return bool(
+        extract_durable_relationship_state_cues(text)
+        or extract_relationship_state_cues(text)
+    )
