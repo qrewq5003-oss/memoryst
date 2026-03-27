@@ -8,6 +8,7 @@ from app.db import init_schema
 from app.repositories.memory_repo import create_memory, list_memories
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MessageInput, StoreMemoryRequest
 from app.services.store_service import passes_memory_quality_gate, store_memories
+from app.services.extractor import extract_memories
 
 
 def _candidate(
@@ -140,6 +141,38 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         self.assertEqual(created.source, "manual")
         self.assertEqual(created.content, "ok")
         self.assertEqual(list_memories().total, 1)
+
+    def test_russian_durable_relationship_statement_extracts_as_stable_relationship(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="assistant",
+                    text="Маркус снова доверяет Алисе в работе, хотя между ними всё ещё остаётся напряжение.",
+                )
+            ],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].type, "relationship")
+        self.assertEqual(candidates[0].layer, "stable")
+
+    def test_one_off_russian_conflict_scene_does_not_become_stable_relationship(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="assistant",
+                    text="После провала на площадке Маркус сорвался на Алису, и между ними началась тяжёлая ссора.",
+                )
+            ],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].type, "event")
+        self.assertEqual(candidates[0].layer, "episodic")
 
 
 if __name__ == "__main__":

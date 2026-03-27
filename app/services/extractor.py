@@ -41,6 +41,8 @@ PROFILE_MARKERS_EN = [
 RELATIONSHIP_MARKERS_RU = [
     "доверяю",
     "доверяет",
+    "доверял",
+    "доверяла",
     "забочусь",
     "заботится",
     "друг",
@@ -54,6 +56,12 @@ RELATIONSHIP_MARKERS_RU = [
     "женат",
     "замужем",
     "отношени",
+    "напряжени",
+    "дистанци",
+    "осторож",
+    "поддерж",
+    "сотруднич",
+    "помир",
 ]
 
 RELATIONSHIP_MARKERS_EN = [
@@ -113,6 +121,9 @@ EVENT_ACTION_MARKERS_RU = [
     "поссорились",
     "спорили",
     "ругались",
+    "сорвался",
+    "сорвалась",
+    "началась",
 ]
 
 EVENT_ACTION_MARKERS_EN = [
@@ -212,6 +223,8 @@ def _detect_type(text: str) -> MemoryType | None:
     """Detect memory type based on lightweight semantic markers."""
     text_lower = text.lower()
 
+    if text_features.is_durable_relationship_statement(text):
+        return "relationship"
     if _looks_like_event(text_lower):
         return "event"
     if _looks_like_relationship(text_lower):
@@ -238,6 +251,9 @@ def _get_layer(memory_type: MemoryType, text: str) -> str:
 
     if memory_type == "event":
         return "episodic"
+
+    if memory_type == "relationship" and text_features.is_durable_relationship_statement(text):
+        return "stable"
 
     if _looks_like_event(text_lower):
         return "episodic"
