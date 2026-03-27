@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import (
@@ -20,6 +21,16 @@ PINNED_BONUS = 0.05
 BOTH_MATCH_BONUS = 0.10
 MIN_RETRIEVAL_SCORE = 0.15
 NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
+LAYER_SELECTION_BONUS = {
+    "summary": 0.04,
+    "stable": 0.01,
+    "episodic": 0.0,
+}
+LAYER_SELECTION_CAPS = {
+    "summary": 1,
+    "stable": 2,
+    "episodic": 2,
+}
 
 
 def _compute_score_details(
@@ -151,6 +162,60 @@ def _is_too_similar_to_selected(candidate: MemoryItem, selected: list[MemoryItem
     return False
 
 
+def _get_retrieval_layer(memory: MemoryItem) -> str:
+    if memory.type == "summary" or memory.metadata.is_summary:
+        return "summary"
+    if memory.layer == "stable":
+        return "stable"
+    return "episodic"
+
+
+def _sort_scored_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        entries,
+        key=lambda entry: (
+            entry["selection_score"],
+            entry["score"],
+            entry["memory"].updated_at,
+            entry["memory"].id,
+        ),
+        reverse=True,
+    )
+
+
+def _try_select_entry(
+    entry: dict[str, Any],
+    *,
+    top_items: list[MemoryItem],
+    selected_ids: set[str],
+    layer_selected_counts: dict[str, int],
+    debug_by_id: dict[str, RetrieveCandidateDebug],
+    request_debug: bool,
+) -> bool:
+    memory = entry["memory"]
+    memory_id = memory.id
+    layer = entry["layer"]
+
+    if memory_id in selected_ids:
+        return False
+
+    if _is_too_similar_to_selected(memory, top_items):
+        if request_debug:
+            debug_by_id[memory_id].filtered_by_diversity = True
+            debug_by_id[memory_id].reason = "filtered_near_duplicate"
+        return False
+
+    top_items.append(memory)
+    selected_ids.add(memory_id)
+    layer_selected_counts[layer] += 1
+    if request_debug:
+        debug_by_id[memory_id].selected = True
+        debug_by_id[memory_id].selected_from_layer = layer
+        debug_by_id[memory_id].rank = len(top_items)
+        debug_by_id[memory_id].reason = "selected_top"
+    return True
+
+
 def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     """
     Retrieve relevant memories for the current context.
@@ -189,19 +254,34 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     )
     total_candidates = len(all_candidates)
 
-    # Score each candidate
-    scored = []
+    # Score each candidate and partition them into explicit retrieval layers.
+    scored_entries: list[dict[str, Any]] = []
     debug_candidates: list[RetrieveCandidateDebug] = []
     debug_by_id: dict[str, RetrieveCandidateDebug] = {}
+    layer_candidate_counts = {
+        "summary": 0,
+        "stable": 0,
+        "episodic": 0,
+    }
     for memory in all_candidates:
+        layer = _get_retrieval_layer(memory)
+        layer_candidate_counts[layer] += 1
         details = _compute_score_details(memory, input_keywords, input_entities)
         score = details["score"]
         passed_threshold = score >= MIN_RETRIEVAL_SCORE
         if passed_threshold:
-            scored.append((score, memory))
+            scored_entries.append(
+                {
+                    "memory": memory,
+                    "score": score,
+                    "selection_score": score + LAYER_SELECTION_BONUS[layer],
+                    "layer": layer,
+                }
+            )
         if request.debug:
             debug_entry = RetrieveCandidateDebug(
                 memory_id=memory.id,
+                layer=layer,
                 score=score,
                 keyword_overlap=details["keyword_overlap"],
                 entity_overlap=details["entity_overlap"],
@@ -212,26 +292,83 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
             debug_candidates.append(debug_entry)
             debug_by_id[memory.id] = debug_entry
 
-    # Sort by score DESC
-    scored.sort(key=lambda x: x[0], reverse=True)
+    score_by_id = {entry["memory"].id: entry["score"] for entry in scored_entries}
+    scored_by_layer = {
+        layer: _sort_scored_entries([entry for entry in scored_entries if entry["layer"] == layer])
+        for layer in ("summary", "stable", "episodic")
+    }
+    globally_sorted = _sort_scored_entries(scored_entries)
 
-    # Take top-k with lightweight anti-redundancy filtering.
+    # Layered retrieval policy:
+    # 1. If limit allows, seed one item from each layer so summary/stable/episodic can all contribute.
+    # 2. Fill remaining slots with the best scored items under per-layer caps.
+    # 3. If slots still remain, do a final fill without caps so recall is not artificially cut off.
     top_items: list[MemoryItem] = []
-    for _, item in scored:
-        if _is_too_similar_to_selected(item, top_items):
-            if request.debug:
-                debug_by_id[item.id].filtered_by_diversity = True
-                debug_by_id[item.id].reason = "filtered_near_duplicate"
-            continue
+    selected_ids: set[str] = set()
+    layer_selected_counts = {
+        "summary": 0,
+        "stable": 0,
+        "episodic": 0,
+    }
+
+    if request.limit >= 3:
+        for layer in ("summary", "stable", "episodic"):
+            for entry in scored_by_layer[layer]:
+                if _try_select_entry(
+                    entry,
+                    top_items=top_items,
+                    selected_ids=selected_ids,
+                    layer_selected_counts=layer_selected_counts,
+                    debug_by_id=debug_by_id,
+                    request_debug=request.debug,
+                ):
+                    break
+            if len(top_items) >= request.limit:
+                break
+
+    for entry in globally_sorted:
         if len(top_items) >= request.limit:
-            if request.debug:
-                debug_by_id[item.id].reason = "not_in_top_limit"
+            break
+        layer = entry["layer"]
+        if layer_selected_counts[layer] >= LAYER_SELECTION_CAPS[layer]:
             continue
-        top_items.append(item)
-        if request.debug:
-            debug_by_id[item.id].selected = True
-            debug_by_id[item.id].rank = len(top_items)
-            debug_by_id[item.id].reason = "selected_top"
+        _try_select_entry(
+            entry,
+            top_items=top_items,
+            selected_ids=selected_ids,
+            layer_selected_counts=layer_selected_counts,
+            debug_by_id=debug_by_id,
+            request_debug=request.debug,
+        )
+
+    for entry in globally_sorted:
+        if len(top_items) >= request.limit:
+            break
+        _try_select_entry(
+            entry,
+            top_items=top_items,
+            selected_ids=selected_ids,
+            layer_selected_counts=layer_selected_counts,
+            debug_by_id=debug_by_id,
+            request_debug=request.debug,
+        )
+
+    top_items.sort(
+        key=lambda item: (
+            score_by_id.get(item.id, 0.0),
+            item.updated_at,
+            item.id,
+        ),
+        reverse=True,
+    )
+
+    if request.debug:
+        for rank, item in enumerate(top_items, start=1):
+            debug_by_id[item.id].rank = rank
+        for entry in globally_sorted:
+            memory_id = entry["memory"].id
+            if memory_id not in selected_ids and debug_by_id[memory_id].reason == "threshold_passed":
+                debug_by_id[memory_id].reason = "not_in_top_limit"
 
     # Update usage metrics for top-k items
     # This tracks which memories are being used for retrieval
@@ -253,6 +390,12 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
                 recent_entities=recent_entities,
                 input_keywords=input_keywords,
                 input_entities=input_entities,
+                summary_candidates=layer_candidate_counts["summary"],
+                stable_candidates=layer_candidate_counts["stable"],
+                episodic_candidates=layer_candidate_counts["episodic"],
+                selected_summary=layer_selected_counts["summary"],
+                selected_stable=layer_selected_counts["stable"],
+                selected_episodic=layer_selected_counts["episodic"],
                 candidates=debug_candidates,
             )
             if request.debug

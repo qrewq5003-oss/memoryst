@@ -67,7 +67,10 @@ def run_retrieval_eval_case(case: RetrievalEvalCase) -> RetrievalEvalResult:
         for candidate in response.debug.candidates:
             if candidate.memory_id in expected_ids:
                 debug_snapshot.append(
-                    f"{candidate.memory_id}:score={candidate.score:.3f}:reason={candidate.reason}"
+                    (
+                        f"{candidate.memory_id}:layer={candidate.layer}:"
+                        f"score={candidate.score:.3f}:reason={candidate.reason}"
+                    )
                 )
 
     passed = not (

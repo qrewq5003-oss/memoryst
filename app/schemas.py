@@ -149,6 +149,7 @@ class StoreMemoryResponse(BaseModel):
 
 class RetrieveCandidateDebug(BaseModel):
     memory_id: str
+    layer: str
     score: float
     keyword_overlap: float
     entity_overlap: float
@@ -156,6 +157,7 @@ class RetrieveCandidateDebug(BaseModel):
     passed_threshold: bool
     filtered_by_diversity: bool = False
     selected: bool = False
+    selected_from_layer: str | None = None
     rank: int | None = None
     reason: str
 
@@ -167,6 +169,12 @@ class RetrieveDebugPayload(BaseModel):
     recent_entities: list[str] = Field(default_factory=list)
     input_keywords: list[str] = Field(default_factory=list)
     input_entities: list[str] = Field(default_factory=list)
+    summary_candidates: int = 0
+    stable_candidates: int = 0
+    episodic_candidates: int = 0
+    selected_summary: int = 0
+    selected_stable: int = 0
+    selected_episodic: int = 0
     candidates: list[RetrieveCandidateDebug] = Field(default_factory=list)
 
 
