@@ -68,6 +68,10 @@ class MemoryTypeLayerHeuristicsTests(unittest.TestCase):
         self.assertEqual(candidate.type, "relationship")
         self.assertEqual(candidate.layer, "stable")
 
+    def test_question_form_relationship_prompt_is_not_promoted_to_stable_relationship(self) -> None:
+        candidate = _extract("Они хоть немного помирились после разговора?")
+        self.assertIsNone(candidate)
+
     def test_one_off_conflict_scene_remains_episodic_event(self) -> None:
         candidate = _extract("После провала на площадке Маркус сорвался на Алису, и между ними началась тяжёлая ссора.")
         self.assertIsNotNone(candidate)
