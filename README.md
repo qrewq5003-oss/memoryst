@@ -61,8 +61,10 @@ Access the built-in web UI at `http://localhost:8000/ui` for:
 Generate or update one rolling summary memory for a chat/character:
 
 ```bash
-python scripts/run_rolling_summary.py --chat-id <chat_id> --character-id <character_id> --window 8
+python scripts/run_rolling_summary.py --chat-id <chat_id> --character-id <character_id> --window 8 --min-new 3
 ```
+
+`--min-new` is the refresh policy knob for experiments/eval. Default is `3`.
 
 The CLI reports one of:
 
@@ -75,4 +77,5 @@ It also prints:
 
 - `summarized_count`
 - `new_input_count`
+- `refresh_threshold_used`
 - `source_memory_ids`

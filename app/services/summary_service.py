@@ -52,6 +52,7 @@ class RollingSummaryResult:
     source_memory_ids: list[str]
     summarized_count: int
     new_input_count: int
+    refresh_threshold_used: int
 
 
 def _get_utc_now() -> str:
@@ -167,6 +168,7 @@ def generate_rolling_summary(
     chat_id: str,
     character_id: str,
     window_size: int = DEFAULT_SUMMARY_WINDOW,
+    min_new_memories_for_refresh: int = MIN_NEW_MEMORIES_FOR_REFRESH,
 ) -> RollingSummaryResult:
     """
     Create or update one rolling summary for the recent episodic memories of a chat/character.
@@ -195,9 +197,10 @@ def generate_rolling_summary(
             source_memory_ids=[memory.id for memory in selected_memories],
             summarized_count=len(selected_memories),
             new_input_count=new_input_count,
+            refresh_threshold_used=min_new_memories_for_refresh,
         )
 
-    if existing_summary is not None and new_input_count < MIN_NEW_MEMORIES_FOR_REFRESH:
+    if existing_summary is not None and new_input_count < min_new_memories_for_refresh:
         return RollingSummaryResult(
             action="skipped_not_enough_new_inputs",
             chat_id=chat_id,
@@ -207,6 +210,7 @@ def generate_rolling_summary(
             source_memory_ids=[memory.id for memory in selected_memories],
             summarized_count=len(selected_memories),
             new_input_count=new_input_count,
+            refresh_threshold_used=min_new_memories_for_refresh,
         )
 
     summary_text = build_rolling_summary_text(selected_memories)
@@ -236,6 +240,7 @@ def generate_rolling_summary(
             source_memory_ids=summary_metadata.summary_source_memory_ids,
             summarized_count=len(selected_memories),
             new_input_count=new_input_count,
+            refresh_threshold_used=min_new_memories_for_refresh,
         )
 
     updated = update_memory(
@@ -256,4 +261,5 @@ def generate_rolling_summary(
         source_memory_ids=summary_metadata.summary_source_memory_ids,
         summarized_count=len(selected_memories),
         new_input_count=new_input_count,
+        refresh_threshold_used=min_new_memories_for_refresh,
     )
