@@ -15,8 +15,8 @@
  * 7. Extension calls /memory/store to save the completed exchange
  */
 
-import { getContext, extension_settings } from '../../extensions.js';
-import { eventSource, event_types, saveSettingsDebounced, setExtensionPrompt } from '../../../script.js';
+import { getContext, extension_settings } from '../../../extensions.js';
+import { eventSource, event_types, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
 import {
     buildBudgetedMemoryBlock,
     buildPromptInsertionAuditSection,
