@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    buildBudgetedMemoryBlock,
     PRE_GENERATION_HOOK_CANDIDATES,
     buildTurnKey,
     buildPromptInsertionAuditSection,
@@ -37,6 +38,17 @@ test('store audit section captures message previews and result summary', () => {
 });
 
 test('retrieve and prompt audit sections capture memory block insertion details', () => {
+    const budget = buildBudgetedMemoryBlock({
+        items: [
+            {
+                id: 'storm-fear',
+                type: 'profile',
+                layer: 'stable',
+                content: 'Лена боится грозы.',
+                metadata: {},
+            },
+        ],
+    });
     const retrieve = buildRetrieveAuditSection({
         userInput: 'А что насчёт этого?',
         recentMessages: [{ role: 'user', text: 'Мы говорили, что Лена боится грозы.' }],
@@ -48,22 +60,27 @@ test('retrieve and prompt audit sections capture memory block insertion details'
         },
         previewChars: 80,
         stage: 'pre_generation',
+        budget,
     });
     const prompt = buildPromptInsertionAuditSection({
-        memoryBlock: '[Relevant Memory]\n- [STABLE] Лена боится грозы.',
+        memoryBlock: budget.memoryBlock,
         applied: true,
         reason: 'memory_block_set_for_current_turn',
         stage: 'pre_generation',
         appliedToCurrentTurn: true,
+        budget,
     });
 
     assert.equal(retrieve.returned_item_count, 1);
     assert.equal(retrieve.memory_block_item_count, 1);
     assert.equal(retrieve.stage, 'pre_generation');
+    assert.equal(retrieve.budget_applied, true);
     assert.equal(prompt.applied, true);
     assert.equal(prompt.applied_to_current_turn, true);
     assert.equal(prompt.insertion_timing, 'current_generation_pre_prompt');
     assert.equal(prompt.role, 'system');
+    assert.equal(prompt.injected_stable_count, 1);
+    assert.equal(prompt.trimmed_item_count, 0);
 });
 
 test('finalized audit records preserve missing-step notes and bounded recent history', () => {

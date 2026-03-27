@@ -55,11 +55,29 @@ External memory service integration for long-term context in roleplay chats.
 | `apiKey` | `''` | API key (sent as X-API-Key header) |
 | `retrieveLimit` | `5` | Number of memory items to retrieve |
 | `recentMessagesCount` | `8` | Messages to send for extraction |
+| `maxPromptMemories` | `4` | Maximum memory entries injected into the prompt |
+| `maxPromptChars` | `520` | Maximum injected memory block size in characters |
+| `maxSummaryItems` | `1` | Maximum summary memories kept for prompt injection |
+| `maxStableItems` | `2` | Maximum stable/profile/relationship memories kept |
+| `maxEpisodicItems` | `1` | Maximum episodic memories kept |
 | `auditEnabled` | `false` | Enable per-interaction ST integration audit |
 | `auditMaxRecords` | `20` | Keep only the latest N audit records |
 | `auditPreviewChars` | `240` | Preview length for messages and memory blocks in audit |
 
 To change settings, edit `DEFAULT_SETTINGS` in `index.js`.
+
+### Recommended long Russian chat defaults
+
+The shipped defaults are already tuned for a compact long-chat mix:
+
+- `retrieveLimit: 5`
+- `maxPromptMemories: 4`
+- `maxPromptChars: 520`
+- `maxSummaryItems: 1`
+- `maxStableItems: 2`
+- `maxEpisodicItems: 1`
+
+This keeps one rolling summary almost always available, preserves a couple of durable stable facts, and prevents episodic memories from taking over the injected prompt budget.
 
 ## Integration Audit Mode
 
@@ -90,7 +108,9 @@ Each audit record includes:
 - `store_called`, `retrieve_called`
 - store message previews and store summary
 - retrieve query, recent message previews, returned item count
+- retrieved vs injected item counts by layer
 - `memory_block` preview, length, item count
+- prompt budget settings, actual chars, trimmed item count, trimming reasons
 - retrieve stage and prompt injection stage
 - `applied_to_current_turn: true/false`
 - prompt insertion method/timing (`setExtensionPrompt`, `current_generation_pre_prompt`)
@@ -116,6 +136,8 @@ Expected signals:
 - `prompt_injection_stage: 'pre_generation'`
 - `applied_to_current_turn: true`
 - non-empty `prompt_insertion.memory_block_preview`
+- sensible `prompt_insertion.injected_summary_count / injected_stable_count / injected_episodic_count`
+- non-zero `trimmed_item_count` only when the retrieved set actually exceeded prompt budget
 
 If current-turn injection fails, the audit record should make that visible via `notes`.
 
