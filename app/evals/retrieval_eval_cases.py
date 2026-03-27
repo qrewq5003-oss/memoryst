@@ -186,12 +186,14 @@ RUSSIAN_RETRIEVAL_EVAL_CASES = [
                 "Алина любит зелёный чай по утрам.",
                 memory_type="profile",
                 layer="stable",
+                updated_at="2026-03-21T00:00:00+00:00",
             ),
             _memory(
                 "tea-dup",
                 "По утрам Алина очень любит зелёный чай.",
                 memory_type="profile",
                 layer="stable",
+                updated_at="2026-03-19T00:00:00+00:00",
             ),
             _memory(
                 "news",
@@ -225,6 +227,97 @@ RUSSIAN_RETRIEVAL_EVAL_CASES = [
         expected_top_ids=["cats"],
         limit=1,
         notes="Russian normalization should connect word forms like кошке and кошек.",
+    ),
+    RetrievalEvalCase(
+        name="ru_layered_general_query_returns_summary_and_stable_context",
+        query="Что сейчас важно помнить про Алису и Маркуса по фильму?",
+        fixture_memories=[
+            _memory(
+                "rolling-summary",
+                "Краткая сводка: Алиса и Маркус снова сотрудничают над фильмом и держат общий план поездки.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "trust-stable",
+                "Маркус снова доверяет Алисе в рабочих вопросах.",
+                memory_type="relationship",
+                layer="stable",
+            ),
+            _memory(
+                "meeting-episode",
+                "Вчера Алиса и Маркус согласовали новое время встречи по фильму.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["rolling-summary", "trust-stable", "meeting-episode"],
+        limit=5,
+        notes="Layered retrieval should keep summary, stable context, and a relevant local episode together.",
+    ),
+    RetrievalEvalCase(
+        name="ru_layered_local_query_keeps_recent_episode_without_losing_summary",
+        query="Что они решили вчера по встрече?",
+        recent_messages=[
+            MessageInput(role="user", text="Напомни общий статус проекта Алисы и Маркуса.")
+        ],
+        fixture_memories=[
+            _memory(
+                "rolling-summary",
+                "Краткая сводка: Алиса и Маркус пытаются удержать проект и не сорвать поездку.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.9,
+            ),
+            _memory(
+                "project-trust",
+                "Маркус доверяет Алисе и полагается на неё в проекте.",
+                memory_type="relationship",
+                layer="stable",
+            ),
+            _memory(
+                "meeting-episode",
+                "Вчера Алиса и Маркус решили перенести встречу на утро.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_top_ids=["meeting-episode"],
+        expected_contains_ids=["rolling-summary"],
+        limit=3,
+        notes="A local fresh query should still surface the recent episodic memory first while retaining summary context.",
+    ),
+    RetrievalEvalCase(
+        name="ru_layered_preference_coexists_with_summary",
+        query="Что важно помнить про Алису сейчас и что она любит?",
+        fixture_memories=[
+            _memory(
+                "rolling-summary",
+                "Краткая сводка: Алиса держит проект под контролем и старается не ссориться с Маркусом.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.9,
+            ),
+            _memory(
+                "jazz-preference",
+                "Алиса любит джазовую музыку и тихие бары.",
+                memory_type="profile",
+                layer="stable",
+            ),
+            _memory(
+                "ticket-noise",
+                "Вчера Алиса спорила о билетах на концерт.",
+                memory_type="event",
+                layer="episodic",
+            ),
+        ],
+        expected_contains_ids=["rolling-summary", "jazz-preference"],
+        forbidden_top_ids=["ticket-noise"],
+        limit=2,
+        notes="Stable preference should coexist with the rolling summary instead of disappearing behind episodic noise.",
     ),
 ]
 
