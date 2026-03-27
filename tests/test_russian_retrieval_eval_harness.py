@@ -7,7 +7,7 @@ from app.evals.retrieval_eval import (
     run_retrieval_eval_cases,
     summarize_retrieval_eval,
 )
-from app.evals.retrieval_eval_cases import DEFAULT_RETRIEVAL_EVAL_CASES
+from app.evals.retrieval_eval_cases import DEFAULT_RETRIEVAL_EVAL_CASES, LONG_CHAT_RUSSIAN_RP_EVAL_CASES
 from app.schemas import MemoryItem, MemoryMetadata
 
 
@@ -46,9 +46,22 @@ class RussianRetrievalEvalHarnessTests(unittest.TestCase):
         second_run = run_retrieval_eval_cases(DEFAULT_RETRIEVAL_EVAL_CASES)
 
         self.assertEqual(
-            [(result.case_name, result.retrieved_ids, result.passed) for result in first_run],
-            [(result.case_name, result.retrieved_ids, result.passed) for result in second_run],
+            [
+                (result.case_name, result.retrieved_ids, result.retrieved_layer_counts, result.passed)
+                for result in first_run
+            ],
+            [
+                (result.case_name, result.retrieved_ids, result.retrieved_layer_counts, result.passed)
+                for result in second_run
+            ],
         )
+
+    def test_long_chat_eval_cases_preserve_expected_layer_composition(self) -> None:
+        results = run_retrieval_eval_cases(LONG_CHAT_RUSSIAN_RP_EVAL_CASES)
+
+        self.assertTrue(all(result.passed for result in results))
+        self.assertTrue(all(sum(result.retrieved_layer_counts.values()) >= 2 for result in results))
+        self.assertTrue(any(result.retrieved_layer_counts["summary"] == 1 for result in results))
 
     def test_failure_result_reports_missing_and_forbidden_ids(self) -> None:
         failing_case = RetrievalEvalCase(
@@ -57,6 +70,7 @@ class RussianRetrievalEvalHarnessTests(unittest.TestCase):
             fixture_memories=[_memory("wrong", "Алиса любит кофе.")],
             expected_top_ids=["expected"],
             forbidden_top_ids=["wrong"],
+            expected_layer_counts={"summary": 1},
         )
 
         result = run_retrieval_eval_case(failing_case)
@@ -65,8 +79,10 @@ class RussianRetrievalEvalHarnessTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.missing_expected_top_ids, ["expected"])
         self.assertEqual(result.forbidden_present_ids, ["wrong"])
+        self.assertEqual(result.mismatched_layer_counts["summary"]["expected"], 1)
         self.assertIn("missing_expected_top", report)
         self.assertIn("forbidden_present", report)
+        self.assertIn("mismatched_layer_counts", report)
 
 
 if __name__ == "__main__":
