@@ -59,6 +59,44 @@ class DurableRelationshipFormationTests(unittest.TestCase):
         self.assertEqual(created.type, "event")
         self.assertEqual(created.layer, "episodic")
 
+    def test_one_off_support_scene_without_carry_over_wording_stays_episodic(self) -> None:
+        response = store_memories(
+            StoreMemoryRequest(
+                chat_id="chat-1",
+                character_id="char-1",
+                messages=[
+                    MessageInput(
+                        role="assistant",
+                        text="Вчера Маркус помог Алисе донести коробки до студии и сразу уехал.",
+                    )
+                ],
+            )
+        )
+
+        self.assertEqual(response.stored, 1)
+        created = list_memories(chat_id="chat-1", character_id="char-1").items[0]
+        self.assertEqual(created.type, "event")
+        self.assertEqual(created.layer, "episodic")
+
+    def test_profile_statement_does_not_spuriously_become_relationship_memory(self) -> None:
+        response = store_memories(
+            StoreMemoryRequest(
+                chat_id="chat-1",
+                character_id="char-1",
+                messages=[
+                    MessageInput(
+                        role="assistant",
+                        text="Алиса работает врачом и живёт в Риме.",
+                    )
+                ],
+            )
+        )
+
+        self.assertEqual(response.stored, 1)
+        created = list_memories(chat_id="chat-1", character_id="char-1").items[0]
+        self.assertEqual(created.type, "profile")
+        self.assertEqual(created.layer, "stable")
+
     def test_repeated_relationship_arc_can_leave_summary_and_stable_relation_together(self) -> None:
         store_memories(
             StoreMemoryRequest(
@@ -75,6 +113,24 @@ class DurableRelationshipFormationTests(unittest.TestCase):
         items = list_memories(chat_id="chat-1", character_id="char-1").items
         relationship_items = [item for item in items if item.type == "relationship" and item.layer == "stable"]
         self.assertGreaterEqual(len(relationship_items), 1)
+
+    def test_summary_and_stable_relation_do_not_appear_from_single_scene_without_carry_over(self) -> None:
+        store_memories(
+            StoreMemoryRequest(
+                chat_id="chat-1",
+                character_id="char-1",
+                messages=[
+                    MessageInput(
+                        role="assistant",
+                        text="Вчера на встрече Маркус резко спорил с Алисой о бюджете фильма.",
+                    )
+                ],
+            )
+        )
+
+        items = list_memories(chat_id="chat-1", character_id="char-1").items
+        stable_relationship_items = [item for item in items if item.type == "relationship" and item.layer == "stable"]
+        self.assertEqual(stable_relationship_items, [])
 
 
 if __name__ == "__main__":
