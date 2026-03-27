@@ -22,6 +22,12 @@ BOTH_MATCH_BONUS = 0.10
 MIN_RETRIEVAL_SCORE = 0.15
 NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
 CLOSE_SCORE_LAYER_TIE_EPSILON = 0.05
+RELATIONSHIP_CUE_WEIGHT = 0.14
+RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
+    "summary": 0.03,
+    "stable": 0.03,
+    "episodic": 0.015,
+}
 LAYER_SELECTION_CAPS = {
     "summary": 1,
     "stable": 2,
@@ -38,6 +44,9 @@ def _compute_score_details(
     memory: MemoryItem,
     input_keywords: list[str],
     input_entities: list[str],
+    *,
+    relationship_query_like: bool = False,
+    input_relationship_cues: list[str] | None = None,
 ) -> dict[str, float]:
     """
     Compute relevance score components for a memory item.
@@ -70,10 +79,21 @@ def _compute_score_details(
     else:
         entity_overlap = 0.0
 
-    if keyword_overlap == 0.0 and entity_overlap == 0.0:
+    input_relationship_cue_set = set(input_relationship_cues or [])
+    memory_relationship_cues = set(text_features.extract_relationship_state_cues(memory.content))
+    if relationship_query_like and input_relationship_cue_set:
+        relationship_cue_overlap = (
+            len(memory_relationship_cues & input_relationship_cue_set) / len(input_relationship_cue_set)
+        )
+    else:
+        relationship_cue_overlap = 0.0
+
+    if keyword_overlap == 0.0 and entity_overlap == 0.0 and relationship_cue_overlap == 0.0:
         return {
             "keyword_overlap": keyword_overlap,
             "entity_overlap": entity_overlap,
+            "relationship_cue_overlap": relationship_cue_overlap,
+            "relationship_support_bonus": 0.0,
             "recency": 0.0,
             "score": 0.0,
         }
@@ -89,10 +109,14 @@ def _compute_score_details(
 
     relevance_score = (
         keyword_overlap * KEYWORD_WEIGHT +
-        entity_overlap * ENTITY_WEIGHT
+        entity_overlap * ENTITY_WEIGHT +
+        relationship_cue_overlap * RELATIONSHIP_CUE_WEIGHT
     )
 
     both_match_bonus = BOTH_MATCH_BONUS if keyword_overlap > 0.0 and entity_overlap > 0.0 else 0.0
+    relationship_support_bonus = 0.0
+    if relationship_query_like and relationship_cue_overlap > 0.0:
+        relationship_support_bonus = RELATIONSHIP_SUPPORT_BONUS_BY_LAYER[_get_retrieval_layer(memory)]
 
     # Weak matches should not climb mainly on importance or freshness.
     combined_overlap = (keyword_overlap * 0.65) + (entity_overlap * 0.35)
@@ -109,12 +133,14 @@ def _compute_score_details(
         (PINNED_BONUS if memory.pinned else 0.0)
     ) * support_multiplier
 
-    score = relevance_score + both_match_bonus + support_score
+    score = relevance_score + both_match_bonus + relationship_support_bonus + support_score
 
     # Cap at 1.0
     return {
         "keyword_overlap": keyword_overlap,
         "entity_overlap": entity_overlap,
+        "relationship_cue_overlap": relationship_cue_overlap,
+        "relationship_support_bonus": relationship_support_bonus,
         "recency": recency,
         "score": min(score, 1.0),
     }
@@ -248,19 +274,28 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     # Extract keywords and entities from user_input
     query_keywords = text_features.extract_keywords(request.user_input)
     query_entities = text_features.extract_entities(request.user_input)
+    query_relationship_cues = text_features.extract_relationship_state_cues(request.user_input)
+    relationship_query_like = text_features.is_relationship_state_query(request.user_input)
     input_keywords = list(query_keywords)
     input_entities = list(query_entities)
     recent_keywords: list[str] = []
     recent_entities: list[str] = []
+    recent_relationship_cues: list[str] = []
 
     # Also consider recent_messages
     for msg in request.recent_messages:
         msg_keywords = text_features.extract_keywords(msg.text)
         msg_entities = text_features.extract_entities(msg.text)
+        msg_relationship_cues = text_features.extract_relationship_state_cues(msg.text)
         recent_keywords.extend(msg_keywords)
         recent_entities.extend(msg_entities)
+        recent_relationship_cues.extend(msg_relationship_cues)
         input_keywords.extend(msg_keywords)
         input_entities.extend(msg_entities)
+        if relationship_query_like:
+            query_relationship_cues.extend(msg_relationship_cues)
+
+    input_relationship_cues = list(dict.fromkeys(query_relationship_cues))
 
     # Get candidates without UI pagination bias
     all_candidates = list_retrieval_candidates(
@@ -282,7 +317,13 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     for memory in all_candidates:
         layer = _get_retrieval_layer(memory)
         layer_candidate_counts[layer] += 1
-        details = _compute_score_details(memory, input_keywords, input_entities)
+        details = _compute_score_details(
+            memory,
+            input_keywords,
+            input_entities,
+            relationship_query_like=relationship_query_like,
+            input_relationship_cues=input_relationship_cues,
+        )
         score = details["score"]
         passed_threshold = score >= MIN_RETRIEVAL_SCORE
         if passed_threshold:
@@ -300,6 +341,8 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
                 score=score,
                 keyword_overlap=details["keyword_overlap"],
                 entity_overlap=details["entity_overlap"],
+                relationship_cue_overlap=details["relationship_cue_overlap"],
+                relationship_support_bonus=details["relationship_support_bonus"],
                 recency=details["recency"],
                 passed_threshold=passed_threshold,
                 reason="threshold_passed" if passed_threshold else "below_threshold",
@@ -409,6 +452,10 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
                 recent_entities=recent_entities,
                 input_keywords=input_keywords,
                 input_entities=input_entities,
+                relationship_query_like=relationship_query_like,
+                query_relationship_cues=text_features.extract_relationship_state_cues(request.user_input),
+                recent_relationship_cues=recent_relationship_cues,
+                input_relationship_cues=input_relationship_cues,
                 summary_candidates=layer_candidate_counts["summary"],
                 stable_candidates=layer_candidate_counts["stable"],
                 episodic_candidates=layer_candidate_counts["episodic"],

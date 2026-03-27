@@ -34,6 +34,54 @@ KEYWORD_STOPWORDS = {
     "всегда", "часто", "обычно", "постоянно", "никогда",
 }
 
+RELATIONSHIP_STATE_CUE_PATTERNS = {
+    "conflict": [
+        r"\bзл\w*",
+        r"\bссор\w*",
+        r"\bконфликт\w*",
+        r"\bруг\w*",
+        r"\bспор\w*",
+        r"\bсорвал\w*",
+    ],
+    "repair": [
+        r"\bпомир\w*",
+        r"\bпримир\w*",
+        r"\bналад\w*",
+    ],
+    "trust": [
+        r"\bдовер\w*",
+        r"\bполага\w*",
+    ],
+    "distance": [
+        r"\bнапряж\w*",
+        r"\bдистанц\w*",
+        r"\bосторож\w*",
+        r"\bне до конца\b",
+        r"\bне расслаб\w*",
+    ],
+    "together": [
+        r"\bсотруднич\w*",
+        r"\bработа\w* вместе\b",
+        r"\bснова работа\w* вместе\b",
+        r"\bпомога\w*",
+        r"\bвместе\b",
+    ],
+    "attitude": [
+        r"\bотнос\w*",
+        r"\bотношен\w*",
+        r"\bмежду ними\b",
+    ],
+}
+
+GENERAL_STATE_QUERY_PATTERNS = [
+    r"\bчто у (?:них|неё|нее|него) сейчас\b",
+    r"\bчто у них вообще\b",
+    r"\bкак .* относ\w*",
+    r"\bчто между ними\b",
+    r"\bони уже .* или нет\b",
+    r"\bони снова .*вместе\b",
+]
+
 
 def _get_morph():
     """Lazy initialization of pymorphy3 morph."""
@@ -116,3 +164,26 @@ def extract_keywords(text: str) -> list[str]:
         keywords.append(normalized)
 
     return keywords[:8]
+
+
+def extract_relationship_state_cues(text: str) -> list[str]:
+    """Extract narrow, explicit Russian relationship/general-state cues."""
+    if not text:
+        return []
+
+    text_lower = text.lower()
+    cues = []
+
+    for cue, patterns in RELATIONSHIP_STATE_CUE_PATTERNS.items():
+        if any(re.search(pattern, text_lower) for pattern in patterns):
+            cues.append(cue)
+
+    if any(re.search(pattern, text_lower) for pattern in GENERAL_STATE_QUERY_PATTERNS):
+        cues.append("status")
+
+    return cues
+
+
+def is_relationship_state_query(text: str) -> bool:
+    """Detect broad relationship/general-state Russian queries."""
+    return bool(extract_relationship_state_cues(text))

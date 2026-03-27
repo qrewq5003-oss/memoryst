@@ -178,6 +178,74 @@ RUSSIAN_RETRIEVAL_EVAL_CASES = [
         notes="Recent message context should recover a relevant stable fact for a vague follow-up query.",
     ),
     RetrievalEvalCase(
+        name="ru_relationship_status_wording_surfaces_summary_and_stable",
+        query="Как он теперь к ней относится?",
+        recent_messages=[
+            MessageInput(role="user", text="После ссоры Маркус и Алиса снова работают вместе, но между ними ещё осталось напряжение."),
+        ],
+        fixture_memories=[
+            _memory(
+                "relationship-summary",
+                "Краткая сводка: после ссоры Маркус и Алиса частично помирились, но между ними всё ещё есть напряжение.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "relationship-stable",
+                "Маркус снова доверяет Алисе в работе, хотя держит осторожную дистанцию.",
+                memory_type="relationship",
+                layer="stable",
+                importance=0.84,
+            ),
+            _memory(
+                "old-fight",
+                "Раньше Маркус сорвался на Алису после провала на съёмке.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-10T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["relationship-summary", "relationship-stable"],
+        forbidden_top_ids=["old-fight"],
+        limit=2,
+        notes="Broad Russian attitude phrasing should still surface relationship summary and stable context.",
+    ),
+    RetrievalEvalCase(
+        name="ru_relationship_working_together_phrase_keeps_summary_context",
+        query="Они снова нормально работают вместе?",
+        recent_messages=[
+            MessageInput(role="assistant", text="После конфликта Алина и Маркус всё-таки вернулись к общему проекту."),
+        ],
+        fixture_memories=[
+            _memory(
+                "working-summary",
+                "Краткая сводка: после ссоры Алина и Маркус снова работают вместе над фильмом, но осторожничают.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "working-stable",
+                "Маркус снова помогает Алине с фильмом и постепенно возвращает доверие.",
+                memory_type="relationship",
+                layer="stable",
+                importance=0.82,
+            ),
+            _memory(
+                "old-conflict",
+                "Неделю назад Алина и Маркус громко спорили в мастерской.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-10T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["working-summary", "working-stable"],
+        forbidden_top_ids=["old-conflict"],
+        limit=2,
+        notes="Working-together phrasing should not miss relationship summary and stable repair context.",
+    ),
+    RetrievalEvalCase(
         name="ru_diversity_keeps_distinct_memory_and_drops_duplicate",
         query="Что Алина делает по утрам?",
         fixture_memories=[
