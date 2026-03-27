@@ -322,6 +322,165 @@ RUSSIAN_RETRIEVAL_EVAL_CASES = [
 ]
 
 
+LONG_CHAT_RUSSIAN_RP_EVAL_CASES = [
+    RetrievalEvalCase(
+        name="ru_long_chat_relationship_arc_prefers_summary_and_repair_context",
+        query="Он всё ещё злится на неё или они уже помирились?",
+        recent_messages=[
+            MessageInput(role="user", text="Напомни, что сейчас между Алисой и Маркусом после всех сцен.")
+        ],
+        fixture_memories=[
+            _memory(
+                "relationship-summary",
+                "Краткая сводка: после ссоры Алиса и Маркус частично помирились, но между ними всё ещё остаётся напряжение.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "trust-repair",
+                "Маркус снова начал доверять Алисе в рабочих вопросах, хотя полностью не расслабился.",
+                memory_type="relationship",
+                layer="stable",
+                importance=0.85,
+            ),
+            _memory(
+                "old-fight",
+                "Неделю назад Маркус сорвался на Алису из-за провала на съёмке.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-10T00:00:00+00:00",
+            ),
+            _memory(
+                "recent-truce",
+                "Вчера Алиса и Маркус договорились не возвращаться к старой ссоре до конца поездки.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["relationship-summary", "trust-repair", "recent-truce"],
+        forbidden_top_ids=["old-fight"],
+        expected_layer_counts={"summary": 1, "stable": 1, "episodic": 1},
+        limit=3,
+        notes="Long relationship arc should keep the rolling summary, durable repair context, and one fresh episodic scene without letting an old conflict fragment dominate.",
+    ),
+    RetrievalEvalCase(
+        name="ru_long_chat_goal_survives_noise_via_summary_and_stable",
+        query="Чего Алиса сейчас пытается добиться с фильмом?",
+        recent_messages=[
+            MessageInput(role="user", text="В последних сценах было много шума про поездку и усталость команды.")
+        ],
+        fixture_memories=[
+            _memory(
+                "goal-summary",
+                "Краткая сводка: Алиса пытается закончить фильм вовремя, удержать команду вместе и не сорвать монтаж.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "goal-stable",
+                "Алисе важно закончить монтаж до фестиваля и не потерять финансирование.",
+                memory_type="profile",
+                layer="stable",
+                importance=0.88,
+            ),
+            _memory(
+                "noise-market",
+                "Вчера Алиса долго спорила с продавцом реквизита на рынке.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-25T00:00:00+00:00",
+            ),
+            _memory(
+                "noise-train",
+                "Позже команда застряла на вокзале и потеряла час.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["goal-summary", "goal-stable"],
+        forbidden_top_ids=["noise-market", "noise-train"],
+        expected_layer_counts={"summary": 1, "stable": 1},
+        limit=2,
+        notes="Ongoing long-arc goal should survive scene noise through summary plus stable goal context.",
+    ),
+    RetrievalEvalCase(
+        name="ru_long_chat_local_scene_survives_summary_presence",
+        query="Что Алиса и Маркус решили про встречу по проекту?",
+        recent_messages=[
+            MessageInput(role="user", text="Напомни их общий статус по проекту.")
+        ],
+        fixture_memories=[
+            _memory(
+                "project-summary",
+                "Краткая сводка: Алиса и Маркус удерживают проект, не хотят срывать поездку и стараются держать общий рабочий ритм без новой ссоры.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.9,
+            ),
+            _memory(
+                "project-stable",
+                "Маркус доверяет Алисе в вопросах проекта и рабочих решений.",
+                memory_type="relationship",
+                layer="stable",
+                importance=0.8,
+            ),
+            _memory(
+                "fresh-meeting",
+                "Только что Алиса и Маркус решили перенести встречу по проекту на утро и позвать Лену позже.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_top_ids=["fresh-meeting"],
+        expected_contains_ids=["project-summary"],
+        expected_layer_counts={"summary": 1, "stable": 1, "episodic": 1},
+        limit=3,
+        notes="Fresh local scene should still rank first while summary and stable context remain present.",
+    ),
+    RetrievalEvalCase(
+        name="ru_long_chat_vague_follow_up_uses_recent_messages_and_layers",
+        query="А что у них сейчас вообще?",
+        recent_messages=[
+            MessageInput(role="user", text="Мы обсуждали, что после ссоры они всё-таки снова работают вместе над фильмом."),
+            MessageInput(role="assistant", text="И Маркус пока ещё не до конца расслабился, хотя конфликт уже не острый."),
+        ],
+        fixture_memories=[
+            _memory(
+                "status-summary",
+                "Краткая сводка: после тяжёлой ссоры Алиса и Маркус снова сотрудничают, но между ними держится осторожное напряжение.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "status-stable",
+                "Маркус снова помогает Алисе с фильмом, хотя всё ещё держит дистанцию.",
+                memory_type="relationship",
+                layer="stable",
+                importance=0.83,
+            ),
+            _memory(
+                "old-scene",
+                "Раньше Маркус хлопнул дверью и ушёл после ссоры в мастерской.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-08T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["status-summary", "status-stable"],
+        forbidden_top_ids=["old-scene"],
+        expected_layer_counts={"summary": 1, "stable": 1},
+        limit=2,
+        notes="Vague Russian follow-up should use recent_messages plus summary/stable context instead of collapsing into an old literal-matching episode.",
+    ),
+]
+
+
 SANITY_RETRIEVAL_EVAL_CASES = [
     RetrievalEvalCase(
         name="en_profile_fact_retrieval_sanity",
@@ -370,5 +529,6 @@ SANITY_RETRIEVAL_EVAL_CASES = [
 
 DEFAULT_RETRIEVAL_EVAL_CASES = [
     *RUSSIAN_RETRIEVAL_EVAL_CASES,
+    *LONG_CHAT_RUSSIAN_RP_EVAL_CASES,
     *SANITY_RETRIEVAL_EVAL_CASES,
 ]

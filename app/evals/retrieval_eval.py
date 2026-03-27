@@ -6,6 +6,22 @@ from app.schemas import MemoryItem, MessageInput, RetrieveMemoryRequest
 from app.services.retrieve_service import retrieve_memories
 
 
+def _count_layers(items: list[MemoryItem]) -> dict[str, int]:
+    counts = {
+        "summary": 0,
+        "stable": 0,
+        "episodic": 0,
+    }
+    for item in items:
+        if item.type == "summary" or item.metadata.is_summary:
+            counts["summary"] += 1
+        elif item.layer == "stable":
+            counts["stable"] += 1
+        else:
+            counts["episodic"] += 1
+    return counts
+
+
 @dataclass(frozen=True)
 class RetrievalEvalCase:
     name: str
@@ -15,6 +31,7 @@ class RetrievalEvalCase:
     expected_top_ids: list[str] = field(default_factory=list)
     expected_contains_ids: list[str] = field(default_factory=list)
     forbidden_top_ids: list[str] = field(default_factory=list)
+    expected_layer_counts: dict[str, int] = field(default_factory=dict)
     limit: int = 5
     notes: str = ""
 
@@ -27,6 +44,8 @@ class RetrievalEvalResult:
     missing_expected_top_ids: list[str]
     missing_expected_contains_ids: list[str]
     forbidden_present_ids: list[str]
+    retrieved_layer_counts: dict[str, int]
+    mismatched_layer_counts: dict[str, dict[str, int]]
     debug_snapshot: list[str]
     notes: str = ""
 
@@ -49,6 +68,7 @@ def run_retrieval_eval_case(case: RetrievalEvalCase) -> RetrievalEvalResult:
         )
 
     retrieved_ids = [item.id for item in response.items]
+    retrieved_layer_counts = _count_layers(response.items)
     missing_expected_top_ids = [
         memory_id
         for index, memory_id in enumerate(case.expected_top_ids)
@@ -60,6 +80,14 @@ def run_retrieval_eval_case(case: RetrievalEvalCase) -> RetrievalEvalResult:
     forbidden_present_ids = [
         memory_id for memory_id in case.forbidden_top_ids if memory_id in retrieved_ids
     ]
+    mismatched_layer_counts = {
+        layer: {
+            "expected": expected_count,
+            "actual": retrieved_layer_counts.get(layer, 0),
+        }
+        for layer, expected_count in case.expected_layer_counts.items()
+        if retrieved_layer_counts.get(layer, 0) != expected_count
+    }
 
     debug_snapshot: list[str] = []
     expected_ids = set(case.expected_top_ids + case.expected_contains_ids + case.forbidden_top_ids)
@@ -77,6 +105,7 @@ def run_retrieval_eval_case(case: RetrievalEvalCase) -> RetrievalEvalResult:
         missing_expected_top_ids
         or missing_expected_contains_ids
         or forbidden_present_ids
+        or mismatched_layer_counts
     )
 
     return RetrievalEvalResult(
@@ -86,6 +115,8 @@ def run_retrieval_eval_case(case: RetrievalEvalCase) -> RetrievalEvalResult:
         missing_expected_top_ids=missing_expected_top_ids,
         missing_expected_contains_ids=missing_expected_contains_ids,
         forbidden_present_ids=forbidden_present_ids,
+        retrieved_layer_counts=retrieved_layer_counts,
+        mismatched_layer_counts=mismatched_layer_counts,
         debug_snapshot=debug_snapshot,
         notes=case.notes,
     )
@@ -118,12 +149,15 @@ def format_retrieval_eval_report(results: Iterable[RetrievalEvalResult]) -> str:
         status = "PASS" if result.passed else "FAIL"
         lines.append(f"[{status}] {result.case_name}")
         lines.append(f"  retrieved={result.retrieved_ids}")
+        lines.append(f"  layers={result.retrieved_layer_counts}")
         if result.missing_expected_top_ids:
             lines.append(f"  missing_expected_top={result.missing_expected_top_ids}")
         if result.missing_expected_contains_ids:
             lines.append(f"  missing_expected_contains={result.missing_expected_contains_ids}")
         if result.forbidden_present_ids:
             lines.append(f"  forbidden_present={result.forbidden_present_ids}")
+        if result.mismatched_layer_counts:
+            lines.append(f"  mismatched_layer_counts={result.mismatched_layer_counts}")
         if result.debug_snapshot:
             lines.append(f"  debug={result.debug_snapshot}")
         if result.notes:

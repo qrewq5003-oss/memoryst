@@ -165,3 +165,48 @@ test('audit sections reflect retrieved vs injected composition after budget trim
     assert.equal(prompt.trimmed_item_count, 1);
     assert.match(prompt.trim_reasons.join(','), /(layer_cap|item_cap|char_budget):episodic/);
 });
+
+test('long-chat budget scenario keeps summary and stable core while limiting episodic noise', () => {
+    const budget = buildBudgetedMemoryBlock({
+        items: [
+            memory('summary', {
+                type: 'summary',
+                layer: 'stable',
+                content: 'Краткая сводка: Алиса и Маркус после длинной дуги снова сотрудничают, но всё ещё осторожничают.',
+                isSummary: true,
+            }),
+            memory('stable-a', {
+                type: 'relationship',
+                layer: 'stable',
+                content: 'Маркус снова доверяет Алисе в проекте.',
+            }),
+            memory('stable-b', {
+                type: 'profile',
+                layer: 'stable',
+                content: 'Алисе важно закончить фильм до фестиваля.',
+            }),
+            memory('episodic-a', {
+                type: 'event',
+                layer: 'episodic',
+                content: 'Вчера они спорили о времени встречи у вокзала.',
+            }),
+            memory('episodic-b', {
+                type: 'event',
+                layer: 'episodic',
+                content: 'Позже Алиса долго искала новый реквизит на рынке.',
+            }),
+        ],
+        maxPromptMemories: 4,
+        maxPromptChars: 340,
+        maxSummaryItems: 1,
+        maxStableItems: 2,
+        maxEpisodicItems: 1,
+    });
+
+    assert.equal(budget.injectedByLayer.summary, 1);
+    assert.equal(budget.injectedByLayer.stable, 2);
+    assert.equal(budget.injectedByLayer.episodic, 1);
+    assert.equal(budget.trimmedByLayer.episodic, 1);
+    assert.equal(budget.selectedItems.length, 4);
+    assert.ok(budget.memoryBlock.length <= 340);
+});
