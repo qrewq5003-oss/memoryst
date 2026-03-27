@@ -223,6 +223,9 @@ def _detect_type(text: str) -> MemoryType | None:
     """Detect memory type based on lightweight semantic markers."""
     text_lower = text.lower()
 
+    # Bounded carry-over gate for Russian long-chat relationship state.
+    # This should only promote durable state shifts to `relationship`, not
+    # absorb ordinary conflict/meeting scenes that belong in episodic memory.
     if text_features.is_durable_relationship_statement(text):
         return "relationship"
     if _looks_like_event(text_lower):
@@ -252,6 +255,9 @@ def _get_layer(memory_type: MemoryType, text: str) -> str:
     if memory_type == "event":
         return "episodic"
 
+    # Durable relationship gate: keep stable relation memories for longer-arc
+    # state carry-over, while letting scene-like relationship mentions stay
+    # episodic through the normal checks below.
     if memory_type == "relationship" and text_features.is_durable_relationship_statement(text):
         return "stable"
 

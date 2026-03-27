@@ -149,6 +149,12 @@ LOCAL_SCENE_DETAIL_PATTERNS = [
 # This helper exists only to distinguish relationship state carry-over from
 # one-off conflict/meeting episodes in the store/extractor path.
 #
+# This is not a general relationship semantics parser. It should stay bounded
+# and only help the store path preserve load-bearing relationship state after
+# a longer arc. If a phrase reads primarily like a scene outcome, flare-up, or
+# one-off meeting detail, it should stay episodic unless there is explicit
+# carry-over wording.
+#
 # Allowed durable relationship state families for v1:
 # - trust / distrust shift
 # - distance / caution / lingering tension
@@ -158,6 +164,8 @@ LOCAL_SCENE_DETAIL_PATTERNS = [
 #
 # Maintenance rule:
 # - add patterns only when a concrete long-chat store miss is covered by tests/evals
+# - add new patterns inside existing families first; new families require a
+#   dedicated scenario/test explaining why the current set is insufficient
 # - do not turn one-off scene actions into stable relationship state by default
 DURABLE_RELATIONSHIP_STATE_PATTERNS = {
     "trust": [
@@ -198,6 +206,9 @@ DURABLE_RELATIONSHIP_STATE_PATTERNS = {
     ],
 }
 
+# Safety blockers against scene overcapture. These should keep conflict bursts,
+# one-off meeting/action lines, and other local outcomes from becoming stable
+# relationship memories just because a relationship term also appears nearby.
 DURABLE_RELATIONSHIP_EPISODIC_BLOCKERS = [
     r"\bначал\w* ссор\w*",
     r"\bначал\w* спор\w*",
@@ -376,7 +387,13 @@ def extract_durable_relationship_state_cues(text: str) -> list[str]:
 
 
 def is_durable_relationship_statement(text: str) -> bool:
-    """Return True for bounded Russian relationship-state carry-over statements."""
+    """
+    Return True for bounded Russian relationship-state carry-over statements.
+
+    This is a formation gate only. It should help the extractor emit
+    `relationship/stable` for durable arc state, not become a generic semantic
+    shortcut for anything mentioning two characters.
+    """
     if not text:
         return False
 
