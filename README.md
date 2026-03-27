@@ -79,3 +79,7 @@ It also prints:
 - `new_input_count`
 - `refresh_threshold_used`
 - `source_memory_ids`
+
+## Live ST Verification
+
+Short practical notes from a real SillyTavern runtime verification run are in [docs/live_st_verification_report.md](docs/live_st_verification_report.md).
