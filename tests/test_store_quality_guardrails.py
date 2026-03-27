@@ -9,6 +9,7 @@ from app.repositories.memory_repo import create_memory, list_memories
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MessageInput, StoreMemoryRequest
 from app.services.store_service import passes_memory_quality_gate, store_memories
 from app.services.extractor import extract_memories
+from app.services import text_features
 
 
 def _candidate(
@@ -187,6 +188,59 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         )
 
         self.assertEqual(candidates, [])
+
+    def test_question_form_user_local_scene_prompt_is_not_extracted(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="user",
+                    text="Что они решили по ближайшей рабочей встрече?",
+                )
+            ],
+        )
+
+        self.assertEqual(candidates, [])
+
+    def test_question_guard_does_not_apply_to_assistant_role(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="assistant",
+                    text="Что они решили по ближайшей рабочей встрече?",
+                )
+            ],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].type, "event")
+        self.assertEqual(candidates[0].layer, "episodic")
+
+    def test_broad_profile_user_question_does_not_trigger_specialized_question_guards(self) -> None:
+        text = "Где Алиса работает?"
+
+        self.assertTrue(text_features.is_question_like_text(text))
+        self.assertFalse(text_features.is_question_form_relationship_prompt(text))
+        self.assertFalse(text_features.is_question_form_local_scene_prompt(text))
+
+    def test_declarative_local_scene_outcome_still_extracts_as_episodic(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="assistant",
+                    text="Они решили перенести встречу по проекту на утро и позвать Лену позже.",
+                )
+            ],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].type, "event")
+        self.assertEqual(candidates[0].layer, "episodic")
 
 
 if __name__ == "__main__":

@@ -72,6 +72,16 @@ class MemoryTypeLayerHeuristicsTests(unittest.TestCase):
         candidate = _extract("Они хоть немного помирились после разговора?")
         self.assertIsNone(candidate)
 
+    def test_question_form_local_scene_prompt_is_not_promoted_to_episodic_memory(self) -> None:
+        candidate = _extract("Что они решили по ближайшей рабочей встрече?")
+        self.assertIsNone(candidate)
+
+    def test_declarative_local_scene_outcome_stays_episodic(self) -> None:
+        candidate = _extract("Они решили перенести встречу по проекту на утро.")
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.type, "event")
+        self.assertEqual(candidate.layer, "episodic")
+
     def test_one_off_conflict_scene_remains_episodic_event(self) -> None:
         candidate = _extract("После провала на площадке Маркус сорвался на Алису, и между ними началась тяжёлая ссора.")
         self.assertIsNotNone(candidate)

@@ -218,9 +218,27 @@ DURABLE_RELATIONSHIP_EPISODIC_BLOCKERS = [
     r"\bвстрет\w* .*вчера\b",
 ]
 
-# Narrow question-form guardrail for durable relationship formation.
-# This blocks low-value user prompts from being stored as carry-over
-# relationship state. It is intentionally not a generic question filter.
+# Narrow question-form anti-artifact filter for store/extractor logic.
+# This exists only to stop raw user prompts from leaking into stored memories.
+# It is intentionally not:
+# - a semantic classifier
+# - a retrieval feature
+# - a generic prompt understanding layer
+#
+# Allowed guarded families for v1:
+# - relationship question prompts
+# - local-scene question prompts
+#
+# User-role-only rule:
+# - this helper family is only meaningful when the caller already knows the
+#   source message is `role="user"`
+# - assistant/narration/system-like content must not be filtered through these
+#   guards by default
+#
+# Maintenance rule:
+# - expand only for a concrete live/runtime artifact
+# - add a regression test first
+# - keep the written scope narrow and explicit
 QUESTION_PREFIX_PATTERNS = [
     r"^\s*(?:что|как|когда|где|почему|зачем|кто|кого|кому|чего|чему)\b",
     r"^\s*(?:был|была|было|были|есть|ли)\b",
@@ -340,7 +358,7 @@ def is_relationship_state_query(text: str) -> bool:
 
 
 def is_question_like_text(text: str) -> bool:
-    """Detect compact interrogative phrasing without turning this into a full parser."""
+    """Detect compact interrogative phrasing for the narrow anti-artifact filter only."""
     if not text:
         return False
 
@@ -444,3 +462,16 @@ def is_question_form_relationship_prompt(text: str) -> bool:
         extract_durable_relationship_state_cues(text)
         or extract_relationship_state_cues(text)
     )
+
+
+def is_question_form_local_scene_prompt(text: str) -> bool:
+    """
+    Guard against storing user-side local-scene questions as episodic memories.
+
+    This remains intentionally narrow: only interrogative phrasing with
+    local-scene/event semantics should be blocked.
+    """
+    if not is_question_like_text(text):
+        return False
+
+    return is_local_scene_query(text)

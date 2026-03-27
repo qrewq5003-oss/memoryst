@@ -323,14 +323,21 @@ def extract_memories(
         if not _is_meaningful(text):
             continue
 
-        # Durable relationship formation is carry-over oriented. Question-form
-        # user prompts are not valid relationship memories by default, so skip
-        # them before they can fall through to the generic relationship branch.
+        # Narrow anti-artifact filter only:
+        # - applies only to `role="user"`
+        # - blocks raw question prompts from being stored as memories
+        # - currently allowed only for relationship and local-scene prompt families
+        # - is not a semantic classifier or generic prompt-understanding layer
         if (
             msg.role == "user"
             and text_features.is_question_like_text(text)
             and (
                 text_features.is_question_form_relationship_prompt(text)
+                or text_features.is_question_form_local_scene_prompt(text)
+                or (
+                    text_features.is_local_scene_query(text)
+                    and _looks_like_event(text.lower())
+                )
                 or _looks_like_relationship(text.lower())
             )
         ):
