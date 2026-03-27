@@ -165,9 +165,41 @@ class RollingSummaryLayerTests(unittest.TestCase):
         self.assertTrue(summary.metadata.is_summary)
         self.assertEqual(summary.metadata.summary_kind, ROLLING_SUMMARY_KIND)
         self.assertEqual(summary.layer, "stable")
-        self.assertEqual(summary.type, "profile")
+        self.assertEqual(summary.type, "summary")
         self.assertEqual(summary.metadata.summarized_memory_count, 3)
         self.assertEqual(len(summary.metadata.summary_source_memory_ids), 3)
+
+    def test_repeated_summary_generation_keeps_distinct_summary_type(self) -> None:
+        _create_memory(
+            chat_id="chat-1",
+            character_id="char-1",
+            content="Алиса спорила с Маркусом о бюджете.",
+            layer="episodic",
+        )
+        _create_memory(
+            chat_id="chat-1",
+            character_id="char-1",
+            content="Позже они решили не отменять поездку.",
+            layer="episodic",
+        )
+        _create_memory(
+            chat_id="chat-1",
+            character_id="char-1",
+            content="Алиса хочет удержать проект на плаву.",
+            layer="episodic",
+        )
+
+        first = generate_rolling_summary("chat-1", "char-1", window_size=5)
+        second = generate_rolling_summary("chat-1", "char-1", window_size=5)
+        summary = next(
+            memory for memory in list_memories(chat_id="chat-1", character_id="char-1", limit=20).items
+            if memory.metadata.is_summary
+        )
+
+        self.assertEqual(first.action, "created")
+        self.assertEqual(second.action, "updated")
+        self.assertEqual(summary.type, "summary")
+        self.assertEqual(summary.id, second.summary_memory_id)
 
     def test_summary_memory_formats_with_summary_label(self) -> None:
         _create_memory(

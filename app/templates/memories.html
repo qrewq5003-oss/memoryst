@@ -23,6 +23,7 @@
                     <option value="profile" {% if filters["type"] == 'profile' %}selected{% endif %}>Profile</option>
                     <option value="relationship" {% if filters["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
                     <option value="event" {% if filters["type"] == 'event' %}selected{% endif %}>Event</option>
+                    <option value="summary" {% if filters["type"] == 'summary' %}selected{% endif %}>Summary</option>
                 </select>
             </label>
             <label>Source:
@@ -337,6 +338,7 @@
                     <option value="profile">Profile</option>
                     <option value="relationship">Relationship</option>
                     <option value="event">Event</option>
+                    <option value="summary">Summary</option>
                 </select>
             </label>
             <label>Source:
@@ -582,6 +584,7 @@
                                 <option value="profile" {% if item["type"] == 'profile' %}selected{% endif %}>Profile</option>
                                 <option value="relationship" {% if item["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
                                 <option value="event" {% if item["type"] == 'event' %}selected{% endif %}>Event</option>
+                                <option value="summary" {% if item["type"] == 'summary' %}selected{% endif %}>Summary</option>
                             </select>
                         </label>
                         <label>Source:

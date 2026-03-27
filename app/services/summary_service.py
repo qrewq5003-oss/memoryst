@@ -57,7 +57,10 @@ def _get_utc_now() -> str:
 
 
 def _is_rolling_summary(memory: MemoryItem) -> bool:
-    return memory.metadata.is_summary and memory.metadata.summary_kind == ROLLING_SUMMARY_KIND
+    return (
+        memory.type == "summary"
+        or (memory.metadata.is_summary and memory.metadata.summary_kind == ROLLING_SUMMARY_KIND)
+    )
 
 
 def _truncate_sentence(text: str, max_length: int = 120) -> str:
@@ -187,7 +190,7 @@ def generate_rolling_summary(
             CreateMemoryRequest(
                 chat_id=chat_id,
                 character_id=character_id,
-                type="profile",
+                type="summary",
                 content=summary_text,
                 source="auto",
                 layer="stable",
@@ -210,6 +213,7 @@ def generate_rolling_summary(
     updated = update_memory(
         existing_summary.id,
         UpdateMemoryRequest(
+            type="summary",
             content=summary_text,
             importance=0.9,
             metadata=summary_metadata,

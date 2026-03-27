@@ -32,7 +32,7 @@ def _format_labels(item: MemoryItem) -> str:
     labels = []
     if item.pinned:
         labels.append("[PINNED]")
-    if item.metadata.is_summary:
+    if item.type == "summary" or item.metadata.is_summary:
         labels.append("[SUMMARY]")
     else:
         labels.append("[STABLE]" if item.layer == "stable" else "[EPISODIC]")

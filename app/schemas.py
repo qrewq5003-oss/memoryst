@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 # Literal types
-MemoryType = Literal["profile", "relationship", "event"]
+MemoryType = Literal["profile", "relationship", "event", "summary"]
 MemorySource = Literal["auto", "manual"]
 MemoryLayer = Literal["episodic", "stable"]
 
