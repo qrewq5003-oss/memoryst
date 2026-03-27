@@ -14,12 +14,13 @@ External memory service integration for long-term context in roleplay chats.
    - Go to Extensions menu (puzzle piece icon)
    - Find "Memory Service" and enable it
 
-3. Configure settings in `index.js` (defaults):
-   - `memoryServiceUrl`: Memory Service endpoint (default: `http://localhost:8000`)
-   - `apiKey`: API key (if required by your backend)
-   - `retrieveLimit`: Number of memory items to retrieve (default: 5)
+3. Configure settings in `settings.mjs` defaults or through SillyTavern `extension_settings`.
 
-**Note:** Settings UI is not implemented in v1. To change settings, edit `DEFAULT_SETTINGS` in `index.js` or use SillyTavern's extension settings storage if available.
+**Note:** Settings UI is not implemented in v1. The extension now keeps ST-facing settings grouped logically in storage:
+- `connection`
+- `retrieval`
+- `promptBudget`
+- `audit`
 
 ## How It Works
 
@@ -46,38 +47,68 @@ External memory service integration for long-term context in roleplay chats.
 - **Memory application:** the retrieved `memory_block` is intended for the **current** generation
 - **Store timing:** after `CHARACTER_MESSAGE_RENDERED`, so the completed exchange can be extracted safely
 
-## Settings (in-code defaults)
+## Settings Groups
+
+The runtime still uses simple flat fields internally, but persisted settings are grouped so the extension is easier to reason about in real long-chat use.
+
+### Connection
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `enabled` | `false` | Enable/disable extension |
+| `enabled` | `false` | Enable or disable the extension |
 | `memoryServiceUrl` | `http://localhost:8000` | Memory Service endpoint |
-| `apiKey` | `''` | API key (sent as X-API-Key header) |
-| `retrieveLimit` | `5` | Number of memory items to retrieve |
-| `recentMessagesCount` | `8` | Messages to send for extraction |
+| `apiKey` | `''` | API key sent as `X-API-Key` |
+
+### Retrieval
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `retrieveLimit` | `5` | Maximum memories requested from backend retrieval |
+| `recentMessagesCount` | `8` | Recent chat messages sent to store extraction |
+
+### Prompt Injection Budget
+
+| Setting | Default | Description |
+|---------|---------|-------------|
 | `maxPromptMemories` | `4` | Maximum memory entries injected into the prompt |
 | `maxPromptChars` | `520` | Maximum injected memory block size in characters |
-| `maxSummaryItems` | `1` | Maximum summary memories kept for prompt injection |
-| `maxStableItems` | `2` | Maximum stable/profile/relationship memories kept |
-| `maxEpisodicItems` | `1` | Maximum episodic memories kept |
-| `auditEnabled` | `false` | Enable per-interaction ST integration audit |
-| `auditMaxRecords` | `20` | Keep only the latest N audit records |
-| `auditPreviewChars` | `240` | Preview length for messages and memory blocks in audit |
+| `maxSummaryItems` | `1` | Maximum rolling summary items kept |
+| `maxStableItems` | `2` | Maximum stable/profile/relationship items kept |
+| `maxEpisodicItems` | `1` | Maximum episodic items kept |
 
-To change settings, edit `DEFAULT_SETTINGS` in `index.js`.
+### Audit
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `auditEnabled` | `false` | Enable per-interaction integration audit |
+| `auditMaxRecords` | `20` | Keep only the latest N audit records |
+| `auditPreviewChars` | `240` | Preview length for messages and memory blocks |
+
+To change defaults, edit `sillytavern-extension/settings.mjs`. Existing older flat settings still load correctly, but the extension now serializes grouped settings for cleaner storage.
 
 ### Recommended long Russian chat defaults
 
-The shipped defaults are already tuned for a compact long-chat mix:
+Recommended baseline:
 
 - `retrieveLimit: 5`
+- `recentMessagesCount: 8`
 - `maxPromptMemories: 4`
 - `maxPromptChars: 520`
 - `maxSummaryItems: 1`
 - `maxStableItems: 2`
 - `maxEpisodicItems: 1`
 
-This keeps one rolling summary almost always available, preserves a couple of durable stable facts, and prevents episodic memories from taking over the injected prompt budget.
+This is a safe starting point for long Russian RP chats:
+- one rolling summary usually survives
+- two stable slots preserve durable relationship/profile context
+- only one episodic slot reaches prompt injection by default
+- prompt budget stays compact enough not to crowd out the main prompt
+
+Knobs most worth tuning first:
+- `retrieveLimit`
+- `maxPromptChars`
+- `maxStableItems`
+- `maxEpisodicItems`
 
 ## Integration Audit Mode
 

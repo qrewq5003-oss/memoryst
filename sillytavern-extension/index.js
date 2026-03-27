@@ -28,25 +28,20 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
 } from './audit.mjs';
+import {
+    normalizeExtensionSettings,
+    serializeExtensionSettings,
+} from './settings.mjs';
 
-// === CONFIGURATION ===
-const DEFAULT_SETTINGS = {
-    enabled: false,
-    memoryServiceUrl: 'http://localhost:8000',
-    apiKey: '',
-    retrieveLimit: 5,
-    recentMessagesCount: 8,
-    auditEnabled: false,
-    auditMaxRecords: 20,
-    auditPreviewChars: 240,
-    maxPromptMemories: 4,
-    maxPromptChars: 520,
-    maxSummaryItems: 1,
-    maxStableItems: 2,
-    maxEpisodicItems: 1,
-    recentAudits: [],
-};
-
+// === SETTINGS POLICY ===
+// SillyTavern-facing knobs are grouped conceptually as:
+// - connection: base endpoint/auth
+// - retrieval: how much chat context is sent and how many candidates are requested
+// - promptBudget: how much memory survives into the injected prompt
+// - audit: opt-in observability only
+//
+// Runtime settings remain flat for simple call sites, but load/save normalizes grouped storage
+// so defaults and docs stay synchronized and easier to reason about for real long-chat use.
 let settings = {};
 
 // === STATE ===
@@ -67,17 +62,14 @@ function clearMemoryPrompt() {
  * Load extension settings from SillyTavern extension_settings
  */
 function loadSettings() {
-    settings = {
-        ...DEFAULT_SETTINGS,
-        ...extension_settings['memory-service'],
-    };
+    settings = normalizeExtensionSettings(extension_settings['memory-service'] || {});
 }
 
 /**
  * Save extension settings to SillyTavern extension_settings
  */
 function saveSettings() {
-    extension_settings['memory-service'] = settings;
+    extension_settings['memory-service'] = serializeExtensionSettings(settings);
     saveSettingsDebounced();
 }
 
