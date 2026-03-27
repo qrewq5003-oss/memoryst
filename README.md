@@ -86,3 +86,4 @@ Short practical notes from the first real SillyTavern runtime verification run a
 The repeated verification pass after the Russian relationship retrieval fixes is in [docs/live_st_verification_report_v2.md](docs/live_st_verification_report_v2.md).
 The local-scene focused repeat verification pass is in [docs/live_st_verification_report_v3.md](docs/live_st_verification_report_v3.md).
 The richer seeded relationship-arc verification is in [docs/live_st_relationship_arc_report.md](docs/live_st_relationship_arc_report.md).
+The durable relationship formation live verification is in [docs/live_st_durable_relationship_report.md](docs/live_st_durable_relationship_report.md).
