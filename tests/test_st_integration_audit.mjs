@@ -69,6 +69,8 @@ test('retrieve and prompt audit sections capture memory block insertion details'
         stage: 'pre_generation',
         appliedToCurrentTurn: true,
         budget,
+        loreAnchorBlock: '[Lore Anchor]\n- Canonical family tie.',
+        loreAnchorItemCount: 1,
     });
 
     assert.equal(retrieve.returned_item_count, 1);
@@ -79,6 +81,8 @@ test('retrieve and prompt audit sections capture memory block insertion details'
     assert.equal(prompt.applied_to_current_turn, true);
     assert.equal(prompt.insertion_timing, 'current_generation_pre_prompt');
     assert.equal(prompt.role, 'system');
+    assert.equal(prompt.lore_anchor_applied, true);
+    assert.equal(prompt.lore_anchor_item_count, 1);
     assert.equal(prompt.injected_stable_count, 1);
     assert.equal(prompt.trimmed_item_count, 0);
 });

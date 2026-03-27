@@ -34,6 +34,10 @@ import {
 } from './settings.mjs';
 import { mountSettingsUi } from './settings-ui.mjs';
 import { resolveEffectiveScope } from './scope.mjs';
+import {
+    buildLoreAnchorBlock,
+    LORE_ANCHOR_PROMPT_KEY,
+} from './lore-anchors.mjs';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -51,13 +55,50 @@ let isStoreProcessing = false;
 let isRetrieveProcessing = false;
 let pendingInteractionAudit = null;
 let pendingTurnKey = null;
+let currentMemoryPromptBlock = '';
+let currentRetrieveBudget = null;
+let currentLoreAnchorInfo = null;
 
 function setMemoryPrompt(memoryBlock) {
+    currentMemoryPromptBlock = memoryBlock || '';
     setExtensionPrompt('memory-service', memoryBlock || '', 0, 0, true, 'system');
 }
 
 function clearMemoryPrompt() {
     setMemoryPrompt('');
+    currentRetrieveBudget = null;
+}
+
+function setLoreAnchorPrompt(anchorBlock) {
+    setExtensionPrompt(LORE_ANCHOR_PROMPT_KEY, anchorBlock || '', 0, 0, true, 'system');
+}
+
+function clearLoreAnchorPrompt() {
+    currentLoreAnchorInfo = null;
+    setLoreAnchorPrompt('');
+}
+
+function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
+    if (!record?.retrieve_called) {
+        return;
+    }
+
+    record.prompt_insertion = buildPromptInsertionAuditSection({
+        memoryBlock: currentMemoryPromptBlock,
+        applied: Boolean(currentMemoryPromptBlock || currentLoreAnchorInfo?.anchorBlock),
+        reason: currentMemoryPromptBlock || currentLoreAnchorInfo?.anchorBlock
+            ? 'budgeted_memory_block_or_lore_anchor_set_for_current_turn'
+            : 'empty_or_missing_memory_block',
+        previewChars: settings.auditPreviewChars,
+        stage: 'pre_generation',
+        appliedToCurrentTurn: true,
+        budget: currentRetrieveBudget,
+        loreAnchorBlock: currentLoreAnchorInfo?.anchorBlock || '',
+        loreAnchorItemCount: currentLoreAnchorInfo?.anchorItemCount || 0,
+    });
+    record.applied_to_current_turn = Boolean(
+        currentMemoryPromptBlock || currentLoreAnchorInfo?.anchorBlock
+    );
 }
 
 /**
@@ -326,6 +367,26 @@ async function retrieveMemories() {
     return { called: false, reason: 'unknown', memoryBlock: '' };
 }
 
+function onWorldInfoActivated(entries = []) {
+    if (!settings.enabled) {
+        return;
+    }
+
+    const loreAnchorInfo = buildLoreAnchorBlock({
+        entries,
+        existingMemoryBlock: currentMemoryPromptBlock,
+    });
+
+    if (loreAnchorInfo.anchorBlock) {
+        currentLoreAnchorInfo = loreAnchorInfo;
+        setLoreAnchorPrompt(loreAnchorInfo.anchorBlock);
+    } else {
+        clearLoreAnchorPrompt();
+    }
+
+    refreshPromptInsertionAudit();
+}
+
 function persistIntegrationAudit(record) {
     if (!settings.auditEnabled) {
         return;
@@ -355,6 +416,10 @@ function exposeAuditHelpers() {
             })));
         },
     };
+    globalThis.memoryServiceLoreAnchors = {
+        getCurrentAnchorBlock: () => currentLoreAnchorInfo?.anchorBlock || '',
+        getCurrentAnchorEntries: () => currentLoreAnchorInfo?.selectedAnchors || [],
+    };
 }
 
 /**
@@ -364,6 +429,8 @@ async function onBeforeGeneration() {
     if (!settings.enabled || isRetrieveProcessing) {
         return;
     }
+
+    clearLoreAnchorPrompt();
 
     const chatContext = getChatContext();
     const userInput = getLastUserMessage();
@@ -406,15 +473,8 @@ async function onBeforeGeneration() {
             });
             auditRecord.prompt_insertion_observed = true;
             auditRecord.applied_to_current_turn = Boolean(retrieveResult.promptApplied);
-            auditRecord.prompt_insertion = buildPromptInsertionAuditSection({
-                memoryBlock: retrieveResult.memoryBlock || '',
-                applied: retrieveResult.promptApplied,
-                reason: retrieveResult.promptApplied ? 'budgeted_memory_block_set_for_current_turn' : 'empty_or_missing_memory_block',
-                previewChars: settings.auditPreviewChars,
-                stage: 'pre_generation',
-                appliedToCurrentTurn: true,
-                budget: retrieveResult.budget || null,
-            });
+            currentRetrieveBudget = retrieveResult.budget || null;
+            refreshPromptInsertionAudit(auditRecord);
         } else {
             clearMemoryPrompt();
             if (retrieveResult.reason) {
@@ -465,6 +525,7 @@ async function onMessageRendered() {
 
         persistIntegrationAudit(auditRecord);
         clearMemoryPrompt();
+        clearLoreAnchorPrompt();
         pendingInteractionAudit = null;
         pendingTurnKey = null;
     } finally {
@@ -477,6 +538,7 @@ async function onMessageRendered() {
  */
 function onChatChanged() {
     clearMemoryPrompt();
+    clearLoreAnchorPrompt();
     pendingInteractionAudit = null;
     pendingTurnKey = null;
 }
@@ -502,6 +564,7 @@ function init() {
     eventSource.makeLast(event_types.CHARACTER_MESSAGE_RENDERED, onMessageRendered);
 
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    eventSource.on(event_types.WORLD_INFO_ACTIVATED || 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
     exposeAuditHelpers();
     refreshSettingsUi();
 

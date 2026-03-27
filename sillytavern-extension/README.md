@@ -26,6 +26,45 @@ The extension keeps ST-facing settings grouped logically in storage:
 
 **Current pattern:** retrieve runs before generation and affects the current reply. Store still runs after render for the completed exchange.
 
+## Lorebook Ephemeral Anchors
+
+The extension now supports a separate lorebook bridge for curated canonical anchors.
+
+This layer is:
+
+- triggered by Lorebook / World Info activation
+- injected only for the current turn
+- never stored in the Memory Service database
+- never summarized into rolling summary
+- never consolidated into stable or episodic memory
+
+It is intentionally separate from normal memory retrieval.
+
+### Allowlist Policy
+
+Only explicitly allowlisted lore entries are eligible for this bridge.
+
+Current v1 markers:
+
+- tag: `memory-anchor`
+- comment marker: `[memory-anchor]`
+- comment marker: `@memory-anchor`
+- content marker line: `@memory-anchor`
+- explicit compact anchor line: `@memory-anchor: ...`
+
+If a lore entry is not marked, it is ignored by the bridge.
+
+### Prompt Shape
+
+Lore anchors are injected as a compact, separate system block:
+
+```text
+[Lore Anchor]
+- ...
+```
+
+This keeps canonical lore assistance available for the current reply without polluting the normal summary/stable/episodic memory layers.
+
 ## Scoping Policy
 
 The memory scope unit is always:
@@ -160,6 +199,8 @@ You can also inspect it in browser devtools:
 memoryServiceAudit.getRecentAudits()
 memoryServiceAudit.printRecentAudits()
 memoryServiceAudit.clearRecentAudits()
+memoryServiceLoreAnchors.getCurrentAnchorBlock()
+memoryServiceLoreAnchors.getCurrentAnchorEntries()
 ```
 
 Each audit record includes:

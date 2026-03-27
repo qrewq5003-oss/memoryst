@@ -284,6 +284,8 @@ export function buildPromptInsertionAuditSection({
     stage = 'pre_generation',
     appliedToCurrentTurn = true,
     budget = null,
+    loreAnchorBlock = '',
+    loreAnchorItemCount = 0,
 }) {
     return {
         applied: Boolean(applied),
@@ -295,6 +297,10 @@ export function buildPromptInsertionAuditSection({
         memory_block_length: (memoryBlock || '').length,
         memory_block_item_count: countMemoryBlockItems(memoryBlock || ''),
         memory_block_preview: previewText(memoryBlock || '', previewChars),
+        lore_anchor_applied: Boolean(loreAnchorBlock),
+        lore_anchor_length: (loreAnchorBlock || '').length,
+        lore_anchor_item_count: loreAnchorItemCount || 0,
+        lore_anchor_preview: previewText(loreAnchorBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,
         injected_episodic_count: budget?.injectedByLayer?.episodic ?? null,
@@ -336,6 +342,9 @@ export function finalizeIntegrationAuditRecord(record) {
     }
     if (record.prompt_insertion?.trimmed_item_count > 0) {
         notes.push('memory_block_trimmed_by_budget');
+    }
+    if (record.prompt_insertion?.lore_anchor_applied) {
+        notes.push('lore_anchor_applied');
     }
 
     return {
