@@ -157,6 +157,35 @@ class LayeredRetrievalPolicyTests(unittest.TestCase):
         self.assertEqual(decisions["episodic"].selected_from_layer, "episodic")
         self.assertEqual(decisions["summary"].selected_from_layer, "summary")
 
+    def test_close_score_general_query_prefers_durable_layer_without_bonus_magic(self) -> None:
+        stable = _memory(
+            "stable",
+            "Alice is a doctor from Rome.",
+            memory_type="profile",
+            layer="stable",
+            keywords=["alice", "doctor", "rome"],
+            entities=["Alice"],
+            importance=0.72,
+        )
+        episodic = _memory(
+            "episodic",
+            "Alice visited a museum in Rome yesterday.",
+            memory_type="event",
+            layer="episodic",
+            keywords=["alice", "rome", "museum", "yesterday"],
+            entities=["Alice"],
+            importance=0.72,
+            updated_at="2026-03-26T00:00:00+00:00",
+        )
+
+        response = self._retrieve(
+            [stable, episodic],
+            user_input="What does Alice do in Rome?",
+            limit=1,
+        )
+
+        self.assertEqual([item.id for item in response.items], ["stable"])
+
 
 if __name__ == "__main__":
     unittest.main()

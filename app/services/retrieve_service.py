@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timezone
-from typing import Any
+from functools import cmp_to_key
 
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import (
@@ -21,15 +21,16 @@ PINNED_BONUS = 0.05
 BOTH_MATCH_BONUS = 0.10
 MIN_RETRIEVAL_SCORE = 0.15
 NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
-LAYER_SELECTION_BONUS = {
-    "summary": 0.04,
-    "stable": 0.01,
-    "episodic": 0.0,
-}
+CLOSE_SCORE_LAYER_TIE_EPSILON = 0.05
 LAYER_SELECTION_CAPS = {
     "summary": 1,
     "stable": 2,
     "episodic": 2,
+}
+LAYER_TIE_PRIORITY = {
+    "summary": 2,
+    "stable": 1,
+    "episodic": 0,
 }
 
 
@@ -170,21 +171,36 @@ def _get_retrieval_layer(memory: MemoryItem) -> str:
     return "episodic"
 
 
-def _sort_scored_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(
-        entries,
-        key=lambda entry: (
-            entry["selection_score"],
-            entry["score"],
-            entry["memory"].updated_at,
-            entry["memory"].id,
-        ),
-        reverse=True,
-    )
+def _compare_scored_entries(left: dict[str, object], right: dict[str, object]) -> int:
+    left_score = float(left["score"])
+    right_score = float(right["score"])
+    score_diff = left_score - right_score
+    if abs(score_diff) > CLOSE_SCORE_LAYER_TIE_EPSILON:
+        return -1 if left_score > right_score else 1
+
+    left_layer = str(left["layer"])
+    right_layer = str(right["layer"])
+    if left_layer != right_layer:
+        left_priority = LAYER_TIE_PRIORITY[left_layer]
+        right_priority = LAYER_TIE_PRIORITY[right_layer]
+        if left_priority != right_priority:
+            return -1 if left_priority > right_priority else 1
+
+    left_memory = left["memory"]
+    right_memory = right["memory"]
+    if left_memory.updated_at != right_memory.updated_at:  # type: ignore[union-attr]
+        return -1 if left_memory.updated_at > right_memory.updated_at else 1  # type: ignore[union-attr]
+    if left_memory.id != right_memory.id:  # type: ignore[union-attr]
+        return -1 if left_memory.id > right_memory.id else 1  # type: ignore[union-attr]
+    return 0
+
+
+def _sort_scored_entries(entries: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(entries, key=cmp_to_key(_compare_scored_entries))
 
 
 def _try_select_entry(
-    entry: dict[str, Any],
+    entry: dict[str, object],
     *,
     top_items: list[MemoryItem],
     selected_ids: set[str],
@@ -255,7 +271,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     total_candidates = len(all_candidates)
 
     # Score each candidate and partition them into explicit retrieval layers.
-    scored_entries: list[dict[str, Any]] = []
+    scored_entries: list[dict[str, object]] = []
     debug_candidates: list[RetrieveCandidateDebug] = []
     debug_by_id: dict[str, RetrieveCandidateDebug] = {}
     layer_candidate_counts = {
@@ -274,7 +290,6 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
                 {
                     "memory": memory,
                     "score": score,
-                    "selection_score": score + LAYER_SELECTION_BONUS[layer],
                     "layer": layer,
                 }
             )
@@ -301,8 +316,12 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
 
     # Layered retrieval policy:
     # 1. If limit allows, seed one item from each layer so summary/stable/episodic can all contribute.
-    # 2. Fill remaining slots with the best scored items under per-layer caps.
+    # 2. Fill remaining slots with the best raw-score items under per-layer caps.
     # 3. If slots still remain, do a final fill without caps so recall is not artificially cut off.
+    #
+    # Composition is driven by the explicit layer policy above, not by hidden score boosts.
+    # Raw score remains the main ranking signal inside and across the selected layers.
+    # Only near-ties can prefer a more durable layer as an explicit tiebreak.
     top_items: list[MemoryItem] = []
     selected_ids: set[str] = set()
     layer_selected_counts = {
