@@ -14,9 +14,9 @@ External memory service integration for long-term context in roleplay chats.
    - Go to Extensions menu (puzzle piece icon)
    - Find "Memory Service" and enable it
 
-3. Configure settings in `settings.mjs` defaults or through SillyTavern `extension_settings`.
+3. Configure settings from the native Memory Service panel inside SillyTavern Extensions.
 
-**Note:** Settings UI is not implemented in v1. The extension now keeps ST-facing settings grouped logically in storage:
+The extension keeps ST-facing settings grouped logically in storage:
 - `connection`
 - `retrieval`
 - `promptBudget`
@@ -62,6 +62,19 @@ This keeps retrieval, store, and rolling summaries scoped per chat/character pai
 - **Memory application:** the retrieved `memory_block` is intended for the **current** generation
 - **Store timing:** after `CHARACTER_MESSAGE_RENDERED`, so the completed exchange can be extracted safely
 
+## Settings UI
+
+The extension now exposes a native SillyTavern settings panel for the Memory Service extension. It shows the current values, saves them back into `extension_settings`, and keeps backward compatibility with older flat or grouped saved configs.
+
+The panel is grouped as:
+
+- `Connection`
+- `Retrieval`
+- `Prompt Injection Budget`
+- `Audit`
+
+There is also a small `Apply Recommended Baseline` action for long Russian chats.
+
 ## Settings Groups
 
 The runtime still uses simple flat fields internally, but persisted settings are grouped so the extension is easier to reason about in real long-chat use.
@@ -99,7 +112,7 @@ The runtime still uses simple flat fields internally, but persisted settings are
 | `auditMaxRecords` | `20` | Keep only the latest N audit records |
 | `auditPreviewChars` | `240` | Preview length for messages and memory blocks |
 
-To change defaults, edit `sillytavern-extension/settings.mjs`. Existing older flat settings still load correctly, but the extension now serializes grouped settings for cleaner storage.
+The native UI is the preferred way to tune these values. Editing `sillytavern-extension/settings.mjs` only changes shipped defaults. Existing older flat settings still load correctly, and the extension still serializes grouped settings for cleaner storage.
 
 ### Recommended long Russian chat defaults
 
@@ -124,6 +137,8 @@ Knobs most worth tuning first:
 - `maxPromptChars`
 - `maxStableItems`
 - `maxEpisodicItems`
+
+The UI exposes all of these directly, so you no longer need to hand-edit settings for normal use.
 
 ## Integration Audit Mode
 
@@ -166,7 +181,7 @@ This is intentionally opt-in and meant for local debugging, not always-on teleme
 
 ### Manual verification in SillyTavern
 
-1. Enable `auditEnabled: true` in `index.js`.
+1. Enable `Audit > Enable Audit` in the native Memory Service settings panel.
 2. Open a Russian chat with existing stored memories.
 3. Send a user message that should clearly retrieve one of them.
 4. Before or immediately after the reply, inspect:

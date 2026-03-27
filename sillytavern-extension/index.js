@@ -32,6 +32,7 @@ import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
 } from './settings.mjs';
+import { mountSettingsUi } from './settings-ui.mjs';
 import { resolveEffectiveScope } from './scope.mjs';
 
 // === SETTINGS POLICY ===
@@ -72,6 +73,25 @@ function loadSettings() {
 function saveSettings() {
     extension_settings['memory-service'] = serializeExtensionSettings(settings);
     saveSettingsDebounced();
+}
+
+function refreshSettingsUi() {
+    mountSettingsUi({
+        document: globalThis.document,
+        settings,
+        onSettingsChanged: (fieldKey, nextValue) => {
+            settings = {
+                ...settings,
+                [fieldKey]: nextValue,
+            };
+            saveSettings();
+        },
+        onApplyRecommendedBaseline: nextSettings => {
+            settings = nextSettings;
+            saveSettings();
+            refreshSettingsUi();
+        },
+    });
 }
 
 /**
@@ -483,6 +503,7 @@ function init() {
 
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     exposeAuditHelpers();
+    refreshSettingsUi();
 
     console.log('[Memory Service] Extension initialized');
     console.log('[Memory Service] Current-turn pattern: retrieve happens before generation, store after render');

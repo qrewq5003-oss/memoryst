@@ -121,3 +121,11 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
         recentAudits: normalized.recentAudits,
     };
 }
+
+export function applyRecommendedBaselineSettings(settings = DEFAULT_SETTINGS) {
+    const normalized = normalizeExtensionSettings(settings);
+    return {
+        ...normalized,
+        ...LONG_CHAT_RECOMMENDED_BASELINE,
+    };
+}
