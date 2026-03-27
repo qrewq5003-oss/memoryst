@@ -82,4 +82,5 @@ It also prints:
 
 ## Live ST Verification
 
-Short practical notes from a real SillyTavern runtime verification run are in [docs/live_st_verification_report.md](docs/live_st_verification_report.md).
+Short practical notes from the first real SillyTavern runtime verification run are in [docs/live_st_verification_report.md](docs/live_st_verification_report.md).
+The repeated verification pass after the Russian relationship retrieval fixes is in [docs/live_st_verification_report_v2.md](docs/live_st_verification_report_v2.md).
