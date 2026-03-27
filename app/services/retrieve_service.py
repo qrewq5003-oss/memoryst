@@ -28,6 +28,8 @@ RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
     "stable": 0.03,
     "episodic": 0.015,
 }
+EPISODIC_SPECIFICITY_BONUS = 0.06
+EPISODIC_LOW_VALUE_PENALTY = 0.12
 # Narrow support-only policy for Russian relationship/general-state phrasing:
 # - gated by `relationship_query_like`
 # - uses only the bounded cue groups from text_features
@@ -50,6 +52,8 @@ def _compute_score_details(
     input_keywords: list[str],
     input_entities: list[str],
     *,
+    user_input_text: str,
+    local_scene_query_like: bool = False,
     relationship_query_like: bool = False,
     input_relationship_cues: list[str] | None = None,
 ) -> dict[str, float]:
@@ -102,6 +106,9 @@ def _compute_score_details(
             "entity_overlap": entity_overlap,
             "relationship_cue_overlap": relationship_cue_overlap,
             "relationship_support_bonus": 0.0,
+            "episodic_detail_score": 0.0,
+            "episodic_specificity_bonus": 0.0,
+            "episodic_low_value_penalty": 0.0,
             "recency": 0.0,
             "score": 0.0,
         }
@@ -129,6 +136,30 @@ def _compute_score_details(
     if relationship_query_like and relationship_cue_overlap > 0.0:
         relationship_support_bonus = RELATIONSHIP_SUPPORT_BONUS_BY_LAYER[_get_retrieval_layer(memory)]
 
+    episodic_detail_score = 0.0
+    episodic_specificity_bonus = 0.0
+    episodic_low_value_penalty = 0.0
+    if memory.layer == "episodic":
+        episodic_detail_score = text_features.extract_local_scene_detail_score(memory.content)
+        if local_scene_query_like and episodic_detail_score >= 0.45:
+            episodic_specificity_bonus = EPISODIC_SPECIFICITY_BONUS
+
+        # Penalize question-like or query-echo episodic lines that add little scene value.
+        normalized_query = _normalize_for_similarity(user_input_text)
+        normalized_memory = _normalize_for_similarity(memory.content)
+        question_like_memory = memory.content.strip().endswith("?")
+        query_echo_like = (
+            normalized_query != ""
+            and normalized_memory != ""
+            and (
+                normalized_memory == normalized_query
+                or normalized_memory in normalized_query
+                or _token_overlap_ratio(memory.content, user_input_text) >= 0.85
+            )
+        )
+        if question_like_memory and query_echo_like and episodic_detail_score < 0.45:
+            episodic_low_value_penalty = EPISODIC_LOW_VALUE_PENALTY
+
     # Weak matches should not climb mainly on importance or freshness.
     combined_overlap = (keyword_overlap * 0.65) + (entity_overlap * 0.35)
     if combined_overlap >= 0.60:
@@ -144,7 +175,14 @@ def _compute_score_details(
         (PINNED_BONUS if memory.pinned else 0.0)
     ) * support_multiplier
 
-    score = relevance_score + both_match_bonus + relationship_support_bonus + support_score
+    score = (
+        relevance_score
+        + both_match_bonus
+        + relationship_support_bonus
+        + episodic_specificity_bonus
+        + support_score
+        - episodic_low_value_penalty
+    )
 
     # Cap at 1.0
     return {
@@ -152,8 +190,11 @@ def _compute_score_details(
         "entity_overlap": entity_overlap,
         "relationship_cue_overlap": relationship_cue_overlap,
         "relationship_support_bonus": relationship_support_bonus,
+        "episodic_detail_score": episodic_detail_score,
+        "episodic_specificity_bonus": episodic_specificity_bonus,
+        "episodic_low_value_penalty": episodic_low_value_penalty,
         "recency": recency,
-        "score": min(score, 1.0),
+        "score": min(max(score, 0.0), 1.0),
     }
 
 
@@ -286,6 +327,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     query_keywords = text_features.extract_keywords(request.user_input)
     query_entities = text_features.extract_entities(request.user_input)
     query_relationship_cues = text_features.extract_relationship_state_cues(request.user_input)
+    local_scene_query_like = text_features.is_local_scene_query(request.user_input)
     relationship_query_like = text_features.is_relationship_state_query(request.user_input)
     input_keywords = list(query_keywords)
     input_entities = list(query_entities)
@@ -332,6 +374,8 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
             memory,
             input_keywords,
             input_entities,
+            user_input_text=request.user_input,
+            local_scene_query_like=local_scene_query_like,
             relationship_query_like=relationship_query_like,
             input_relationship_cues=input_relationship_cues,
         )
@@ -354,6 +398,9 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
                 entity_overlap=details["entity_overlap"],
                 relationship_cue_overlap=details["relationship_cue_overlap"],
                 relationship_support_bonus=details["relationship_support_bonus"],
+                episodic_detail_score=details["episodic_detail_score"],
+                episodic_specificity_bonus=details["episodic_specificity_bonus"],
+                episodic_low_value_penalty=details["episodic_low_value_penalty"],
                 recency=details["recency"],
                 passed_threshold=passed_threshold,
                 reason="threshold_passed" if passed_threshold else "below_threshold",
@@ -464,6 +511,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
                 input_keywords=input_keywords,
                 input_entities=input_entities,
                 relationship_query_like=relationship_query_like,
+                local_scene_query_like=local_scene_query_like,
                 query_relationship_cues=text_features.extract_relationship_state_cues(request.user_input),
                 recent_relationship_cues=recent_relationship_cues,
                 input_relationship_cues=input_relationship_cues,

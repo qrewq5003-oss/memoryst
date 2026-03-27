@@ -359,6 +359,66 @@ RUSSIAN_RETRIEVAL_EVAL_CASES = [
         notes="A local fresh query should still surface the recent episodic memory first while retaining summary context.",
     ),
     RetrievalEvalCase(
+        name="ru_local_scene_prefers_concrete_outcome_over_query_echo_episode",
+        query="Что они решили про встречу по проекту?",
+        recent_messages=[
+            MessageInput(role="user", text="Напомни только свежий итог по сцене встречи.")
+        ],
+        fixture_memories=[
+            _memory(
+                "query-echo",
+                "Что они решили про встречу по проекту?",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+            _memory(
+                "concrete-outcome",
+                "Только что Алиса и Маркус решили перенести встречу по проекту на утро и позвать Лену позже.",
+                memory_type="event",
+                layer="episodic",
+                importance=0.82,
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+            _memory(
+                "project-summary",
+                "Краткая сводка: Алиса и Маркус стараются удержать проект и не сорвать общий график.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.88,
+            ),
+        ],
+        expected_top_ids=["concrete-outcome"],
+        forbidden_top_ids=["query-echo"],
+        limit=2,
+        notes="Local-scene retrieval should prefer the concrete episodic outcome over a low-value query echo.",
+    ),
+    RetrievalEvalCase(
+        name="ru_local_scene_meeting_outcome_beats_generic_episode",
+        query="Что произошло на встрече с Леной?",
+        fixture_memories=[
+            _memory(
+                "generic-meeting",
+                "У них была встреча с Леной.",
+                memory_type="event",
+                layer="episodic",
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+            _memory(
+                "detailed-meeting",
+                "На встрече с Леной они договорились пересобрать монтажный план и перенести общий созвон на утро.",
+                memory_type="event",
+                layer="episodic",
+                importance=0.8,
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_top_ids=["detailed-meeting"],
+        forbidden_top_ids=["generic-meeting"],
+        limit=1,
+        notes="Concrete local-scene outcome should beat a generic episodic mention of the same meeting.",
+    ),
+    RetrievalEvalCase(
         name="ru_layered_preference_coexists_with_summary",
         query="Что важно помнить про Алису сейчас и что она любит?",
         fixture_memories=[

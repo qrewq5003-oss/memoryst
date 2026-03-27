@@ -155,6 +155,9 @@ class RetrieveCandidateDebug(BaseModel):
     entity_overlap: float
     relationship_cue_overlap: float = 0.0
     relationship_support_bonus: float = 0.0
+    episodic_detail_score: float = 0.0
+    episodic_specificity_bonus: float = 0.0
+    episodic_low_value_penalty: float = 0.0
     recency: float
     passed_threshold: bool
     filtered_by_diversity: bool = False
@@ -172,6 +175,7 @@ class RetrieveDebugPayload(BaseModel):
     input_keywords: list[str] = Field(default_factory=list)
     input_entities: list[str] = Field(default_factory=list)
     relationship_query_like: bool = False
+    local_scene_query_like: bool = False
     query_relationship_cues: list[str] = Field(default_factory=list)
     recent_relationship_cues: list[str] = Field(default_factory=list)
     input_relationship_cues: list[str] = Field(default_factory=list)

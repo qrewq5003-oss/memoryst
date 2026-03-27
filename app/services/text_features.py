@@ -101,6 +101,35 @@ GENERAL_STATE_QUERY_PATTERNS = [
     r"\bони снова .*вместе\b",
 ]
 
+# Narrow local-scene query family for concrete episodic retrieval.
+# This is not a new general event parser. It only exists to prefer
+# concrete scene outcomes over low-value query-echo episodic lines.
+LOCAL_SCENE_QUERY_PATTERNS = [
+    r"\bчто .* реш\w*",
+    r"\bчто .* сказа\w*",
+    r"\bна что .* договор\w*",
+    r"\bчто произош\w*",
+    r"\bчто было .* встреч\w*",
+    r"\bпосле разговор\w*",
+    r"\bвчера\b",
+    r"\bутром\b",
+]
+
+LOCAL_SCENE_DETAIL_PATTERNS = [
+    r"\bреш\w*",
+    r"\bсказа\w*",
+    r"\bдоговор\w*",
+    r"\bперенес\w*",
+    r"\bпозва\w*",
+    r"\bобсуд\w*",
+    r"\bвстреч\w*",
+    r"\bразговор\w*",
+    r"\bутр\w*",
+    r"\bвчера\b",
+    r"\bпозже\b",
+    r"\bсегодня\b",
+]
+
 
 def _get_morph():
     """Lazy initialization of pymorphy3 morph."""
@@ -211,3 +240,38 @@ def extract_relationship_state_cues(text: str) -> list[str]:
 def is_relationship_state_query(text: str) -> bool:
     """Gate the narrow cue layer for Russian relationship/general-state queries."""
     return bool(extract_relationship_state_cues(text))
+
+
+def is_local_scene_query(text: str) -> bool:
+    """Gate a narrow local-scene episodic precision helper."""
+    if not text:
+        return False
+    text_lower = text.lower()
+    return any(re.search(pattern, text_lower) for pattern in LOCAL_SCENE_QUERY_PATTERNS)
+
+
+def extract_local_scene_detail_score(text: str) -> float:
+    """
+    Estimate whether an episodic line contains concrete scene outcome detail.
+
+    This is intentionally lightweight: it rewards explicit action/outcome markers
+    and time/context anchors so concrete event lines beat generic query echoes.
+    """
+    if not text:
+        return 0.0
+
+    text_lower = text.lower()
+    marker_count = sum(1 for pattern in LOCAL_SCENE_DETAIL_PATTERNS if re.search(pattern, text_lower))
+    keyword_count = len(extract_keywords(text))
+    entity_count = len(extract_entities(text))
+    question_like = text_lower.strip().endswith("?")
+
+    raw_score = (
+        min(marker_count, 4) * 0.18 +
+        min(keyword_count, 6) * 0.05 +
+        min(entity_count, 3) * 0.08
+    )
+    if question_like:
+        raw_score *= 0.6
+
+    return min(raw_score, 1.0)
