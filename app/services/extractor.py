@@ -331,6 +331,11 @@ def extract_memories(
             and text_features.is_question_like_text(text)
             and (
                 text_features.is_question_form_relationship_prompt(text)
+                or text_features.is_question_form_local_scene_prompt(text)
+                or (
+                    text_features.is_local_scene_query(text)
+                    and _looks_like_event(text.lower())
+                )
                 or _looks_like_relationship(text.lower())
             )
         ):

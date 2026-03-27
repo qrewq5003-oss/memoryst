@@ -188,6 +188,36 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
 
         self.assertEqual(candidates, [])
 
+    def test_question_form_user_local_scene_prompt_is_not_extracted(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="user",
+                    text="Что они решили по ближайшей рабочей встрече?",
+                )
+            ],
+        )
+
+        self.assertEqual(candidates, [])
+
+    def test_declarative_local_scene_outcome_still_extracts_as_episodic(self) -> None:
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="assistant",
+                    text="Они решили перенести встречу по проекту на утро и позвать Лену позже.",
+                )
+            ],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].type, "event")
+        self.assertEqual(candidates[0].layer, "episodic")
+
 
 if __name__ == "__main__":
     unittest.main()

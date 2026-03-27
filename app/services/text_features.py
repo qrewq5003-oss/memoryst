@@ -444,3 +444,16 @@ def is_question_form_relationship_prompt(text: str) -> bool:
         extract_durable_relationship_state_cues(text)
         or extract_relationship_state_cues(text)
     )
+
+
+def is_question_form_local_scene_prompt(text: str) -> bool:
+    """
+    Guard against storing user-side local-scene questions as episodic memories.
+
+    This remains intentionally narrow: only interrogative phrasing with
+    local-scene/event semantics should be blocked.
+    """
+    if not is_question_like_text(text):
+        return False
+
+    return is_local_scene_query(text)
