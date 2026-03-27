@@ -32,6 +32,7 @@ import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
 } from './settings.mjs';
+import { resolveEffectiveScope } from './scope.mjs';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -78,17 +79,7 @@ function saveSettings() {
  * Returns { chatId, characterId, groupId, chat }
  */
 function getChatContext() {
-    const context = getContext();
-    if (!context) {
-        return null;
-    }
-
-    return {
-        chatId: context.chatId || 'default',
-        characterId: context.characterId || null,
-        groupId: context.groupId || null,
-        chat: context.chat || [],
-    };
+    return resolveEffectiveScope(getContext());
 }
 
 /**
@@ -174,7 +165,7 @@ async function storeMemories() {
             headers,
             body: JSON.stringify({
                 chat_id: chatContext.chatId,
-                character_id: chatContext.characterId || chatContext.chatId,
+                character_id: chatContext.characterId,
                 messages: messages,
                 debug: settings.auditEnabled,
             }),
@@ -241,7 +232,7 @@ async function retrieveMemories() {
             headers,
             body: JSON.stringify({
                 chat_id: chatContext.chatId,
-                character_id: chatContext.characterId || chatContext.chatId,
+                character_id: chatContext.characterId,
                 user_input: user_input,
                 recent_messages: recent_messages,
                 limit: settings.retrieveLimit,
@@ -372,7 +363,10 @@ async function onBeforeGeneration() {
     try {
         const auditRecord = createIntegrationAuditRecord({
             chatId: chatContext?.chatId || null,
-            characterId: chatContext?.characterId || chatContext?.chatId || null,
+            characterId: chatContext?.characterId || null,
+            groupId: chatContext?.groupId || null,
+            chatScopeSource: chatContext?.chatScopeSource || null,
+            characterScopeSource: chatContext?.characterScopeSource || null,
             recentMessagesCount: settings.recentMessagesCount,
         });
         auditRecord.retrieve_stage = 'pre_generation';
@@ -429,7 +423,10 @@ async function onMessageRendered() {
         const chatContext = getChatContext();
         const auditRecord = pendingInteractionAudit || createIntegrationAuditRecord({
             chatId: chatContext?.chatId || null,
-            characterId: chatContext?.characterId || chatContext?.chatId || null,
+            characterId: chatContext?.characterId || null,
+            groupId: chatContext?.groupId || null,
+            chatScopeSource: chatContext?.chatScopeSource || null,
+            characterScopeSource: chatContext?.characterScopeSource || null,
             recentMessagesCount: settings.recentMessagesCount,
         });
 

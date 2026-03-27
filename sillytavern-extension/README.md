@@ -26,6 +26,21 @@ External memory service integration for long-term context in roleplay chats.
 
 **Current pattern:** retrieve runs before generation and affects the current reply. Store still runs after render for the completed exchange.
 
+## Scoping Policy
+
+The memory scope unit is always:
+
+- `chat_id`
+- `character_id`
+
+The extension derives them from SillyTavern context like this:
+
+- `chat_id = context.chatId`
+- `character_id = context.characterId`
+- if `characterId` is missing, the extension falls back to `character_id = chat_id`
+
+This keeps retrieval, store, and rolling summaries scoped per chat/character pair, while keeping the fallback stable for chats that do not expose a separate character id.
+
 ### Flow
 
 ```
