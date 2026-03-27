@@ -25,6 +25,11 @@ class ConsolidationHistoryEntry(BaseModel):
 class MemoryMetadata(BaseModel):
     entities: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+    is_summary: bool = False
+    summary_kind: str | None = None
+    summary_generated_at: str | None = None
+    summary_source_memory_ids: list[str] = Field(default_factory=list)
+    summarized_memory_count: int | None = None
     consolidation_note: str | None = None
     related_memory_id: str | None = None
     review_status: str | None = None

@@ -55,3 +55,11 @@ Access the built-in web UI at `http://localhost:8000/ui` for:
 - Viewing and filtering memories
 - Creating, editing, and deleting records
 - Pin/unpin and archive/unarchive operations
+
+## Rolling Summary CLI
+
+Generate or update one rolling summary memory for a chat/character:
+
+```bash
+python scripts/run_rolling_summary.py --chat-id <chat_id> --character-id <character_id> --window 8
+```
