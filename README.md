@@ -84,3 +84,4 @@ It also prints:
 
 Short practical notes from the first real SillyTavern runtime verification run are in [docs/live_st_verification_report.md](docs/live_st_verification_report.md).
 The repeated verification pass after the Russian relationship retrieval fixes is in [docs/live_st_verification_report_v2.md](docs/live_st_verification_report_v2.md).
+The local-scene focused repeat verification pass is in [docs/live_st_verification_report_v3.md](docs/live_st_verification_report_v3.md).
