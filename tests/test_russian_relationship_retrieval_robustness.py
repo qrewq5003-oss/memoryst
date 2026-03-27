@@ -150,6 +150,101 @@ class RussianRelationshipRetrievalRobustnessTests(unittest.TestCase):
         assert response.debug is not None
         self.assertFalse(response.debug.relationship_query_like)
 
+    def test_non_relationship_query_does_not_activate_relationship_mode(self) -> None:
+        profile = _memory(
+            "profile",
+            "Алиса работает хирургом и живёт в Риме.",
+            memory_type="profile",
+            layer="stable",
+            importance=0.82,
+        )
+        relationship = _memory(
+            "relationship",
+            "Маркус всё ещё осторожно относится к Алисе после ссоры.",
+            memory_type="relationship",
+            layer="stable",
+            importance=0.82,
+        )
+
+        response = self._retrieve(
+            [profile, relationship],
+            user_input="Кем работает Алиса?",
+            limit=2,
+        )
+
+        assert response.debug is not None
+        self.assertFalse(response.debug.relationship_query_like)
+        self.assertEqual(response.items[0].id, "profile")
+        debug_by_id = {item.memory_id: item for item in response.debug.candidates}
+        self.assertEqual(debug_by_id["profile"].relationship_support_bonus, 0.0)
+        self.assertEqual(debug_by_id["relationship"].relationship_support_bonus, 0.0)
+
+    def test_unrelated_stable_memory_does_not_get_relationship_bonus(self) -> None:
+        related = _memory(
+            "related",
+            "Маркус теперь относится к Алисе осторожно, но снова доверяет ей в работе.",
+            memory_type="relationship",
+            layer="stable",
+            importance=0.84,
+        )
+        unrelated = _memory(
+            "unrelated",
+            "Алиса любит джаз и тихие бары.",
+            memory_type="profile",
+            layer="stable",
+            importance=0.9,
+        )
+
+        response = self._retrieve(
+            [related, unrelated],
+            user_input="Как он теперь к ней относится?",
+            limit=2,
+            recent_messages=[
+                MessageInput(role="user", text="После конфликта они всё-таки снова работают вместе."),
+            ],
+        )
+
+        assert response.debug is not None
+        debug_by_id = {item.memory_id: item for item in response.debug.candidates}
+        self.assertEqual(response.items[0].id, "related")
+        self.assertGreater(debug_by_id["related"].relationship_cue_overlap, 0.0)
+        self.assertGreater(debug_by_id["related"].relationship_support_bonus, 0.0)
+        self.assertEqual(debug_by_id["unrelated"].relationship_cue_overlap, 0.0)
+        self.assertEqual(debug_by_id["unrelated"].relationship_support_bonus, 0.0)
+
+    def test_relationship_cue_support_does_not_override_large_raw_score_gap(self) -> None:
+        strong_local = _memory(
+            "strong-local",
+            "Алина и Маркус решили перенести встречу по проекту на утро и позвать Лену позже.",
+            memory_type="event",
+            layer="episodic",
+            importance=0.9,
+            updated_at="2026-03-26T00:00:00+00:00",
+        )
+        weak_relationship = _memory(
+            "weak-relationship",
+            "После ссоры между Алиной и Маркусом осталось напряжение.",
+            memory_type="relationship",
+            layer="stable",
+            importance=0.7,
+            updated_at="2026-03-20T00:00:00+00:00",
+        )
+
+        response = self._retrieve(
+            [strong_local, weak_relationship],
+            user_input="Что они решили про встречу по проекту?",
+            limit=2,
+            recent_messages=[
+                MessageInput(role="user", text="У них после конфликта всё стало спокойнее."),
+            ],
+        )
+
+        assert response.debug is not None
+        self.assertFalse(response.debug.relationship_query_like)
+        self.assertEqual(response.items[0].id, "strong-local")
+        debug_by_id = {item.memory_id: item for item in response.debug.candidates}
+        self.assertEqual(debug_by_id["weak-relationship"].relationship_support_bonus, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
