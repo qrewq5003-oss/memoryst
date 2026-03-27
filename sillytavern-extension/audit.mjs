@@ -194,12 +194,22 @@ export function buildMessageAuditEntries(messages, previewChars = DEFAULT_AUDIT_
     }));
 }
 
-export function createIntegrationAuditRecord({ chatId, characterId, recentMessagesCount }) {
+export function createIntegrationAuditRecord({
+    chatId,
+    characterId,
+    groupId = null,
+    chatScopeSource = null,
+    characterScopeSource = null,
+    recentMessagesCount,
+}) {
     return {
         interaction_id: `${chatId || 'chat'}:${Date.now()}`,
         timestamp: nowIso(),
         chat_id: chatId || null,
         character_id: characterId || null,
+        group_id: groupId || null,
+        chat_scope_source: chatScopeSource || null,
+        character_scope_source: characterScopeSource || null,
         loop_pattern: 'pre_generation_retrieve_current_turn',
         recent_messages_count: recentMessagesCount,
         store_called: false,
