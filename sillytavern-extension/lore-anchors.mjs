@@ -98,7 +98,7 @@ export function normalizeLoreAnchorCandidates(entries = []) {
     return (entries || [])
         .filter(entry => isAllowlistedLoreAnchorEntry(entry))
         .map(entry => ({
-            id: String(getEntryId(entry) || ''),
+            id: String(getEntryId(entry) ?? ''),
             label: normalizeWhitespace(getEntryComment(entry)) || null,
             text: extractLoreAnchorText(entry),
             raw: entry,
@@ -115,6 +115,23 @@ function formatLoreAnchorBlock(anchors = []) {
         return '';
     }
     return ['[Lore Anchor]', ...anchors.map(buildLoreAnchorLine)].join('\n');
+}
+
+function truncateLoreAnchorText(text, maxChars) {
+    const normalized = normalizeWhitespace(text);
+    const overhead = '[Lore Anchor]\n- '.length;
+    const available = maxChars - overhead;
+
+    if (!normalized || available <= 1) {
+        return '';
+    }
+
+    if (normalized.length <= available) {
+        return normalized;
+    }
+
+    const truncated = normalized.slice(0, Math.max(0, available - 1)).trim();
+    return truncated ? `${truncated}…` : '';
 }
 
 export function buildLoreAnchorBlock({
@@ -162,6 +179,31 @@ export function buildLoreAnchorBlock({
                 actualChars: anchorBlock.length,
                 preview: previewText(anchorBlock),
             };
+        }
+
+        if (selectedAnchors.length === 1) {
+            const onlyAnchor = selectedAnchors[0];
+            const truncatedText = truncateLoreAnchorText(onlyAnchor.text, maxChars);
+
+            if (truncatedText) {
+                const truncatedAnchor = {
+                    ...onlyAnchor,
+                    text: truncatedText,
+                };
+                const truncatedBlock = formatLoreAnchorBlock([truncatedAnchor]);
+
+                if (truncatedBlock.length <= maxChars) {
+                    skipped.push({ id: onlyAnchor.id, reason: 'char_budget_truncated' });
+                    return {
+                        anchorBlock: truncatedBlock,
+                        selectedAnchors: [truncatedAnchor],
+                        skipped,
+                        anchorItemCount: 1,
+                        actualChars: truncatedBlock.length,
+                        preview: previewText(truncatedBlock),
+                    };
+                }
+            }
         }
 
         const removed = selectedAnchors.pop();

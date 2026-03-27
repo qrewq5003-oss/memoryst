@@ -59,3 +59,26 @@ test('normalizeLoreAnchorCandidates ignores non-allowlisted entries', () => {
 
     assert.deepEqual(normalized.map(item => item.id), ['anchor']);
 });
+
+test('buildLoreAnchorBlock truncates one long real-world-info anchor instead of dropping it entirely', () => {
+    const built = buildLoreAnchorBlock({
+        entries: [
+            {
+                uid: 0,
+                world: 'pr45_worldinfo_live_anchor',
+                comment: '[memory-anchor]',
+                content: 'Код-41 — внутреннее кодовое имя семейного дела. При команде они переходят на подчёркнуто официальный тон, потому что скрывают родственную связь и не хотят, чтобы коллеги поняли, что проект связан с их семьёй.',
+            },
+        ],
+        existingMemoryBlock: '',
+        maxItems: 1,
+        maxChars: 220,
+    });
+
+    assert.equal(built.anchorItemCount, 1);
+    assert.match(built.anchorBlock, /\[Lore Anchor\]/);
+    assert.match(built.anchorBlock, /Код-41/);
+    assert.ok(built.actualChars <= 220);
+    assert.deepEqual(built.skipped.map(item => item.reason), ['char_budget_truncated']);
+    assert.equal(built.selectedAnchors[0].id, '0');
+});

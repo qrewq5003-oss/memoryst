@@ -94,3 +94,4 @@ The full-prompt follow-up check for `GLM 4.7` and `Kimi K2.5` is in [docs/full_p
 The lorebook-triggered ephemeral anchor bridge note is in [docs/lorebook_ephemeral_anchor_report.md](docs/lorebook_ephemeral_anchor_report.md).
 The short live usefulness check for lorebook-triggered ephemeral anchors is in [docs/lorebook_anchor_usefulness_report.md](docs/lorebook_anchor_usefulness_report.md).
 The real marked world-info live usefulness check is in [docs/lorebook_worldinfo_live_usefulness_report.md](docs/lorebook_worldinfo_live_usefulness_report.md).
+The payload-level debug pass for the real world-info activation mismatch is in [docs/lorebook_worldinfo_payload_debug_report.md](docs/lorebook_worldinfo_payload_debug_report.md).
