@@ -145,6 +145,68 @@ LOCAL_SCENE_DETAIL_PATTERNS = [
     r"\bсегодня\b",
 ]
 
+# Narrow durable relationship formation channel for Russian long-chat arcs.
+# This helper exists only to distinguish relationship state carry-over from
+# one-off conflict/meeting episodes in the store/extractor path.
+#
+# Allowed durable relationship state families for v1:
+# - trust / distrust shift
+# - distance / caution / lingering tension
+# - repair / partial reconciliation
+# - support / protection / backing each other up
+# - working together / renewed cooperation
+#
+# Maintenance rule:
+# - add patterns only when a concrete long-chat store miss is covered by tests/evals
+# - do not turn one-off scene actions into stable relationship state by default
+DURABLE_RELATIONSHIP_STATE_PATTERNS = {
+    "trust": [
+        r"\bснова довер\w*",
+        r"\bбольше не довер\w*",
+        r"\bдовер\w* .*в работ\w*",
+        r"\bдовер\w* .*снова\b",
+    ],
+    "distance": [
+        r"\bдерж\w* дистанц\w*",
+        r"\bосторож\w*",
+        r"\bмежду ними .*напряж\w*",
+        r"\bнапряж\w* .*между ними\b",
+        r"\bвсё ещё .*напряж\w*",
+        r"\bне до конца расслаб\w*",
+    ],
+    "repair": [
+        r"\bчастич\w* помир\w*",
+        r"\bпомир\w*",
+        r"\bпримир\w*",
+        r"\bне в открытой ссоре\b",
+        r"\bне возвращать\w*.*ссор\w*",
+    ],
+    "support": [
+        r"\bподдерж\w* .*при всей команд\w*",
+        r"\bподдерж\w* .*в работ\w*",
+        r"\bне собира\w* .*оставля\w* .*одн\w*",
+        r"\bприкрыл\w*",
+        r"\bпомога\w* .*с фильм\w*",
+    ],
+    "cooperation": [
+        r"\bснова работа\w* вместе\b",
+        r"\bснова сотруднич\w*",
+        r"\bсоглас\w* снова работать\b",
+        r"\bдерж\w* друг друга в курсе\b",
+        r"\bработа\w* спокойн\w*",
+        r"\bснова поддерж\w* план\b",
+    ],
+}
+
+DURABLE_RELATIONSHIP_EPISODIC_BLOCKERS = [
+    r"\bначал\w* ссор\w*",
+    r"\bначал\w* спор\w*",
+    r"\bсорвал\w* на\b",
+    r"\bпоссор\w*",
+    r"\bспор\w* на встреч\w*",
+    r"\bвстрет\w* .*вчера\b",
+]
+
 
 def _get_morph():
     """Lazy initialization of pymorphy3 morph."""
@@ -291,3 +353,39 @@ def extract_local_scene_detail_score(text: str) -> float:
         raw_score *= 0.6
 
     return min(raw_score, 1.0)
+
+
+def extract_durable_relationship_state_cues(text: str) -> list[str]:
+    """
+    Extract bounded durable relationship-state cues for store/extractor logic.
+
+    This helper is not a general relationship parser. It only exists to keep
+    long-chat relationship carry-over from collapsing into pure episodic memory.
+    """
+    if not text:
+        return []
+
+    text_lower = text.lower()
+    cues = []
+
+    for cue, patterns in DURABLE_RELATIONSHIP_STATE_PATTERNS.items():
+        if any(re.search(pattern, text_lower) for pattern in patterns):
+            cues.append(cue)
+
+    return cues
+
+
+def is_durable_relationship_statement(text: str) -> bool:
+    """Return True for bounded Russian relationship-state carry-over statements."""
+    if not text:
+        return False
+
+    text_lower = text.lower()
+    cues = extract_durable_relationship_state_cues(text)
+    if not cues:
+        return False
+
+    if any(re.search(pattern, text_lower) for pattern in DURABLE_RELATIONSHIP_EPISODIC_BLOCKERS):
+        return False
+
+    return True

@@ -56,6 +56,24 @@ class MemoryTypeLayerHeuristicsTests(unittest.TestCase):
         self.assertEqual(candidate.type, "event")
         self.assertEqual(candidate.layer, "episodic")
 
+    def test_russian_durable_relationship_state_becomes_stable_relationship(self) -> None:
+        candidate = _extract("Маркус снова доверяет Алисе в работе, хотя между ними всё ещё остаётся осторожность.")
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.type, "relationship")
+        self.assertEqual(candidate.layer, "stable")
+
+    def test_russian_supportive_relationship_carry_over_becomes_stable_relationship(self) -> None:
+        candidate = _extract("Маркус при всей команде поддержал Алису и не собирается снова оставлять её одну с фильмом.")
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.type, "relationship")
+        self.assertEqual(candidate.layer, "stable")
+
+    def test_one_off_conflict_scene_remains_episodic_event(self) -> None:
+        candidate = _extract("После провала на площадке Маркус сорвался на Алису, и между ними началась тяжёлая ссора.")
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.type, "event")
+        self.assertEqual(candidate.layer, "episodic")
+
     def test_durable_ownership_like_fact_stays_stable(self) -> None:
         candidate = _extract("Alice owns a small bakery in Rome.")
         self.assertIsNotNone(candidate)

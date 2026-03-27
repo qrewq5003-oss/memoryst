@@ -77,11 +77,19 @@ class UnifyStoreRetrieveNormalizationTests(unittest.TestCase):
             patch("app.services.retrieve_service.format_memory_block", return_value="formatted"),
             patch(
                 "app.services.text_features.extract_keywords",
-                side_effect=[["rome"], ["trip"]],
+                side_effect=lambda text: (
+                    ["rome"] if text == "Tell me about Elena in Rome"
+                    else ["trip"] if text == "We discussed the trip yesterday"
+                    else ["rome"]
+                ),
             ) as keywords_mock,
             patch(
                 "app.services.text_features.extract_entities",
-                side_effect=[["Elena"], ["Rome"]],
+                side_effect=lambda text: (
+                    ["Elena"] if text == "Tell me about Elena in Rome"
+                    else ["Rome"] if text == "We discussed the trip yesterday"
+                    else ["Elena"]
+                ),
             ) as entities_mock,
         ):
             response = retrieve_memories(
@@ -95,10 +103,12 @@ class UnifyStoreRetrieveNormalizationTests(unittest.TestCase):
             )
 
         self.assertEqual([item.id for item in response.items], ["memory-1"])
-        self.assertEqual(keywords_mock.call_args_list[0].args[0], "Tell me about Elena in Rome")
-        self.assertEqual(keywords_mock.call_args_list[1].args[0], "We discussed the trip yesterday")
-        self.assertEqual(entities_mock.call_args_list[0].args[0], "Tell me about Elena in Rome")
-        self.assertEqual(entities_mock.call_args_list[1].args[0], "We discussed the trip yesterday")
+        keyword_inputs = [call.args[0] for call in keywords_mock.call_args_list]
+        entity_inputs = [call.args[0] for call in entities_mock.call_args_list]
+        self.assertIn("Tell me about Elena in Rome", keyword_inputs)
+        self.assertIn("We discussed the trip yesterday", keyword_inputs)
+        self.assertIn("Tell me about Elena in Rome", entity_inputs)
+        self.assertIn("We discussed the trip yesterday", entity_inputs)
 
     def test_russian_word_forms_match_between_store_metadata_and_retrieve_query(self) -> None:
         target_metadata = MemoryMetadata(

@@ -494,6 +494,41 @@ LONG_CHAT_RUSSIAN_RP_EVAL_CASES = [
         notes="Long relationship arc should keep the rolling summary, durable repair context, and one fresh episodic scene without letting an old conflict fragment dominate.",
     ),
     RetrievalEvalCase(
+        name="ru_long_chat_relationship_arc_surfaces_summary_and_stable_relation_for_broad_state",
+        query="Что у них сейчас вообще?",
+        recent_messages=[
+            MessageInput(role="assistant", text="После длинной дуги Маркус снова помогает Алисе с фильмом, хотя осторожность между ними ещё осталась."),
+        ],
+        fixture_memories=[
+            _memory(
+                "arc-summary",
+                "Краткая сводка: после ссоры Алиса и Маркус снова работают вместе, но между ними ещё остаётся осторожное напряжение.",
+                memory_type="summary",
+                layer="stable",
+                importance=0.95,
+            ),
+            _memory(
+                "arc-stable",
+                "Маркус снова доверяет Алисе в работе и поддерживает её перед командой, хотя полностью не расслабился.",
+                memory_type="relationship",
+                layer="stable",
+                importance=0.86,
+            ),
+            _memory(
+                "arc-episode",
+                "Вчера Маркус поддержал план Алисы по монтажу и взял на себя материалы для Лены.",
+                memory_type="event",
+                layer="episodic",
+                importance=0.78,
+                updated_at="2026-03-26T00:00:00+00:00",
+            ),
+        ],
+        expected_contains_ids=["arc-summary", "arc-stable"],
+        expected_layer_counts={"summary": 1, "stable": 1},
+        limit=2,
+        notes="A richer relationship arc should surface both the rolling summary and a durable stable relationship memory for a broad state prompt.",
+    ),
+    RetrievalEvalCase(
         name="ru_long_chat_goal_survives_noise_via_summary_and_stable",
         query="Чего Алиса сейчас пытается добиться с фильмом?",
         recent_messages=[
