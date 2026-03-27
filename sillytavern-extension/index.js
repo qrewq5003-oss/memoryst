@@ -18,6 +18,7 @@
 import { getContext, extension_settings } from '../../extensions.js';
 import { eventSource, event_types, saveSettingsDebounced, setExtensionPrompt } from '../../../script.js';
 import {
+    buildBudgetedMemoryBlock,
     buildPromptInsertionAuditSection,
     buildRetrieveAuditSection,
     buildStoreAuditSection,
@@ -38,6 +39,11 @@ const DEFAULT_SETTINGS = {
     auditEnabled: false,
     auditMaxRecords: 20,
     auditPreviewChars: 240,
+    maxPromptMemories: 4,
+    maxPromptChars: 520,
+    maxSummaryItems: 1,
+    maxStableItems: 2,
+    maxEpisodicItems: 1,
     recentAudits: [],
 };
 
@@ -253,11 +259,28 @@ async function retrieveMemories() {
 
         if (response.ok) {
             const result = await response.json();
-            console.log('[Memory Service] Retrieved:', result.items.length, 'items');
+            const retrievedItems = result.items || [];
+            const budgeted = buildBudgetedMemoryBlock({
+                items: retrievedItems,
+                maxPromptMemories: settings.maxPromptMemories,
+                maxPromptChars: settings.maxPromptChars,
+                maxSummaryItems: settings.maxSummaryItems,
+                maxStableItems: settings.maxStableItems,
+                maxEpisodicItems: settings.maxEpisodicItems,
+            });
+            const injectedMemoryBlock = budgeted.memoryBlock || result.memory_block || '';
+            console.log(
+                '[Memory Service] Retrieved:',
+                retrievedItems.length,
+                'items; injected:',
+                budgeted.injectedItemCount,
+                'trimmed:',
+                budgeted.trimmedItemCount,
+            );
 
-            if (result.memory_block) {
-                setMemoryPrompt(result.memory_block);
-                console.log('[Memory Service] Memory block set for CURRENT generation');
+            if (injectedMemoryBlock) {
+                setMemoryPrompt(injectedMemoryBlock);
+                console.log('[Memory Service] Budgeted memory block set for CURRENT generation');
             } else {
                 clearMemoryPrompt();
             }
@@ -267,8 +290,10 @@ async function retrieveMemories() {
                 userInput: user_input,
                 recentMessages: recent_messages,
                 result,
-                memoryBlock: result.memory_block || '',
-                promptApplied: Boolean(result.memory_block),
+                memoryBlock: injectedMemoryBlock,
+                rawMemoryBlock: result.memory_block || '',
+                budget: budgeted,
+                promptApplied: Boolean(injectedMemoryBlock),
             };
         } else {
             console.error('[Memory Service] Retrieve failed:', response.status);
@@ -371,16 +396,18 @@ async function onBeforeGeneration() {
                 error: retrieveResult.error || null,
                 previewChars: settings.auditPreviewChars,
                 stage: 'pre_generation',
+                budget: retrieveResult.budget || null,
             });
             auditRecord.prompt_insertion_observed = true;
             auditRecord.applied_to_current_turn = Boolean(retrieveResult.promptApplied);
             auditRecord.prompt_insertion = buildPromptInsertionAuditSection({
                 memoryBlock: retrieveResult.memoryBlock || '',
                 applied: retrieveResult.promptApplied,
-                reason: retrieveResult.promptApplied ? 'memory_block_set_for_current_turn' : 'empty_or_missing_memory_block',
+                reason: retrieveResult.promptApplied ? 'budgeted_memory_block_set_for_current_turn' : 'empty_or_missing_memory_block',
                 previewChars: settings.auditPreviewChars,
                 stage: 'pre_generation',
                 appliedToCurrentTurn: true,
+                budget: retrieveResult.budget || null,
             });
         } else {
             clearMemoryPrompt();
