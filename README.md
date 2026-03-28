@@ -52,9 +52,14 @@ Response:
 ## Web UI
 
 Access the built-in web UI at `http://localhost:8000/ui` for:
-- Viewing and filtering memories
+- Browsing memories grouped by `chat_id + character_id` in a chat sidebar
+- Defaulting to one selected chat scope instead of mixing all chats together
+- Switching to an `All Chats` view when you need the global list
+- Viewing and filtering memories inside the selected chat scope
 - Creating, editing, and deleting records
 - Pin/unpin and archive/unarchive operations
+
+The chat folders are a UI grouping layer over the existing scoped storage. They do not create physical folders or separate databases per chat.
 
 ## Rolling Summary CLI
 

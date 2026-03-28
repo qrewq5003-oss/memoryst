@@ -3,104 +3,431 @@
 {% block title %}Memories{% endblock %}
 
 {% block content %}
-<h1>Memory Service</h1>
+<div class="page-header">
+    <div>
+        <h1>Memory Service</h1>
+        <p class="page-subtitle">Chat-grouped memory browsing over the existing scoped store.</p>
+    </div>
+</div>
 
-<!-- Filters -->
-<section class="filters">
-    <h2>Filters</h2>
-    <form method="GET" action="/ui" class="filter-form">
-        <div class="form-row">
-            <label>Chat ID: <input type="text" name="chat_id" value="{{ filters["chat_id"] or '' }}"></label>
-            <label>Character ID: <input type="text" name="character_id" value="{{ filters["character_id"] or '' }}"></label>
-            <label class="search-field">Search:
-                <input type="text" name="search" value="{{ filters["search"] or '' }}" placeholder="content, normalized text, keywords, entities">
-            </label>
+<section class="memory-workspace">
+    <aside class="chat-sidebar">
+        <div class="sidebar-header">
+            <h2>Chats</h2>
+            <a href="{{ all_chats_url }}" class="chat-group-link {% if all_chats_selected %}chat-group-link-active{% endif %}">
+                <span>
+                    <strong>All Chats</strong>
+                    <span class="chat-group-meta">Global view across the current filtered dataset</span>
+                </span>
+            </a>
         </div>
-        <div class="form-row">
-            <label>Type:
-                <select name="type">
-                    <option value="">All</option>
-                    <option value="profile" {% if filters["type"] == 'profile' %}selected{% endif %}>Profile</option>
-                    <option value="relationship" {% if filters["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
-                    <option value="event" {% if filters["type"] == 'event' %}selected{% endif %}>Event</option>
-                    <option value="summary" {% if filters["type"] == 'summary' %}selected{% endif %}>Summary</option>
-                </select>
-            </label>
-            <label>Source:
-                <select name="source">
-                    <option value="">All</option>
-                    <option value="auto" {% if filters["source"] == 'auto' %}selected{% endif %}>Auto</option>
-                    <option value="manual" {% if filters["source"] == 'manual' %}selected{% endif %}>Manual</option>
-                </select>
-            </label>
-            <label>Layer:
-                <select name="layer">
-                    <option value="">All</option>
-                    <option value="episodic" {% if filters["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
-                    <option value="stable" {% if filters["layer"] == 'stable' %}selected{% endif %}>Stable</option>
-                </select>
-            </label>
+
+        {% if has_chat_groups %}
+        <div class="chat-group-list">
+            {% for group in chat_groups %}
+            <a href="{{ group["url"] }}" class="chat-group-link {% if group["is_selected"] %}chat-group-link-active{% endif %}">
+                <span class="chat-group-title">{{ group["chat_id"] }}</span>
+                <span class="chat-group-meta">Character: {{ group["character_id"] }}</span>
+                <span class="chat-group-stats">
+                    <span>{{ group["total_count"] }} total</span>
+                    <span>{{ group["summary_count"] }} summary</span>
+                    <span>{{ group["stable_count"] }} stable</span>
+                    <span>{{ group["episodic_count"] }} episodic</span>
+                </span>
+                <span class="chat-group-meta">
+                    Updated {{ group["last_updated"][:10] }}{% if group["last_updated_days"] is not none %} · {{ group["last_updated_days"] }}d ago{% endif %}
+                </span>
+            </a>
+            {% endfor %}
         </div>
-        <div class="form-row">
-            <label>Pinned:
-                <select name="pinned">
-                    <option value="">All</option>
-                    <option value="true" {% if filters["pinned"] == 'true' %}selected{% endif %}>Yes</option>
-                    <option value="false" {% if filters["pinned"] == 'false' %}selected{% endif %}>No</option>
-                </select>
-            </label>
-            <label>Archived:
-                <select name="archived">
-                    <option value="">All</option>
-                    <option value="true" {% if filters["archived"] == 'true' %}selected{% endif %}>Yes</option>
-                    <option value="false" {% if filters["archived"] == 'false' %}selected{% endif %}>No</option>
-                </select>
-            </label>
-            <label>Limit: <input type="number" name="limit" value="{{ filters["limit"] or 50 }}" min="1" max="200"></label>
-        </div>
-        <div class="form-row">
-            <label>Freshness:
-                <select name="freshness">
-                    <option value="">All</option>
-                    <option value="fresh" {% if filters["freshness"] == 'fresh' %}selected{% endif %}>Fresh</option>
-                    <option value="warm" {% if filters["freshness"] == 'warm' %}selected{% endif %}>Warm</option>
-                    <option value="stale" {% if filters["freshness"] == 'stale' %}selected{% endif %}>Stale</option>
-                </select>
-            </label>
-            <label>Activity:
-                <select name="activity">
-                    <option value="">All</option>
-                    <option value="never_used" {% if filters["activity"] == 'never_used' %}selected{% endif %}>Never Used</option>
-                    <option value="low_use" {% if filters["activity"] == 'low_use' %}selected{% endif %}>Low Use</option>
-                    <option value="active" {% if filters["activity"] == 'active' %}selected{% endif %}>Active</option>
-                </select>
-            </label>
-            <label>Sort:
-                <select name="sort">
-                    <option value="updated_desc" {% if filters["sort"] == 'updated_desc' %}selected{% endif %}>Recently Updated</option>
-                    <option value="last_accessed_desc" {% if filters["sort"] == 'last_accessed_desc' %}selected{% endif %}>Recently Accessed</option>
-                    <option value="access_count_desc" {% if filters["sort"] == 'access_count_desc' %}selected{% endif %}>Most Used</option>
-                    <option value="stalest_first" {% if filters["sort"] == 'stalest_first' %}selected{% endif %}>Stalest First</option>
-                </select>
-            </label>
-            <label>Consolidation:
-                <select name="consolidation">
-                    <option value="">All</option>
-                    <option value="candidates_only" {% if filters["consolidation"] == 'candidates_only' %}selected{% endif %}>Candidates Only</option>
-                    <option value="near_duplicate" {% if filters["consolidation"] == 'near_duplicate' %}selected{% endif %}>Near Duplicates</option>
-                    <option value="stale_low_value_episode" {% if filters["consolidation"] == 'stale_low_value_episode' %}selected{% endif %}>Stale Episodic Cleanup</option>
-                    <option value="shadowed_by_stable" {% if filters["consolidation"] == 'shadowed_by_stable' %}selected{% endif %}>Shadowed By Stable</option>
-                </select>
-            </label>
-        </div>
-        <div class="filter-actions">
-            <button type="submit">Apply Filters</button>
-            <a href="/ui" class="button secondary">Clear Filters</a>
-        </div>
-    </form>
+        {% else %}
+        <p class="empty-value">No chat scopes found for the current filters.</p>
+        {% endif %}
+    </aside>
+
+    <div class="memory-main">
+        <section class="scope-summary">
+            <div>
+                <h2>{{ scope_title }}</h2>
+                {% if scope_subtitle %}
+                <div class="scope-subtitle">{{ scope_subtitle }}</div>
+                {% endif %}
+            </div>
+            <div class="scope-actions">
+                <a href="{{ filters["clear_filters_url"] }}" class="button secondary">Clear Filters</a>
+            </div>
+        </section>
+
+        <section class="filters">
+            <h2>Filters</h2>
+            <form method="GET" action="/ui" class="filter-form">
+                {% if filters["view"] == "all" %}
+                <input type="hidden" name="view" value="all">
+                {% elif filters["selected_chat_id"] and filters["selected_character_id"] %}
+                <input type="hidden" name="selected_chat_id" value="{{ filters["selected_chat_id"] }}">
+                <input type="hidden" name="selected_character_id" value="{{ filters["selected_character_id"] }}">
+                {% endif %}
+
+                <div class="form-row">
+                    <label>Type:
+                        <select name="type">
+                            <option value="">All</option>
+                            <option value="profile" {% if filters["type"] == 'profile' %}selected{% endif %}>Profile</option>
+                            <option value="relationship" {% if filters["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
+                            <option value="event" {% if filters["type"] == 'event' %}selected{% endif %}>Event</option>
+                            <option value="summary" {% if filters["type"] == 'summary' %}selected{% endif %}>Summary</option>
+                        </select>
+                    </label>
+                    <label>Source:
+                        <select name="source">
+                            <option value="">All</option>
+                            <option value="auto" {% if filters["source"] == 'auto' %}selected{% endif %}>Auto</option>
+                            <option value="manual" {% if filters["source"] == 'manual' %}selected{% endif %}>Manual</option>
+                        </select>
+                    </label>
+                    <label>Layer:
+                        <select name="layer">
+                            <option value="">All</option>
+                            <option value="episodic" {% if filters["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
+                            <option value="stable" {% if filters["layer"] == 'stable' %}selected{% endif %}>Stable</option>
+                        </select>
+                    </label>
+                    <label class="search-field">Search:
+                        <input type="text" name="search" value="{{ filters["search"] or '' }}" placeholder="content, normalized text, keywords, entities">
+                    </label>
+                </div>
+                <div class="form-row">
+                    <label>Pinned:
+                        <select name="pinned">
+                            <option value="">All</option>
+                            <option value="true" {% if filters["pinned"] == 'true' %}selected{% endif %}>Yes</option>
+                            <option value="false" {% if filters["pinned"] == 'false' %}selected{% endif %}>No</option>
+                        </select>
+                    </label>
+                    <label>Archived:
+                        <select name="archived">
+                            <option value="">All</option>
+                            <option value="true" {% if filters["archived"] == 'true' %}selected{% endif %}>Yes</option>
+                            <option value="false" {% if filters["archived"] == 'false' %}selected{% endif %}>No</option>
+                        </select>
+                    </label>
+                    <label>Freshness:
+                        <select name="freshness">
+                            <option value="">All</option>
+                            <option value="fresh" {% if filters["freshness"] == 'fresh' %}selected{% endif %}>Fresh</option>
+                            <option value="warm" {% if filters["freshness"] == 'warm' %}selected{% endif %}>Warm</option>
+                            <option value="stale" {% if filters["freshness"] == 'stale' %}selected{% endif %}>Stale</option>
+                        </select>
+                    </label>
+                    <label>Activity:
+                        <select name="activity">
+                            <option value="">All</option>
+                            <option value="never_used" {% if filters["activity"] == 'never_used' %}selected{% endif %}>Never Used</option>
+                            <option value="low_use" {% if filters["activity"] == 'low_use' %}selected{% endif %}>Low Use</option>
+                            <option value="active" {% if filters["activity"] == 'active' %}selected{% endif %}>Active</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="form-row">
+                    <label>Sort:
+                        <select name="sort">
+                            <option value="updated_desc" {% if filters["sort"] == 'updated_desc' %}selected{% endif %}>Recently Updated</option>
+                            <option value="last_accessed_desc" {% if filters["sort"] == 'last_accessed_desc' %}selected{% endif %}>Recently Accessed</option>
+                            <option value="access_count_desc" {% if filters["sort"] == 'access_count_desc' %}selected{% endif %}>Most Used</option>
+                            <option value="stalest_first" {% if filters["sort"] == 'stalest_first' %}selected{% endif %}>Stalest First</option>
+                        </select>
+                    </label>
+                    <label>Consolidation:
+                        <select name="consolidation">
+                            <option value="">All</option>
+                            <option value="candidates_only" {% if filters["consolidation"] == 'candidates_only' %}selected{% endif %}>Candidates Only</option>
+                            <option value="near_duplicate" {% if filters["consolidation"] == 'near_duplicate' %}selected{% endif %}>Near Duplicates</option>
+                            <option value="stale_low_value_episode" {% if filters["consolidation"] == 'stale_low_value_episode' %}selected{% endif %}>Stale Episodic Cleanup</option>
+                            <option value="shadowed_by_stable" {% if filters["consolidation"] == 'shadowed_by_stable' %}selected{% endif %}>Shadowed By Stable</option>
+                        </select>
+                    </label>
+                    <label>Limit: <input type="number" name="limit" value="{{ filters["limit"] or 50 }}" min="1" max="200"></label>
+                </div>
+                <div class="filter-actions">
+                    <button type="submit">Apply Filters</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="memories">
+            <h2>Memories ({{ memories["total"] if memories["total"] else 0 }} total)</h2>
+            {% if consolidation_result %}
+            <div class="result-summary">
+                <strong>Consolidation Action:</strong>
+                {{ consolidation_result["message"] }}
+                <code>{{ consolidation_result["memory_id"] }}</code>
+                {% if consolidation_result["related_memory_id"] %}
+                related=<code>{{ consolidation_result["related_memory_id"] }}</code>
+                {% endif %}
+                {% if consolidation_result["note"] %}
+                note="{{ consolidation_result["note"] }}"
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if consolidation_summary["total_candidates"] %}
+            <div class="result-summary">
+                <strong>Consolidation Candidates:</strong>
+                total={{ consolidation_summary["total_candidates"] }}
+                <span class="metric-chip">near_duplicate={{ consolidation_summary["near_duplicate"] }}</span>
+                <span class="metric-chip">stale_low_value_episode={{ consolidation_summary["stale_low_value_episode"] }}</span>
+                <span class="metric-chip">shadowed_by_stable={{ consolidation_summary["shadowed_by_stable"] }}</span>
+            </div>
+            {% endif %}
+            {% if filters["search"] %}
+            <div class="result-summary">
+                <strong>Search:</strong> {{ filters["search"] }}
+            </div>
+            {% endif %}
+
+            {% if memories["items"] and memories["items"]|length > 0 %}
+            <div class="memory-list">
+                {% for item in memory_cards %}
+                <article class="memory-card {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
+                    <div class="memory-card-header">
+                        <div>
+                            <div class="memory-id-row">
+                                <code class="memory-id">{{ item["id"] }}</code>
+                            </div>
+                            <div class="memory-badges">
+                                <span class="badge badge-type">{{ item["type"] }}</span>
+                                <span class="badge badge-source">{{ item["source"] }}</span>
+                                <span class="badge badge-layer">{{ item["layer"] }}</span>
+                                <span class="badge badge-freshness badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace('_', ' ') }}</span>
+                                <span class="badge badge-activity badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace('_', ' ') }}</span>
+                                {% if item["is_consolidation_candidate"] %}
+                                <span class="badge badge-consolidation">Consolidation Candidate</span>
+                                {% endif %}
+                                {% if item["pinned"] %}
+                                <span class="badge badge-pinned">Pinned</span>
+                                {% endif %}
+                                {% if item["archived"] %}
+                                <span class="badge badge-archived">Archived</span>
+                                {% endif %}
+                            </div>
+                            <div class="memory-meta-line">
+                                Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }}{% if item["updated_days"] is not none %} ({{ item["updated_days"] }}d ago){% endif %} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
+                            </div>
+                            <div class="memory-touch-line">
+                                {% if item["touch_state"] == "recently_accessed" %}
+                                Recently accessed{% if item["accessed_days"] is not none %} {{ item["accessed_days"] }}d ago{% endif %}
+                                {% elif item["touch_state"] == "recently_updated" %}
+                                Recently updated
+                                {% elif item["touch_state"] == "stale_unused" %}
+                                Stale and unused
+                                {% else %}
+                                Quiet
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="actions-cell">
+                            <form method="POST" action="/ui/{{ item["id"] }}/pin" style="display:inline;">
+                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                                <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
+                            </form>
+                            <form method="POST" action="/ui/{{ item["id"] }}/archive" style="display:inline;">
+                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                                <button type="submit">{% if item["archived"] %}Unarchive{% else %}Archive{% endif %}</button>
+                            </form>
+                            <form method="POST" action="/ui/{{ item["id"] }}/delete" style="display:inline;" onsubmit="return confirm('Delete this memory?');">
+                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                                <button type="submit" class="danger">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</div>
+
+                    {% if item["consolidation_candidates"] %}
+                    <details class="result-details consolidation-details" open>
+                        <summary>Consolidation Signals</summary>
+                        <div class="feature-summary">
+                            {% for candidate in item["consolidation_candidates"] %}
+                            <div>
+                                <span class="metric-chip">{{ candidate["type"] }}</span>
+                                {{ candidate["reason"] }}
+                                {% if candidate.get("related_id") %}
+                                <code>{{ candidate["related_id"] }}</code>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <form method="POST" action="/ui/{{ item["id"] }}/consolidate" class="consolidation-form">
+                            <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                            <div class="form-row">
+                                <label>Action:
+                                    <select name="action">
+                                        <option value="mark_consolidated_archive">Archive Candidate</option>
+                                        <option value="mark_reviewed_keep">Reviewed Keep</option>
+                                        <option value="link_to_related_memory">Link To Related</option>
+                                    </select>
+                                </label>
+                                <label>Related Memory ID:
+                                    <input type="text" name="related_memory_id" value="{{ item["metadata"]["related_memory_id"] or '' }}" placeholder="optional">
+                                </label>
+                            </div>
+                            <label>Note:
+                                <input type="text" name="note" value="{{ item["metadata"]["consolidation_note"] or '' }}" placeholder="optional consolidation note">
+                            </label>
+                            <button type="submit">Save Consolidation Action</button>
+                        </form>
+                    </details>
+                    {% endif %}
+
+                    <details class="result-details memory-inspect">
+                        <summary>Inspect Details</summary>
+                        <div class="memory-detail-grid">
+                            <div><strong>Chat:</strong> <code>{{ item["chat_id"] }}</code></div>
+                            <div><strong>Character:</strong> <code>{{ item["character_id"] }}</code></div>
+                            <div><strong>Normalized:</strong> <code>{{ item["normalized_content"] }}</code></div>
+                            <div><strong>Last Accessed:</strong> {{ item["last_accessed_at"] or "never" }}</div>
+                            <div><strong>Freshness:</strong> {{ item["freshness"] }}</div>
+                            <div><strong>Activity:</strong> {{ item["activity"] }}</div>
+                            <div><strong>Review Status:</strong> {{ item["metadata"]["review_status"] or "none" }}</div>
+                            <div><strong>Related Memory:</strong> {{ item["metadata"]["related_memory_id"] or "none" }}</div>
+                        </div>
+                        <div class="memory-chip-group">
+                            <strong>Consolidation Note:</strong>
+                            {% if item["metadata"]["consolidation_note"] %}
+                            {{ item["metadata"]["consolidation_note"] }}
+                            {% else %}
+                            <span class="empty-value">none</span>
+                            {% endif %}
+                        </div>
+                        <div class="memory-chip-group">
+                            <strong>Consolidation History:</strong>
+                            {% if item["metadata"]["consolidation_history"] %}
+                            {% set history = item["metadata"]["consolidation_history"]|reverse|list %}
+                            {% set recent_history = history[:3] %}
+                            <ul class="history-list">
+                                {% for entry in recent_history %}
+                                <li>
+                                    <code>{{ entry["timestamp"] }}</code>
+                                    <span class="metric-chip">{{ entry["action"] }}</span>
+                                    {% if entry["related_memory_id"] %}
+                                    related=<code>{{ entry["related_memory_id"] }}</code>
+                                    {% endif %}
+                                    {% if entry["note"] %}
+                                    note="{{ entry["note"] }}"
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% if history|length > 3 %}
+                            <div class="history-summary">Showing last {{ recent_history|length }} of {{ history|length }}</div>
+                            <details class="history-toggle">
+                                <summary>Show full history</summary>
+                                <ul class="history-list">
+                                    {% for entry in history %}
+                                    <li>
+                                        <code>{{ entry["timestamp"] }}</code>
+                                        <span class="metric-chip">{{ entry["action"] }}</span>
+                                        {% if entry["related_memory_id"] %}
+                                        related=<code>{{ entry["related_memory_id"] }}</code>
+                                        {% endif %}
+                                        {% if entry["note"] %}
+                                        note="{{ entry["note"] }}"
+                                        {% endif %}
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
+                            {% endif %}
+                            {% else %}
+                            <span class="empty-value">none</span>
+                            {% endif %}
+                        </div>
+                        <div class="memory-chip-group">
+                            <strong>Entities:</strong>
+                            {% if item["metadata"]["entities"] %}
+                                {% for entity in item["metadata"]["entities"] %}
+                                <span class="metric-chip">{{ entity }}</span>
+                                {% endfor %}
+                            {% else %}
+                            <span class="empty-value">none</span>
+                            {% endif %}
+                        </div>
+                        <div class="memory-chip-group">
+                            <strong>Keywords:</strong>
+                            {% if item["metadata"]["keywords"] %}
+                                {% for keyword in item["metadata"]["keywords"] %}
+                                <span class="metric-chip">{{ keyword }}</span>
+                                {% endfor %}
+                            {% else %}
+                            <span class="empty-value">none</span>
+                            {% endif %}
+                        </div>
+                    </details>
+
+                    <details class="result-details">
+                        <summary>Edit</summary>
+                        <form method="POST" action="/ui/{{ item["id"] }}/update" class="edit-form">
+                            <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                            <div class="form-row">
+                                <label>Type:
+                                    <select name="type">
+                                        <option value="profile" {% if item["type"] == 'profile' %}selected{% endif %}>Profile</option>
+                                        <option value="relationship" {% if item["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
+                                        <option value="event" {% if item["type"] == 'event' %}selected{% endif %}>Event</option>
+                                        <option value="summary" {% if item["type"] == 'summary' %}selected{% endif %}>Summary</option>
+                                    </select>
+                                </label>
+                                <label>Source:
+                                    <select name="source">
+                                        <option value="auto" {% if item["source"] == 'auto' %}selected{% endif %}>Auto</option>
+                                        <option value="manual" {% if item["source"] == 'manual' %}selected{% endif %}>Manual</option>
+                                    </select>
+                                </label>
+                                <label>Layer:
+                                    <select name="layer">
+                                        <option value="episodic" {% if item["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
+                                        <option value="stable" {% if item["layer"] == 'stable' %}selected{% endif %}>Stable</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <label>Importance: <input type="number" name="importance" value="{{ item["importance"] }}" min="0" max="1" step="0.1"></label>
+                            <label>Content:
+                                <textarea name="content" rows="3">{{ item["content"] }}</textarea>
+                            </label>
+                            <label>Entities (comma-separated):
+                                <input type="text" name="entities" value="{{ item["metadata"]["entities"]|join(', ') }}">
+                            </label>
+                            <label>Keywords (comma-separated):
+                                <input type="text" name="keywords" value="{{ item["metadata"]["keywords"]|join(', ') }}">
+                            </label>
+                            <label>Pinned: <input type="checkbox" name="pinned" value="true" {% if item["pinned"] %}checked{% endif %}></label>
+                            <label>Archived: <input type="checkbox" name="archived" value="true" {% if item["archived"] %}checked{% endif %}></label>
+                            <button type="submit">Save Changes</button>
+                        </form>
+                    </details>
+                </article>
+                {% endfor %}
+            </div>
+
+            {% if memories["total"] and memories["total"] > 0 %}
+            <div class="pagination">
+                {% if filters["offset"] and filters["offset"] > 0 %}
+                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button">Previous</a>
+                {% endif %}
+                <span>Page {{ ((filters["offset"] or 0) // filters["limit"]) + 1 }} ({{ memories["total"] }} total)</span>
+                {% if memories["offset"] + memories["limit"] < memories["total"] %}
+                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">Next</a>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% elif has_chat_groups %}
+            <p>No memories found in this view.</p>
+            {% else %}
+            <p>No memories found.</p>
+            {% endif %}
+        </section>
+    </div>
 </section>
 
-<!-- Store Pipeline -->
 <section class="debug-tools">
     <h2>Store Pipeline</h2>
     <form method="POST" action="/ui/store">
@@ -155,7 +482,7 @@
     {% endif %}
 
     {% if store_result["debug"] %}
-    {% if store_summary["debug_breakdown"] %}
+    {% if store_summary and store_summary["debug_breakdown"] %}
     <details class="result-details" open>
         <summary>Store Summary Breakdown</summary>
         <div class="feature-summary">
@@ -201,7 +528,6 @@
     {% endif %}
 </section>
 
-<!-- Retrieval Pipeline -->
 <section class="debug-tools">
     <h2>Retrieve Pipeline</h2>
     <form method="POST" action="/ui/retrieve">
@@ -275,7 +601,7 @@
     {% endif %}
 
     {% if retrieve_result["debug"] %}
-    {% if retrieve_summary["debug_breakdown"] %}
+    {% if retrieve_summary and retrieve_summary["debug_breakdown"] %}
     <details class="result-details" open>
         <summary>Retrieve Summary Breakdown</summary>
         <div class="feature-summary">
@@ -324,13 +650,13 @@
     {% endif %}
 </section>
 
-<!-- Create Form -->
 <section class="create-form">
     <h2>Create Memory</h2>
     <form method="POST" action="/ui/create">
+        <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
         <div class="form-row">
-            <label>Chat ID: <input type="text" name="chat_id" required></label>
-            <label>Character ID: <input type="text" name="character_id" required></label>
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ filters["chat_id"] or '' }}" required></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ filters["character_id"] or '' }}" required></label>
         </div>
         <div class="form-row">
             <label>Type:
@@ -368,272 +694,5 @@
         </div>
         <button type="submit">Create</button>
     </form>
-</section>
-
-<!-- Memories List -->
-<section class="memories">
-    <h2>Memories ({{ memories["total"] if memories["total"] else 0 }} total)</h2>
-    {% if consolidation_result %}
-    <div class="result-summary">
-        <strong>Consolidation Action:</strong>
-        {{ consolidation_result["message"] }}
-        <code>{{ consolidation_result["memory_id"] }}</code>
-        {% if consolidation_result["related_memory_id"] %}
-        related=<code>{{ consolidation_result["related_memory_id"] }}</code>
-        {% endif %}
-        {% if consolidation_result["note"] %}
-        note="{{ consolidation_result["note"] }}"
-        {% endif %}
-    </div>
-    {% endif %}
-    {% if consolidation_summary["total_candidates"] %}
-    <div class="result-summary">
-        <strong>Consolidation Candidates:</strong>
-        total={{ consolidation_summary["total_candidates"] }}
-        <span class="metric-chip">near_duplicate={{ consolidation_summary["near_duplicate"] }}</span>
-        <span class="metric-chip">stale_low_value_episode={{ consolidation_summary["stale_low_value_episode"] }}</span>
-        <span class="metric-chip">shadowed_by_stable={{ consolidation_summary["shadowed_by_stable"] }}</span>
-    </div>
-    {% endif %}
-    {% if filters["search"] %}
-    <div class="result-summary">
-        <strong>Search:</strong> {{ filters["search"] }}
-    </div>
-    {% endif %}
-    {% if memories["items"] and memories["items"]|length > 0 %}
-    <div class="memory-list">
-        {% for item in memory_cards %}
-        <article class="memory-card {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
-            <div class="memory-card-header">
-                <div>
-                    <div class="memory-id-row">
-                        <code class="memory-id">{{ item["id"] }}</code>
-                    </div>
-                    <div class="memory-badges">
-                        <span class="badge badge-type">{{ item["type"] }}</span>
-                        <span class="badge badge-source">{{ item["source"] }}</span>
-                        <span class="badge badge-layer">{{ item["layer"] }}</span>
-                        <span class="badge badge-freshness badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace('_', ' ') }}</span>
-                        <span class="badge badge-activity badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace('_', ' ') }}</span>
-                        {% if item["is_consolidation_candidate"] %}
-                        <span class="badge badge-consolidation">Consolidation Candidate</span>
-                        {% endif %}
-                        {% if item["pinned"] %}
-                        <span class="badge badge-pinned">Pinned</span>
-                        {% endif %}
-                        {% if item["archived"] %}
-                        <span class="badge badge-archived">Archived</span>
-                        {% endif %}
-                    </div>
-                    <div class="memory-meta-line">
-                        Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }}{% if item["updated_days"] is not none %} ({{ item["updated_days"] }}d ago){% endif %} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
-                    </div>
-                    <div class="memory-touch-line">
-                        {% if item["touch_state"] == "recently_accessed" %}
-                        Recently accessed{% if item["accessed_days"] is not none %} {{ item["accessed_days"] }}d ago{% endif %}
-                        {% elif item["touch_state"] == "recently_updated" %}
-                        Recently updated
-                        {% elif item["touch_state"] == "stale_unused" %}
-                        Stale and unused
-                        {% else %}
-                        Quiet
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="actions-cell">
-                    <form method="POST" action="/ui/{{ item["id"] }}/pin" style="display:inline;">
-                        <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
-                    </form>
-                    <form method="POST" action="/ui/{{ item["id"] }}/archive" style="display:inline;">
-                        <button type="submit">{% if item["archived"] %}Unarchive{% else %}Archive{% endif %}</button>
-                    </form>
-                    <form method="POST" action="/ui/{{ item["id"] }}/delete" style="display:inline;" onsubmit="return confirm('Delete this memory?');">
-                        <button type="submit" class="danger">Delete</button>
-                    </form>
-                </div>
-            </div>
-
-            <div class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</div>
-
-            {% if item["consolidation_candidates"] %}
-            <details class="result-details consolidation-details" open>
-                <summary>Consolidation Signals</summary>
-                <div class="feature-summary">
-                    {% for candidate in item["consolidation_candidates"] %}
-                    <div>
-                        <span class="metric-chip">{{ candidate["type"] }}</span>
-                        {{ candidate["reason"] }}
-                        {% if candidate.get("related_id") %}
-                        <code>{{ candidate["related_id"] }}</code>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-                <form method="POST" action="/ui/{{ item["id"] }}/consolidate" class="consolidation-form">
-                    <div class="form-row">
-                        <label>Action:
-                            <select name="action">
-                                <option value="mark_consolidated_archive">Archive Candidate</option>
-                                <option value="mark_reviewed_keep">Reviewed Keep</option>
-                                <option value="link_to_related_memory">Link To Related</option>
-                            </select>
-                        </label>
-                        <label>Related Memory ID:
-                            <input type="text" name="related_memory_id" value="{{ item["metadata"]["related_memory_id"] or '' }}" placeholder="optional">
-                        </label>
-                    </div>
-                    <label>Note:
-                        <input type="text" name="note" value="{{ item["metadata"]["consolidation_note"] or '' }}" placeholder="optional consolidation note">
-                    </label>
-                    <button type="submit">Save Consolidation Action</button>
-                </form>
-            </details>
-            {% endif %}
-
-            <details class="result-details memory-inspect">
-                <summary>Inspect Details</summary>
-                <div class="memory-detail-grid">
-                    <div><strong>Chat:</strong> <code>{{ item["chat_id"] }}</code></div>
-                    <div><strong>Character:</strong> <code>{{ item["character_id"] }}</code></div>
-                    <div><strong>Normalized:</strong> <code>{{ item["normalized_content"] }}</code></div>
-                    <div><strong>Last Accessed:</strong> {{ item["last_accessed_at"] or "never" }}</div>
-                    <div><strong>Freshness:</strong> {{ item["freshness"] }}</div>
-                    <div><strong>Activity:</strong> {{ item["activity"] }}</div>
-                    <div><strong>Review Status:</strong> {{ item["metadata"]["review_status"] or "none" }}</div>
-                    <div><strong>Related Memory:</strong> {{ item["metadata"]["related_memory_id"] or "none" }}</div>
-                </div>
-                <div class="memory-chip-group">
-                    <strong>Consolidation Note:</strong>
-                    {% if item["metadata"]["consolidation_note"] %}
-                    {{ item["metadata"]["consolidation_note"] }}
-                    {% else %}
-                    <span class="empty-value">none</span>
-                    {% endif %}
-                </div>
-                <div class="memory-chip-group">
-                    <strong>Consolidation History:</strong>
-                    {% if item["metadata"]["consolidation_history"] %}
-                    {% set history = item["metadata"]["consolidation_history"]|reverse|list %}
-                    {% set recent_history = history[:3] %}
-                    <ul class="history-list">
-                        {% for entry in recent_history %}
-                        <li>
-                            <code>{{ entry["timestamp"] }}</code>
-                            <span class="metric-chip">{{ entry["action"] }}</span>
-                            {% if entry["related_memory_id"] %}
-                            related=<code>{{ entry["related_memory_id"] }}</code>
-                            {% endif %}
-                            {% if entry["note"] %}
-                            note="{{ entry["note"] }}"
-                            {% endif %}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% if history|length > 3 %}
-                    <div class="history-summary">Showing last {{ recent_history|length }} of {{ history|length }}</div>
-                    <details class="history-toggle">
-                        <summary>Show full history</summary>
-                        <ul class="history-list">
-                            {% for entry in history %}
-                            <li>
-                                <code>{{ entry["timestamp"] }}</code>
-                                <span class="metric-chip">{{ entry["action"] }}</span>
-                                {% if entry["related_memory_id"] %}
-                                related=<code>{{ entry["related_memory_id"] }}</code>
-                                {% endif %}
-                                {% if entry["note"] %}
-                                note="{{ entry["note"] }}"
-                                {% endif %}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    </details>
-                    {% endif %}
-                    {% else %}
-                    <span class="empty-value">none</span>
-                    {% endif %}
-                </div>
-                <div class="memory-chip-group">
-                    <strong>Entities:</strong>
-                    {% if item["metadata"]["entities"] %}
-                        {% for entity in item["metadata"]["entities"] %}
-                        <span class="metric-chip">{{ entity }}</span>
-                        {% endfor %}
-                    {% else %}
-                    <span class="empty-value">none</span>
-                    {% endif %}
-                </div>
-                <div class="memory-chip-group">
-                    <strong>Keywords:</strong>
-                    {% if item["metadata"]["keywords"] %}
-                        {% for keyword in item["metadata"]["keywords"] %}
-                        <span class="metric-chip">{{ keyword }}</span>
-                        {% endfor %}
-                    {% else %}
-                    <span class="empty-value">none</span>
-                    {% endif %}
-                </div>
-            </details>
-
-            <details class="result-details">
-                <summary>Edit</summary>
-                <form method="POST" action="/ui/{{ item["id"] }}/update" class="edit-form">
-                    <div class="form-row">
-                        <label>Type:
-                            <select name="type">
-                                <option value="profile" {% if item["type"] == 'profile' %}selected{% endif %}>Profile</option>
-                                <option value="relationship" {% if item["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
-                                <option value="event" {% if item["type"] == 'event' %}selected{% endif %}>Event</option>
-                                <option value="summary" {% if item["type"] == 'summary' %}selected{% endif %}>Summary</option>
-                            </select>
-                        </label>
-                        <label>Source:
-                            <select name="source">
-                                <option value="auto" {% if item["source"] == 'auto' %}selected{% endif %}>Auto</option>
-                                <option value="manual" {% if item["source"] == 'manual' %}selected{% endif %}>Manual</option>
-                            </select>
-                        </label>
-                        <label>Layer:
-                            <select name="layer">
-                                <option value="episodic" {% if item["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
-                                <option value="stable" {% if item["layer"] == 'stable' %}selected{% endif %}>Stable</option>
-                            </select>
-                        </label>
-                    </div>
-                    <label>Importance: <input type="number" name="importance" value="{{ item["importance"] }}" min="0" max="1" step="0.1"></label>
-                    <label>Content:
-                        <textarea name="content" rows="3">{{ item["content"] }}</textarea>
-                    </label>
-                    <label>Entities (comma-separated):
-                        <input type="text" name="entities" value="{{ item["metadata"]["entities"]|join(', ') }}">
-                    </label>
-                    <label>Keywords (comma-separated):
-                        <input type="text" name="keywords" value="{{ item["metadata"]["keywords"]|join(', ') }}">
-                    </label>
-                    <label>Pinned: <input type="checkbox" name="pinned" value="true" {% if item["pinned"] %}checked{% endif %}></label>
-                    <label>Archived: <input type="checkbox" name="archived" value="true" {% if item["archived"] %}checked{% endif %}></label>
-                    <button type="submit">Save Changes</button>
-                </form>
-            </details>
-        </article>
-        {% endfor %}
-    </div>
-
-    <!-- Pagination -->
-    {% if memories["total"] and memories["total"] > 0 %}
-    <div class="pagination">
-        {% if filters["offset"] and filters["offset"] > 0 %}
-        <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button">Previous</a>
-        {% endif %}
-        <span>Page {{ ((filters["offset"] or 0) // filters["limit"]) + 1 }} ({{ memories["total"] }} total)</span>
-        {% if memories["offset"] + memories["limit"] < memories["total"] %}
-        <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">Next</a>
-        {% endif %}
-    </div>
-    {% endif %}
-
-    {% else %}
-    <p>No memories found.</p>
-    {% endif %}
 </section>
 {% endblock %}
