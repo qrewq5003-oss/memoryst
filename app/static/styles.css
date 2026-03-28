@@ -75,16 +75,26 @@ section {
     color: inherit;
     background: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(191, 219, 254, 0.14);
+    transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .chat-group-link:hover {
     background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
 }
 
 .chat-group-link-active {
     background: #f8fafc;
     color: #10263d;
-    border-color: #dbeafe;
+    border-color: #93c5fd;
+    box-shadow: inset 4px 0 0 #2563eb;
+}
+
+.chat-group-title-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
 }
 
 .chat-group-title {
@@ -109,6 +119,13 @@ section {
     min-width: 0;
 }
 
+.scope-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .scope-summary {
     display: flex;
     justify-content: space-between;
@@ -125,9 +142,45 @@ section {
     color: #526072;
 }
 
+.scope-meta-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.scope-meta-item {
+    font-size: 13px;
+    color: #445164;
+}
+
 .scope-actions {
     display: flex;
     gap: 10px;
+}
+
+.scope-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    background: rgba(191, 219, 254, 0.18);
+    color: inherit;
+    white-space: nowrap;
+}
+
+.chat-group-link-active .scope-pill {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.scope-pill-header {
+    background: #dbeafe;
+    color: #1d4ed8;
 }
 
 .form-row {

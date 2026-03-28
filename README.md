@@ -55,6 +55,8 @@ Access the built-in web UI at `http://localhost:8000/ui` for:
 - Browsing memories grouped by `chat_id + character_id` in a chat sidebar
 - Defaulting to one selected chat scope instead of mixing all chats together
 - Switching to an `All Chats` view when you need the global list
+- Showing friendlier chat labels in the sidebar while keeping raw IDs visible
+- Highlighting the currently selected chat scope or `All Chats` state
 - Viewing and filtering memories inside the selected chat scope
 - Creating, editing, and deleting records
 - Pin/unpin and archive/unarchive operations
