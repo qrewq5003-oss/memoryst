@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -42,6 +42,10 @@ def _parse_list(value: str) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _normalize_redirect_query(value: Any) -> str:
+    return value if isinstance(value, str) else ""
 
 
 def _build_query_string(params: dict[str, Any]) -> str:
@@ -121,6 +125,13 @@ def _build_memory_card(memory: MemoryItem) -> dict[str, Any]:
         "updated_days": updated_days,
         "accessed_days": accessed_days,
     }
+
+
+def _normalize_scope_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _normalize_for_similarity(text: str) -> str:
@@ -348,6 +359,121 @@ def _sorted_breakdown(items: dict[str, int]) -> list[dict[str, Any]]:
     ]
 
 
+def _build_scope_query(
+    *,
+    view: str,
+    selected_chat_id: str | None,
+    selected_character_id: str | None,
+) -> str:
+    return _build_query_string(
+        {
+            "view": view if view == "all" else None,
+            "selected_chat_id": selected_chat_id if view != "all" else None,
+            "selected_character_id": selected_character_id if view != "all" else None,
+        }
+    )
+
+
+def _redirect_query_to_render_args(redirect_query: str) -> dict[str, Any]:
+    redirect_query = _normalize_redirect_query(redirect_query)
+    if not redirect_query:
+        return {}
+
+    params = dict(parse_qsl(redirect_query, keep_blank_values=False))
+    render_args: dict[str, Any] = {}
+    string_keys = {
+        "selected_chat_id",
+        "selected_character_id",
+        "view",
+        "type",
+        "source",
+        "layer",
+        "search",
+        "freshness",
+        "activity",
+        "consolidation",
+        "sort",
+        "archived",
+        "pinned",
+    }
+    int_keys = {"limit", "offset"}
+
+    for key in string_keys:
+        if key in params:
+            render_args[key] = params[key]
+    for key in int_keys:
+        if key in params:
+            try:
+                render_args[key] = int(params[key])
+            except ValueError:
+                continue
+
+    return render_args
+
+
+def _build_chat_groups(items: list[MemoryItem]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in items:
+        key = (item.chat_id, item.character_id)
+        group = grouped.get(key)
+        if group is None:
+            group = {
+                "chat_id": item.chat_id,
+                "character_id": item.character_id,
+                "total_count": 0,
+                "summary_count": 0,
+                "stable_count": 0,
+                "episodic_count": 0,
+                "last_updated": item.updated_at,
+            }
+            grouped[key] = group
+
+        group["total_count"] += 1
+        if item.type == "summary" or item.metadata.is_summary:
+            group["summary_count"] += 1
+        elif item.layer == "stable":
+            group["stable_count"] += 1
+        else:
+            group["episodic_count"] += 1
+
+        if item.updated_at > group["last_updated"]:
+            group["last_updated"] = item.updated_at
+
+    groups = list(grouped.values())
+    groups.sort(
+        key=lambda group: (
+            group["last_updated"],
+            group["chat_id"],
+            group["character_id"],
+        ),
+        reverse=True,
+    )
+    for group in groups:
+        group["last_updated_days"] = _days_since(group["last_updated"])
+    return groups
+
+
+def _resolve_selected_group(
+    chat_groups: list[dict[str, Any]],
+    *,
+    requested_chat_id: str | None,
+    requested_character_id: str | None,
+    view: str,
+) -> dict[str, Any] | None:
+    if view == "all":
+        return None
+
+    if requested_chat_id and requested_character_id:
+        for group in chat_groups:
+            if (
+                group["chat_id"] == requested_chat_id
+                and group["character_id"] == requested_character_id
+            ):
+                return group
+
+    return chat_groups[0] if chat_groups else None
+
+
 def _build_store_summary(store_result: StoreMemoryResponse | None) -> dict[str, Any] | None:
     """Build compact aggregate summary for a store run."""
     if store_result is None:
@@ -428,6 +554,9 @@ def _build_retrieve_summary(retrieve_result: RetrieveMemoryResponse | None) -> d
 def _render_memories_page(
     request: Request,
     *,
+    selected_chat_id: str | None = None,
+    selected_character_id: str | None = None,
+    view: str | None = None,
     chat_id: str | None = None,
     character_id: str | None = None,
     type: str | None = None,
@@ -449,8 +578,11 @@ def _render_memories_page(
     retrieve_form: dict[str, Any] | None = None,
 ) -> Any:
     """Render the memories page with optional store/retrieve diagnostics sections."""
-    chat_id = chat_id or None
-    character_id = character_id or None
+    legacy_chat_id = _normalize_scope_value(chat_id)
+    legacy_character_id = _normalize_scope_value(character_id)
+    requested_chat_id = _normalize_scope_value(selected_chat_id) or legacy_chat_id
+    requested_character_id = _normalize_scope_value(selected_character_id) or legacy_character_id
+    view_mode = "all" if view == "all" else "chat"
     type = type or None
     source = source or None
     layer = layer or None
@@ -474,8 +606,6 @@ def _render_memories_page(
         pinned_bool = None
 
     base_memories = list_memories(
-        chat_id=chat_id,
-        character_id=character_id,
         memory_type=type,
         source=source,
         layer=layer,
@@ -484,9 +614,30 @@ def _render_memories_page(
         limit=UI_SEARCH_SCAN_LIMIT,
         offset=0,
     )
-    candidate_map, consolidation_summary = _build_consolidation_data(base_memories.items)
+    chat_groups = _build_chat_groups(base_memories.items)
+    selected_group = _resolve_selected_group(
+        chat_groups,
+        requested_chat_id=requested_chat_id,
+        requested_character_id=requested_character_id,
+        view=view_mode,
+    )
+    active_chat_id = selected_group["chat_id"] if selected_group else None
+    active_character_id = selected_group["character_id"] if selected_group else None
+
+    if view_mode == "all":
+        scoped_items = list(base_memories.items)
+    elif active_chat_id and active_character_id:
+        scoped_items = [
+            item
+            for item in base_memories.items
+            if item.chat_id == active_chat_id and item.character_id == active_character_id
+        ]
+    else:
+        scoped_items = []
+
+    candidate_map, consolidation_summary = _build_consolidation_data(scoped_items)
     memories = _filter_and_page_memories(
-        base_memories.items,
+        scoped_items,
         search=search,
         freshness=freshness,
         activity=activity,
@@ -505,9 +656,88 @@ def _render_memories_page(
         for item in memories.items
     ]
 
+    redirect_query = _build_query_string(
+        {
+            "view": view_mode if view_mode == "all" else None,
+            "selected_chat_id": active_chat_id if view_mode != "all" else None,
+            "selected_character_id": active_character_id if view_mode != "all" else None,
+            "type": type,
+            "source": source,
+            "layer": layer,
+            "search": search,
+            "freshness": freshness,
+            "activity": activity,
+            "consolidation": consolidation,
+            "sort": sort,
+            "archived": archived,
+            "pinned": pinned,
+            "limit": limit,
+            "offset": offset,
+        }
+    )
+    clear_filters_query = _build_scope_query(
+        view=view_mode,
+        selected_chat_id=active_chat_id,
+        selected_character_id=active_character_id,
+    )
+    clear_filters_url = "/ui"
+    if clear_filters_query:
+        clear_filters_url = f"/ui?{clear_filters_query}"
+
+    all_chats_query = _build_query_string(
+        {
+            "view": "all",
+            "type": type,
+            "source": source,
+            "layer": layer,
+            "search": search,
+            "freshness": freshness,
+            "activity": activity,
+            "consolidation": consolidation,
+            "sort": sort,
+            "archived": archived,
+            "pinned": pinned,
+            "limit": limit,
+        }
+    )
+    all_chats_url = f"/ui?{all_chats_query}" if all_chats_query else "/ui"
+
+    for group in chat_groups:
+        group_query = _build_query_string(
+            {
+                "selected_chat_id": group["chat_id"],
+                "selected_character_id": group["character_id"],
+                "type": type,
+                "source": source,
+                "layer": layer,
+                "search": search,
+                "freshness": freshness,
+                "activity": activity,
+                "consolidation": consolidation,
+                "sort": sort,
+                "archived": archived,
+                "pinned": pinned,
+                "limit": limit,
+            }
+        )
+        group["url"] = f"/ui?{group_query}" if group_query else "/ui"
+        group["is_selected"] = (
+            view_mode != "all"
+            and active_chat_id == group["chat_id"]
+            and active_character_id == group["character_id"]
+        )
+
+    scope_title = "All Chats" if view_mode == "all" else (active_chat_id or "Select a chat")
+    scope_subtitle = None
+    if view_mode != "all" and active_character_id:
+        scope_subtitle = f"Character: {active_character_id}"
+
     filters = {
-        "chat_id": chat_id,
-        "character_id": character_id,
+        "chat_id": active_chat_id,
+        "character_id": active_character_id,
+        "selected_chat_id": active_chat_id,
+        "selected_character_id": active_character_id,
+        "view": view_mode,
         "type": type,
         "source": source,
         "layer": layer,
@@ -520,21 +750,26 @@ def _render_memories_page(
         "pinned": pinned,
         "limit": limit,
         "offset": offset,
-        "query_string": _build_query_string({
-            "chat_id": chat_id,
-            "character_id": character_id,
-            "type": type,
-            "source": source,
-            "layer": layer,
-            "search": search,
-            "freshness": freshness,
-            "activity": activity,
-            "consolidation": consolidation,
-            "sort": sort,
-            "archived": archived,
-            "pinned": pinned,
-            "limit": limit,
-        }),
+        "query_string": _build_query_string(
+            {
+                "view": view_mode if view_mode == "all" else None,
+                "selected_chat_id": active_chat_id if view_mode != "all" else None,
+                "selected_character_id": active_character_id if view_mode != "all" else None,
+                "type": type,
+                "source": source,
+                "layer": layer,
+                "search": search,
+                "freshness": freshness,
+                "activity": activity,
+                "consolidation": consolidation,
+                "sort": sort,
+                "archived": archived,
+                "pinned": pinned,
+                "limit": limit,
+            }
+        ),
+        "redirect_query": redirect_query,
+        "clear_filters_url": clear_filters_url,
     }
 
     return templates.TemplateResponse(
@@ -543,6 +778,13 @@ def _render_memories_page(
         {
             "memories": memories.model_dump(),
             "memory_cards": memory_cards,
+            "chat_groups": chat_groups,
+            "scope_title": scope_title,
+            "scope_subtitle": scope_subtitle,
+            "scope_is_all_chats": view_mode == "all",
+            "all_chats_url": all_chats_url,
+            "all_chats_selected": view_mode == "all",
+            "has_chat_groups": bool(chat_groups),
             "consolidation_summary": consolidation_summary,
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
@@ -551,14 +793,14 @@ def _render_memories_page(
             "store_summary": _build_store_summary(store_result),
             "retrieve_summary": _build_retrieve_summary(retrieve_result),
             "store_form": store_form or {
-                "chat_id": "",
-                "character_id": "",
+                "chat_id": active_chat_id or "",
+                "character_id": active_character_id or "",
                 "messages": "",
                 "debug": False,
             },
             "retrieve_form": retrieve_form or {
-                "chat_id": "",
-                "character_id": "",
+                "chat_id": active_chat_id or "",
+                "character_id": active_character_id or "",
                 "user_input": "",
                 "recent_messages": "",
                 "limit": 5,
@@ -572,6 +814,9 @@ def _render_memories_page(
 @router.get("/ui")
 def ui_memories_page(
     request: Request,
+    selected_chat_id: str | None = None,
+    selected_character_id: str | None = None,
+    view: str | None = None,
     chat_id: str | None = None,
     character_id: str | None = None,
     type: str | None = None,
@@ -590,6 +835,9 @@ def ui_memories_page(
     """Render memories page with filters."""
     return _render_memories_page(
         request,
+        selected_chat_id=selected_chat_id,
+        selected_character_id=selected_character_id,
+        view=view,
         chat_id=chat_id,
         character_id=character_id,
         type=type,
@@ -625,8 +873,8 @@ def ui_store_memories(
     result = store_memories(store_request)
     return _render_memories_page(
         request,
-        chat_id=chat_id,
-        character_id=character_id,
+        selected_chat_id=chat_id,
+        selected_character_id=character_id,
         store_result=result,
         store_form={
             "chat_id": chat_id,
@@ -670,8 +918,8 @@ def ui_retrieve_memories(
     result = retrieve_memories(retrieve_request)
     return _render_memories_page(
         request,
-        chat_id=chat_id,
-        character_id=character_id,
+        selected_chat_id=chat_id,
+        selected_character_id=character_id,
         retrieve_result=result,
         store_form={
             "chat_id": chat_id,
@@ -704,6 +952,7 @@ def ui_create_memory(
     archived: bool = Form(False),
     entities: str = Form(""),
     keywords: str = Form(""),
+    redirect_query: str = Form(""),
 ) -> RedirectResponse:
     """Create a new memory and redirect back to UI."""
     request = CreateMemoryRequest(
@@ -722,7 +971,9 @@ def ui_create_memory(
         ),
     )
     create_memory(request)
-    return RedirectResponse(url="/ui", status_code=303)
+    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/ui/{memory_id}/update")
@@ -737,6 +988,7 @@ def ui_update_memory(
     archived: bool = Form(False),
     entities: str = Form(""),
     keywords: str = Form(""),
+    redirect_query: str = Form(""),
 ) -> RedirectResponse:
     """Update a memory and redirect back to UI."""
     request = UpdateMemoryRequest(
@@ -753,32 +1005,40 @@ def ui_update_memory(
         ),
     )
     update_memory(memory_id, request)
-    return RedirectResponse(url="/ui", status_code=303)
+    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/ui/{memory_id}/pin")
-def ui_toggle_pin(memory_id: str) -> RedirectResponse:
+def ui_toggle_pin(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
     """Toggle pinned status and redirect back to UI."""
     memory = get_memory_by_id(memory_id)
     if memory:
         set_pinned(memory_id, not memory.pinned)
-    return RedirectResponse(url="/ui", status_code=303)
+    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/ui/{memory_id}/archive")
-def ui_toggle_archive(memory_id: str) -> RedirectResponse:
+def ui_toggle_archive(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
     """Toggle archived status and redirect back to UI."""
     memory = get_memory_by_id(memory_id)
     if memory:
         set_archived(memory_id, not memory.archived)
-    return RedirectResponse(url="/ui", status_code=303)
+    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/ui/{memory_id}/delete")
-def ui_delete_memory(memory_id: str) -> RedirectResponse:
+def ui_delete_memory(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
     """Delete a memory and redirect back to UI."""
     delete_memory(memory_id)
-    return RedirectResponse(url="/ui", status_code=303)
+    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/ui/{memory_id}/consolidate")
@@ -788,6 +1048,7 @@ def ui_consolidate_memory(
     action: str = Form(...),
     related_memory_id: str = Form(""),
     note: str = Form(""),
+    redirect_query: str = Form(""),
 ) -> Any:
     """Apply manual consolidation triage workflow from the admin UI."""
     memory = get_memory_by_id(memory_id)
@@ -830,12 +1091,11 @@ def ui_consolidate_memory(
     update_memory(memory_id, update_payload)
 
     updated_memory = get_memory_by_id(memory_id)
-    chat_id = updated_memory.chat_id if updated_memory else memory.chat_id
-    character_id = updated_memory.character_id if updated_memory else memory.character_id
+    selected_chat_id = updated_memory.chat_id if updated_memory else memory.chat_id
+    selected_character_id = updated_memory.character_id if updated_memory else memory.character_id
 
     return _render_memories_page(
         request,
-        chat_id=chat_id,
-        character_id=character_id,
+        **_redirect_query_to_render_args(redirect_query),
         consolidation_result=_build_consolidation_result(action, memory_id, related_memory_id, note),
     )

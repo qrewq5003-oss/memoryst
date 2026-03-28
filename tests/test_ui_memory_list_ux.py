@@ -26,6 +26,9 @@ def _memory(
     memory_id: str,
     content: str,
     *,
+    chat_id: str = "chat-1",
+    character_id: str = "char-1",
+    updated_at: str = "2026-03-20T00:00:00+00:00",
     source: str = "manual",
     layer: str = "episodic",
     memory_type: str = "event",
@@ -36,8 +39,8 @@ def _memory(
 ) -> MemoryItem:
     return MemoryItem(
         id=memory_id,
-        chat_id="chat-1",
-        character_id="char-1",
+        chat_id=chat_id,
+        character_id=character_id,
         type=memory_type,
         content=content,
         normalized_content=content.lower(),
@@ -45,7 +48,7 @@ def _memory(
         layer=layer,
         importance=0.7,
         created_at="2026-03-01T00:00:00+00:00",
-        updated_at="2026-03-20T00:00:00+00:00",
+        updated_at=updated_at,
         last_accessed_at=None,
         access_count=3,
         pinned=pinned,
@@ -58,6 +61,36 @@ def _memory(
 
 
 class UiMemoryListUxTests(unittest.TestCase):
+    def test_default_view_selects_one_chat_scope_instead_of_rendering_all_chats_mixed(self) -> None:
+        memories = ListMemoriesResponse(
+            items=[
+                _memory(
+                    "memory-1",
+                    "Alice planned the Rome museum trip.",
+                    chat_id="chat-new",
+                    updated_at="2026-03-22T00:00:00+00:00",
+                ),
+                _memory(
+                    "memory-2",
+                    "Bob fixed the Paris calendar.",
+                    chat_id="chat-old",
+                    updated_at="2026-03-10T00:00:00+00:00",
+                ),
+            ],
+            total=2,
+            limit=50,
+            offset=0,
+        )
+
+        with patch("app.routes.ui.list_memories", return_value=memories):
+            response = ui_memories_page(_request())
+
+        body = response.body.decode()
+        self.assertIn("chat-new", body)
+        self.assertIn("Alice planned the Rome museum trip.", body)
+        self.assertNotIn("Bob fixed the Paris calendar.", body)
+        self.assertIn("All Chats", body)
+
     def test_text_search_filters_rendered_memories(self) -> None:
         memories = ListMemoriesResponse(
             items=[
@@ -88,14 +121,30 @@ class UiMemoryListUxTests(unittest.TestCase):
         self.assertIn('name="search" value="rome"', body)
 
     def test_selected_filter_values_are_preserved_in_form(self) -> None:
+        memories = ListMemoriesResponse(
+            items=[
+                _memory(
+                    "memory-1",
+                    "Elena documented the theater booking.",
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    layer="stable",
+                    memory_type="profile",
+                )
+            ],
+            total=1,
+            limit=50,
+            offset=0,
+        )
+
         with patch(
             "app.routes.ui.list_memories",
-            return_value=ListMemoriesResponse(items=[], total=0, limit=50, offset=0),
+            return_value=memories,
         ):
             response = ui_memories_page(
                 _request(),
-                chat_id="chat-1",
-                character_id="char-1",
+                selected_chat_id="chat-1",
+                selected_character_id="char-1",
                 type="profile",
                 source="manual",
                 layer="stable",
@@ -106,8 +155,8 @@ class UiMemoryListUxTests(unittest.TestCase):
             )
 
         body = response.body.decode()
-        self.assertIn('name="chat_id" value="chat-1"', body)
-        self.assertIn('name="character_id" value="char-1"', body)
+        self.assertIn('name="selected_chat_id" value="chat-1"', body)
+        self.assertIn('name="selected_character_id" value="char-1"', body)
         self.assertIn('name="search" value="elena"', body)
         self.assertIn('<option value="profile" selected>', body)
         self.assertIn('<option value="manual" selected>', body)

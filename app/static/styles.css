@@ -7,11 +7,12 @@ body {
     line-height: 1.6;
     margin: 0;
     padding: 20px;
-    background: #f5f5f5;
+    background: linear-gradient(180deg, #eef4f7 0%, #f7f3ea 100%);
+    color: #1f2937;
 }
 
 .container {
-    max-width: 1400px;
+    max-width: 1500px;
     margin: 0 auto;
 }
 
@@ -23,8 +24,110 @@ section {
     background: white;
     padding: 20px;
     margin-bottom: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.page-header {
+    margin-bottom: 18px;
+}
+
+.page-subtitle {
+    margin: 0;
+    color: #526072;
+}
+
+.memory-workspace {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.chat-sidebar {
+    position: sticky;
+    top: 20px;
+    background: linear-gradient(180deg, #17324d 0%, #0f2236 100%);
+    color: #eff6ff;
+}
+
+.chat-sidebar h2 {
+    margin-top: 0;
+}
+
+.sidebar-header {
+    display: grid;
+    gap: 12px;
+}
+
+.chat-group-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.chat-group-link {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    text-decoration: none;
+    color: inherit;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(191, 219, 254, 0.14);
+}
+
+.chat-group-link:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.chat-group-link-active {
+    background: #f8fafc;
+    color: #10263d;
+    border-color: #dbeafe;
+}
+
+.chat-group-title {
+    font-weight: 700;
+    word-break: break-word;
+}
+
+.chat-group-meta {
+    font-size: 13px;
+    color: inherit;
+    opacity: 0.82;
+}
+
+.chat-group-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.memory-main {
+    min-width: 0;
+}
+
+.scope-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+}
+
+.scope-summary h2 {
+    margin: 0;
+}
+
+.scope-subtitle {
+    margin-top: 4px;
+    color: #526072;
+}
+
+.scope-actions {
+    display: flex;
+    gap: 10px;
 }
 
 .form-row {
@@ -475,6 +578,19 @@ summary {
 }
 
 @media (max-width: 900px) {
+    .memory-workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .chat-sidebar {
+        position: static;
+    }
+
+    .scope-summary {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
     .memory-card-header {
         flex-direction: column;
     }
