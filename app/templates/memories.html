@@ -16,7 +16,12 @@
             <h2>Chats</h2>
             <a href="{{ all_chats_url }}" class="chat-group-link {% if all_chats_selected %}chat-group-link-active{% endif %}">
                 <span>
-                    <strong>All Chats</strong>
+                    <span class="chat-group-title-row">
+                        <strong>All Chats</strong>
+                        {% if all_chats_selected %}
+                        <span class="scope-pill">Current view</span>
+                        {% endif %}
+                    </span>
                     <span class="chat-group-meta">Global view across the current filtered dataset</span>
                 </span>
             </a>
@@ -25,9 +30,17 @@
         {% if has_chat_groups %}
         <div class="chat-group-list">
             {% for group in chat_groups %}
-            <a href="{{ group["url"] }}" class="chat-group-link {% if group["is_selected"] %}chat-group-link-active{% endif %}">
-                <span class="chat-group-title">{{ group["chat_id"] }}</span>
-                <span class="chat-group-meta">Character: {{ group["character_id"] }}</span>
+            <a href="{{ group["url"] }}" class="chat-group-link {% if group["is_selected"] %}chat-group-link-active{% endif %}" title="chat={{ group["chat_id"] }} | character={{ group["character_id"] }}">
+                <span class="chat-group-title-row">
+                    <span class="chat-group-title">{{ group["display_label"] }}</span>
+                    {% if group["is_selected"] %}
+                    <span class="scope-pill">Current scope</span>
+                    {% endif %}
+                </span>
+                <span class="chat-group-meta">Character: {{ group["display_character_label"] }}</span>
+                {% if group["has_friendly_label"] %}
+                <span class="chat-group-meta">Raw chat ID: <code>{{ group["chat_id"] }}</code></span>
+                {% endif %}
                 <span class="chat-group-stats">
                     <span>{{ group["total_count"] }} total</span>
                     <span>{{ group["summary_count"] }} summary</span>
@@ -48,9 +61,21 @@
     <div class="memory-main">
         <section class="scope-summary">
             <div>
-                <h2>{{ scope_title }}</h2>
+                <div class="scope-title-row">
+                    <h2>{{ scope_title }}</h2>
+                    {% if not scope_is_all_chats %}
+                    <span class="scope-pill scope-pill-header">Current scope</span>
+                    {% endif %}
+                </div>
                 {% if scope_subtitle %}
                 <div class="scope-subtitle">{{ scope_subtitle }}</div>
+                {% endif %}
+                {% if scope_meta %}
+                <div class="scope-meta-list">
+                    {% for item in scope_meta %}
+                    <span class="scope-meta-item">{{ item["label"] }}: <code>{{ item["value"] }}</code></span>
+                    {% endfor %}
+                </div>
                 {% endif %}
             </div>
             <div class="scope-actions">

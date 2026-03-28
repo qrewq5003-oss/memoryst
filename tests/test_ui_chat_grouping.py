@@ -72,6 +72,48 @@ class UiChatGroupingTests(unittest.TestCase):
         self.assertIn("Alice planned the Rome museum trip.", body)
         self.assertIn("Elena changed the train booking.", body)
 
+    def test_sidebar_renders_friendlier_chat_label_and_keeps_raw_chat_id_visible(self) -> None:
+        memories = ListMemoriesResponse(
+            items=[
+                _memory(
+                    "memory-1",
+                    "Alice planned the Rome museum trip.",
+                    chat_id="summer_trip/chat-room_alpha",
+                    character_id="char-a",
+                ),
+            ],
+            total=1,
+            limit=50,
+            offset=0,
+        )
+
+        with patch("app.routes.ui.list_memories", return_value=memories):
+            response = ui_memories_page(_request())
+
+        body = response.body.decode()
+        self.assertIn("Summer Trip Chat Room Alpha", body)
+        self.assertIn("Raw chat ID:", body)
+        self.assertIn("summer_trip/chat-room_alpha", body)
+
+    def test_selected_scope_is_marked_in_sidebar_and_scope_header(self) -> None:
+        memories = ListMemoriesResponse(
+            items=[
+                _memory("memory-1", "Alice planned the Rome museum trip.", chat_id="chat-primary", character_id="char-a"),
+                _memory("memory-2", "Elena changed the train booking.", chat_id="chat-secondary", character_id="char-b"),
+            ],
+            total=2,
+            limit=50,
+            offset=0,
+        )
+
+        with patch("app.routes.ui.list_memories", return_value=memories):
+            response = ui_memories_page(_request(), selected_chat_id="chat-secondary", selected_character_id="char-b")
+
+        body = response.body.decode()
+        self.assertIn("Current scope", body)
+        self.assertIn("chat-group-link-active", body)
+        self.assertIn("Character ID: <code>char-b</code>", body)
+
     def test_sidebar_stats_render_summary_stable_and_episodic_counts_for_selected_chat(self) -> None:
         memories = ListMemoriesResponse(
             items=[

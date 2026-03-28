@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qsl, urlencode
@@ -132,6 +133,29 @@ def _normalize_scope_value(value: str | None) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _shorten_display_text(value: str, max_length: int = 36) -> str:
+    if len(value) <= max_length:
+        return value
+    return f"{value[: max_length - 3].rstrip()}..."
+
+
+def _build_friendly_scope_label(value: str) -> str:
+    compact = " ".join(value.split()).strip()
+    if not compact:
+        return "Unnamed chat"
+
+    friendly = re.sub(r"[-_/]+", " ", compact)
+    friendly = " ".join(friendly.split())
+    if friendly != compact and not any(char.isupper() for char in friendly):
+        friendly = friendly.title()
+
+    if len(friendly) > 36:
+        return _shorten_display_text(friendly)
+    if friendly != compact:
+        return friendly
+    return _shorten_display_text(compact)
 
 
 def _normalize_for_similarity(text: str) -> str:
@@ -450,6 +474,9 @@ def _build_chat_groups(items: list[MemoryItem]) -> list[dict[str, Any]]:
     )
     for group in groups:
         group["last_updated_days"] = _days_since(group["last_updated"])
+        group["display_label"] = _build_friendly_scope_label(group["chat_id"])
+        group["display_character_label"] = _build_friendly_scope_label(group["character_id"])
+        group["has_friendly_label"] = group["display_label"] != group["chat_id"]
     return groups
 
 
@@ -727,10 +754,20 @@ def _render_memories_page(
             and active_character_id == group["character_id"]
         )
 
-    scope_title = "All Chats" if view_mode == "all" else (active_chat_id or "Select a chat")
-    scope_subtitle = None
-    if view_mode != "all" and active_character_id:
-        scope_subtitle = f"Character: {active_character_id}"
+    scope_title = "All Chats"
+    scope_subtitle = "Global view across the current filtered dataset"
+    scope_meta: list[dict[str, str]] = []
+    if view_mode != "all":
+        scope_title = selected_group["display_label"] if selected_group else (active_chat_id or "Select a chat")
+        scope_subtitle = (
+            f"Character: {selected_group['display_character_label']}"
+            if selected_group
+            else (f"Character: {active_character_id}" if active_character_id else None)
+        )
+        if active_chat_id:
+            scope_meta.append({"label": "Chat ID", "value": active_chat_id})
+        if active_character_id:
+            scope_meta.append({"label": "Character ID", "value": active_character_id})
 
     filters = {
         "chat_id": active_chat_id,
@@ -781,6 +818,7 @@ def _render_memories_page(
             "chat_groups": chat_groups,
             "scope_title": scope_title,
             "scope_subtitle": scope_subtitle,
+            "scope_meta": scope_meta,
             "scope_is_all_chats": view_mode == "all",
             "all_chats_url": all_chats_url,
             "all_chats_selected": view_mode == "all",
