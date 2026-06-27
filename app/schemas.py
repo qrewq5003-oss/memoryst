@@ -37,8 +37,8 @@ class MemoryMetadata(BaseModel):
 
 
 class CreateMemoryRequest(BaseModel):
-    chat_id: str
-    character_id: str
+    chat_id: str = Field(..., min_length=1, max_length=200)
+    character_id: str = Field(..., min_length=1, max_length=200)
     type: MemoryType
     content: str
     source: MemorySource = "manual"
@@ -133,8 +133,8 @@ class StoreDebugPayload(BaseModel):
 
 # Store schemas
 class StoreMemoryRequest(BaseModel):
-    chat_id: str
-    character_id: str
+    chat_id: str = Field(..., min_length=1, max_length=200)
+    character_id: str = Field(..., min_length=1, max_length=200)
     messages: list[MessageInput]
     debug: bool = False
 
@@ -190,8 +190,8 @@ class RetrieveDebugPayload(BaseModel):
 
 # Retrieve schemas
 class RetrieveMemoryRequest(BaseModel):
-    chat_id: str
-    character_id: str
+    chat_id: str = Field(..., min_length=1, max_length=200)
+    character_id: str = Field(..., min_length=1, max_length=200)
     user_input: str
     recent_messages: list[MessageInput] = Field(default_factory=list)
     limit: int = Field(default=5, ge=1, le=20)
