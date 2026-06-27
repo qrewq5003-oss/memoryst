@@ -25,6 +25,7 @@ from app.services.text_utils import (
     normalize_content as _normalize_content,
     normalize_for_similarity as _normalize_quality_text,
 )
+from app.services import vector_store
 
 MIN_MEMORY_CONTENT_LENGTH = 12
 MIN_MEMORY_WORD_COUNT = 3
@@ -264,6 +265,11 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                 created = create_memory(candidate)
                 stored_items.append(created)
                 stored_count += 1
+                vector_store.add_memory(
+                    created.id,
+                    created.content,
+                    {"chat_id": created.chat_id, "character_id": created.character_id},
+                )
                 if request.debug:
                     debug_candidates.append(
                         StoreCandidateDebug(

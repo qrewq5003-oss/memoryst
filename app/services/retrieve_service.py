@@ -11,7 +11,7 @@ from app.schemas import (
     RetrieveMemoryResponse,
 )
 from app.services.formatter import format_memory_block
-from app.services import text_features
+from app.services import text_features, vector_store
 from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
 
 KEYWORD_WEIGHT = 0.50
@@ -23,6 +23,7 @@ BOTH_MATCH_BONUS = 0.10
 MIN_RETRIEVAL_SCORE = 0.15
 NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
 CLOSE_SCORE_LAYER_TIE_EPSILON = 0.05
+SEMANTIC_BOOST = 0.15
 RELATIONSHIP_CUE_WEIGHT = 0.14
 RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
     "summary": 0.03,
@@ -357,6 +358,17 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     )
     total_candidates = len(all_candidates)
 
+    # Query vector store for semantic matches (if enabled)
+    semantic_ids: set[str] = set()
+    if vector_store.is_vector_store_enabled() and total_candidates > 0:
+        semantic_results = vector_store.query_similar(
+            request.user_input,
+            n_results=min(10, total_candidates),
+            chat_id=request.chat_id,
+            character_id=request.character_id,
+        )
+        semantic_ids = {r["id"] for r in semantic_results}
+
     # Score each candidate and partition them into explicit retrieval layers.
     scored_entries: list[dict[str, object]] = []
     debug_candidates: list[RetrieveCandidateDebug] = []
@@ -379,6 +391,11 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
             input_relationship_cues=input_relationship_cues,
         )
         score = details["score"]
+
+        # Boost score for semantically similar memories
+        if memory.id in semantic_ids:
+            score = min(score + SEMANTIC_BOOST, 1.0)
+
         passed_threshold = score >= MIN_RETRIEVAL_SCORE
         if passed_threshold:
             scored_entries.append(
