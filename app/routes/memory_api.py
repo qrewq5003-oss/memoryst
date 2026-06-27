@@ -172,3 +172,38 @@ def remove_key_endpoint(request: RemoveKeyRequest) -> dict:
     if not removed:
         raise HTTPException(status_code=400, detail="Key not found or cannot remove last key")
     return {"status": "removed", "total_keys": vector_store.get_key_count()}
+
+
+class SummarizeRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    window_size: int = 8
+    min_new: int = 3
+
+
+class SummarizeResponse(BaseModel):
+    action: str
+    summary_memory_id: str | None = None
+    summary_text: str = ""
+    summarized_count: int = 0
+    new_input_count: int = 0
+
+
+@router.post("/summarize", response_model=SummarizeResponse)
+def summarize_endpoint(request: SummarizeRequest) -> SummarizeResponse:
+    """Generate or update a rolling summary for a chat/character."""
+    from app.services.summary_service import generate_rolling_summary
+
+    result = generate_rolling_summary(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        window_size=request.window_size,
+        min_new_memories_for_refresh=request.min_new,
+    )
+    return SummarizeResponse(
+        action=result.action,
+        summary_memory_id=result.summary_memory_id,
+        summary_text=result.summary_text,
+        summarized_count=result.summarized_count,
+        new_input_count=result.new_input_count,
+    )
