@@ -31,6 +31,13 @@ RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
 }
 EPISODIC_SPECIFICITY_BONUS = 0.06
 EPISODIC_LOW_VALUE_PENALTY = 0.12
+COMBINED_OVERLAP_KEYWORD_WEIGHT = 0.65
+COMBINED_OVERLAP_ENTITY_WEIGHT = 0.35
+SUPPORT_STRONG_THRESHOLD = 0.60
+SUPPORT_MEDIUM_THRESHOLD = 0.30
+SUPPORT_MULTIPLIER_STRONG = 1.0
+SUPPORT_MULTIPLIER_MEDIUM = 0.6
+SUPPORT_MULTIPLIER_WEAK = 0.25
 # Narrow support-only policy for Russian relationship/general-state phrasing:
 # - gated by `relationship_query_like`
 # - uses only the bounded cue groups from text_features
@@ -170,13 +177,13 @@ def _compute_score_details(
             episodic_low_value_penalty = EPISODIC_LOW_VALUE_PENALTY
 
     # Weak matches should not climb mainly on importance or freshness.
-    combined_overlap = (keyword_overlap * 0.65) + (entity_overlap * 0.35)
-    if combined_overlap >= 0.60:
-        support_multiplier = 1.0
-    elif combined_overlap >= 0.30:
-        support_multiplier = 0.6
+    combined_overlap = (keyword_overlap * COMBINED_OVERLAP_KEYWORD_WEIGHT) + (entity_overlap * COMBINED_OVERLAP_ENTITY_WEIGHT)
+    if combined_overlap >= SUPPORT_STRONG_THRESHOLD:
+        support_multiplier = SUPPORT_MULTIPLIER_STRONG
+    elif combined_overlap >= SUPPORT_MEDIUM_THRESHOLD:
+        support_multiplier = SUPPORT_MULTIPLIER_MEDIUM
     else:
-        support_multiplier = 0.25
+        support_multiplier = SUPPORT_MULTIPLIER_WEAK
 
     support_score = (
         memory.importance * IMPORTANCE_WEIGHT +

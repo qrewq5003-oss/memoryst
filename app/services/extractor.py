@@ -290,7 +290,7 @@ def _is_meaningful(text: str) -> bool:
     """Check if text is meaningful enough to store."""
     if len(text.strip()) < 10:
         return False
-    if text.strip() in ["...", "???", "!!!", "???"]:
+    if text.strip() in ["...", "???", "!!!"]:
         return False
     return True
 
