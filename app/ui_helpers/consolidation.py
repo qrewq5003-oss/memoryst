@@ -1,7 +1,8 @@
+from collections import defaultdict
 from typing import Any
 
 from app.schemas import ConsolidationHistoryEntry, MemoryItem, MemoryMetadata
-from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
+from app.services.text_utils import normalize_for_similarity
 from app.ui_helpers.classifiers import get_activity_bucket, get_freshness_bucket, utc_now
 
 
@@ -9,6 +10,75 @@ def shared_signal_count(left: MemoryItem, right: MemoryItem) -> int:
     left_signals = set(item.lower() for item in left.metadata.entities + left.metadata.keywords)
     right_signals = set(item.lower() for item in right.metadata.entities + right.metadata.keywords)
     return len(left_signals & right_signals)
+
+
+def _build_token_index(items: list[MemoryItem]) -> dict[str, list[int]]:
+    """Build inverted index: token → list of item indices."""
+    index: dict[str, list[int]] = defaultdict(list)
+    for i, item in enumerate(items):
+        normalized = normalize_for_similarity(item.content)
+        for token in set(normalized.split()):
+            index[token].append(i)
+    return index
+
+
+def _build_signal_index(items: list[MemoryItem]) -> dict[str, list[int]]:
+    """Build inverted index: signal (entity/keyword) → list of stable item indices."""
+    index: dict[str, list[int]] = defaultdict(list)
+    for i, item in enumerate(items):
+        if item.layer != "stable":
+            continue
+        for signal in item.metadata.entities + item.metadata.keywords:
+            index[signal.lower()].append(i)
+    return index
+
+
+def _token_overlap_from_tokens(tokens_i: set[str], tokens_j: set[str]) -> float:
+    """Compute overlap ratio from pre-computed token sets."""
+    if not tokens_i or not tokens_j:
+        return 0.0
+    return len(tokens_i & tokens_j) / min(len(tokens_i), len(tokens_j))
+
+
+def _find_near_duplicate_candidates(
+    items: list[MemoryItem],
+    token_index: dict[str, list[int]],
+) -> set[tuple[int, int]]:
+    """Find pairs of near-duplicate items using the token index."""
+    pairs: set[tuple[int, int]] = set()
+    tokens_cache: dict[int, set[str]] = {}
+
+    for i, item in enumerate(items):
+        if item.pinned or item.metadata.review_status == "reviewed_keep":
+            continue
+
+        if i not in tokens_cache:
+            tokens_cache[i] = set(normalize_for_similarity(item.content).split())
+        tokens_i = tokens_cache[i]
+        if not tokens_i:
+            continue
+
+        candidate_indices: set[int] = set()
+        for token in tokens_i:
+            for j in token_index.get(token, []):
+                if j > i:
+                    candidate_indices.add(j)
+
+        for j in candidate_indices:
+            other = items[j]
+            if other.pinned:
+                continue
+
+            if j not in tokens_cache:
+                tokens_cache[j] = set(normalize_for_similarity(other.content).split())
+            tokens_j = tokens_cache[j]
+
+            if tokens_i == tokens_j:
+                pairs.add((i, j))
+            elif _token_overlap_from_tokens(tokens_i, tokens_j) >= 0.85:
+                pairs.add((i, j))
+
+    return pairs
 
 
 def build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
@@ -19,6 +89,9 @@ def build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[di
         "stale_low_value_episode": 0,
         "shadowed_by_stable": 0,
     }
+
+    token_index = _build_token_index(items)
+    signal_index = _build_signal_index(items)
 
     for index, item in enumerate(items):
         if item.pinned or item.metadata.review_status == "reviewed_keep":
@@ -35,43 +108,48 @@ def build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[di
                 }
             )
 
-        for other_index in range(index + 1, len(items)):
-            other = items[other_index]
-            if item.pinned or other.pinned:
-                continue
+    for i, j in _find_near_duplicate_candidates(items, token_index):
+        reason = "Near-duplicate content cluster."
+        candidate_map[items[i].id].append(
+            {
+                "type": "near_duplicate",
+                "reason": reason,
+                "related_id": items[j].id,
+            }
+        )
+        candidate_map[items[j].id].append(
+            {
+                "type": "near_duplicate",
+                "reason": reason,
+                "related_id": items[i].id,
+            }
+        )
 
-            overlap = token_overlap_ratio(item.content, other.content)
-            exact_duplicate = normalize_for_similarity(item.content) == normalize_for_similarity(other.content)
-            if exact_duplicate or overlap >= 0.85:
-                reason = "Near-duplicate content cluster."
+    for index, item in enumerate(items):
+        if item.pinned or item.metadata.review_status == "reviewed_keep":
+            continue
+        if item.layer != "episodic" or get_activity_bucket(item) == "active":
+            continue
+
+        signals = set(s.lower() for s in item.metadata.entities + item.metadata.keywords)
+        candidate_stable_indices: set[int] = set()
+        for signal in signals:
+            for j in signal_index.get(signal, []):
+                candidate_stable_indices.add(j)
+
+        for j in candidate_stable_indices:
+            other = items[j]
+            if other.id == item.id or other.layer != "stable":
+                continue
+            if shared_signal_count(item, other) >= 2:
                 candidate_map[item.id].append(
                     {
-                        "type": "near_duplicate",
-                        "reason": reason,
+                        "type": "shadowed_by_stable",
+                        "reason": "Similar topic already represented by a stable memory.",
                         "related_id": other.id,
                     }
                 )
-                candidate_map[other.id].append(
-                    {
-                        "type": "near_duplicate",
-                        "reason": reason,
-                        "related_id": item.id,
-                    }
-                )
-
-        if item.layer == "episodic" and activity != "active":
-            for other in items:
-                if other.id == item.id or other.layer != "stable":
-                    continue
-                if shared_signal_count(item, other) >= 2:
-                    candidate_map[item.id].append(
-                        {
-                            "type": "shadowed_by_stable",
-                            "reason": "Similar topic already represented by a stable memory.",
-                            "related_id": other.id,
-                        }
-                    )
-                    break
+                break
 
     unique_type_counts = {
         "near_duplicate": 0,
