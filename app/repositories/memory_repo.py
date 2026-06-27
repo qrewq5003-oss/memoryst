@@ -340,7 +340,7 @@ def list_ui_filtered_memories(
         params.append(int(pinned))
 
     if search:
-        query = " ".join(search.lower().split())
+        query = " ".join(search.lower().split())[:200]
         if query:
             like_pattern = f"%{query}%"
             where_clauses.append(

@@ -12,7 +12,7 @@ MemoryLayer = Literal["episodic", "stable"]
 # Input schemas
 class MessageInput(BaseModel):
     role: Literal["user", "assistant", "system"]
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=10000)
 
 
 class ConsolidationHistoryEntry(BaseModel):
@@ -40,7 +40,7 @@ class CreateMemoryRequest(BaseModel):
     chat_id: str = Field(..., min_length=1, max_length=200)
     character_id: str = Field(..., min_length=1, max_length=200)
     type: MemoryType
-    content: str
+    content: str = Field(..., min_length=1, max_length=5000)
     source: MemorySource = "manual"
     layer: MemoryLayer
     importance: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -50,7 +50,7 @@ class CreateMemoryRequest(BaseModel):
 
 
 class UpdateMemoryRequest(BaseModel):
-    content: str | None = None
+    content: str | None = Field(default=None, max_length=5000)
     type: MemoryType | None = None
     source: MemorySource | None = None
     layer: MemoryLayer | None = None
@@ -192,7 +192,7 @@ class RetrieveDebugPayload(BaseModel):
 class RetrieveMemoryRequest(BaseModel):
     chat_id: str = Field(..., min_length=1, max_length=200)
     character_id: str = Field(..., min_length=1, max_length=200)
-    user_input: str
+    user_input: str = Field(..., min_length=1, max_length=2000)
     recent_messages: list[MessageInput] = Field(default_factory=list)
     limit: int = Field(default=5, ge=1, le=20)
     include_archived: bool = False

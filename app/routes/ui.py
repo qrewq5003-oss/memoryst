@@ -97,6 +97,8 @@ def _render_memories_page(
     source = source or None
     layer = layer or None
     search = search or None
+    if search and len(search) > 200:
+        search = search[:200]
     freshness = freshness or None
     activity = activity or None
     consolidation = consolidation or None
