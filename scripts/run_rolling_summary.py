@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 from pathlib import Path
 import sys
 
@@ -16,7 +17,11 @@ def main() -> int:
     parser.add_argument("--character-id", required=True)
     parser.add_argument("--window", type=int, default=8)
     parser.add_argument("--min-new", type=int, default=3, help="Minimum new episodic memories required to refresh an existing summary.")
+    parser.add_argument("--no-llm", action="store_true", help="Force rule-based summary (skip LLM).")
     args = parser.parse_args()
+
+    if args.no_llm:
+        os.environ["LLM_API_BASE"] = ""
 
     result = generate_rolling_summary(
         chat_id=args.chat_id,

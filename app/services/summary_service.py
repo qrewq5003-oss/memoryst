@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from app.repositories.memory_repo import create_memory, list_memories, update_memory
 from app.schemas import CreateMemoryRequest, MemoryItem, MemoryMetadata, UpdateMemoryRequest
 from app.services import text_features
+from app.services.llm_client import chat_completion, is_llm_enabled
+from app.services.summary_prompts import SYSTEM_PROMPT, build_user_prompt
 from app.services.text_utils import get_utc_now
 
 ROLLING_SUMMARY_KIND = "rolling_v1"
@@ -115,6 +117,31 @@ def build_rolling_summary_text(memories: list[MemoryItem]) -> str:
     return " ".join(lines)
 
 
+def build_llm_summary_text(memories: list[MemoryItem]) -> str | None:
+    """
+    Build a structured summary using an LLM call.
+
+    Returns the LLM-generated summary text, or None if LLM is disabled or fails.
+    """
+    if not is_llm_enabled() or not memories:
+        return None
+
+    excerpts = []
+    for memory in memories:
+        excerpts.append(f"- [{memory.type}] {memory.content}")
+    memories_text = "\n".join(excerpts)
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": build_user_prompt(memories_text)},
+    ]
+
+    try:
+        return chat_completion(messages, max_tokens=500, temperature=0.3)
+    except Exception:
+        return None
+
+
 def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> MemoryMetadata:
     entity_candidates = text_features.extract_entities(summary_text)
     keyword_candidates = text_features.extract_keywords(summary_text)
@@ -209,7 +236,7 @@ def generate_rolling_summary(
             refresh_threshold_used=min_new_memories_for_refresh,
         )
 
-    summary_text = build_rolling_summary_text(selected_memories)
+    summary_text = build_llm_summary_text(selected_memories) or build_rolling_summary_text(selected_memories)
     summary_metadata = _build_summary_metadata(selected_memories, summary_text)
 
     if existing_summary is None:

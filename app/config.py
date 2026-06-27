@@ -18,5 +18,10 @@ class Config:
     API_KEY: str = os.getenv("API_KEY", "")
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
+    LLM_API_BASE: str = os.getenv("LLM_API_BASE", "")
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "zai-org/glm-4.7")
+    LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
+
 
 config = Config()
