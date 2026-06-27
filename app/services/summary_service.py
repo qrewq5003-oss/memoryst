@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from app.repositories.memory_repo import create_memory, list_memories, update_memory
 from app.schemas import CreateMemoryRequest, MemoryItem, MemoryMetadata, UpdateMemoryRequest
 from app.services import text_features
+from app.services.text_utils import get_utc_now
 
 ROLLING_SUMMARY_KIND = "rolling_v1"
 DEFAULT_SUMMARY_WINDOW = 8
@@ -53,10 +53,6 @@ class RollingSummaryResult:
     summarized_count: int
     new_input_count: int
     refresh_threshold_used: int
-
-
-def _get_utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _is_rolling_summary(memory: MemoryItem) -> bool:
@@ -136,7 +132,7 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
         keywords=keyword_candidates[:12],
         is_summary=True,
         summary_kind=ROLLING_SUMMARY_KIND,
-        summary_generated_at=_get_utc_now(),
+        summary_generated_at=get_utc_now(),
         summary_source_memory_ids=[memory.id for memory in memories],
         summarized_memory_count=len(memories),
     )

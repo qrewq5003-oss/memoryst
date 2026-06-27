@@ -58,6 +58,45 @@ def _create_memories_indexes(cursor: sqlite3.Cursor) -> None:
         cursor.execute(statement)
 
 
+def _needs_summary_migration(cursor: sqlite3.Cursor) -> bool:
+    """Check whether the type CHECK constraint includes 'summary'."""
+    cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'memories'"
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    table_sql = row[0]
+    return "'summary'" not in table_sql
+
+
+def _run_summary_migration(conn: sqlite3.Connection) -> None:
+    """Migrate the type CHECK constraint to include 'summary', wrapped in a savepoint."""
+    cursor = conn.cursor()
+    cursor.execute("SAVEPOINT migrate_summary")
+    try:
+        cursor.execute("ALTER TABLE memories RENAME TO memories_old")
+        _create_memories_table(cursor)
+        cursor.execute("""
+            INSERT INTO memories (
+                id, chat_id, character_id, type, content, normalized_content,
+                source, layer, importance, created_at, updated_at,
+                last_accessed_at, access_count, pinned, archived, metadata_json
+            )
+            SELECT
+                id, chat_id, character_id, type, content, normalized_content,
+                source, layer, importance, created_at, updated_at,
+                last_accessed_at, access_count, pinned, archived, metadata_json
+            FROM memories_old
+        """)
+        cursor.execute("DROP TABLE memories_old")
+        _create_memories_indexes(cursor)
+        cursor.execute("RELEASE migrate_summary")
+    except Exception:
+        cursor.execute("ROLLBACK TO migrate_summary")
+        raise
+
+
 def init_schema() -> None:
     """Initialize database schema with memories table and indexes."""
     conn = get_connection()
@@ -69,31 +108,8 @@ def init_schema() -> None:
 
         conn.commit()
 
-        cursor.execute(
-            """
-            SELECT sql FROM sqlite_master
-            WHERE type = 'table' AND name = 'memories'
-            """
-        )
-        row = cursor.fetchone()
-        table_sql = row[0] if row is not None else ""
-        if "'summary'" not in table_sql:
-            cursor.execute("ALTER TABLE memories RENAME TO memories_old")
-            _create_memories_table(cursor)
-            cursor.execute("""
-                INSERT INTO memories (
-                    id, chat_id, character_id, type, content, normalized_content,
-                    source, layer, importance, created_at, updated_at,
-                    last_accessed_at, access_count, pinned, archived, metadata_json
-                )
-                SELECT
-                    id, chat_id, character_id, type, content, normalized_content,
-                    source, layer, importance, created_at, updated_at,
-                    last_accessed_at, access_count, pinned, archived, metadata_json
-                FROM memories_old
-            """)
-            cursor.execute("DROP TABLE memories_old")
-            _create_memories_indexes(cursor)
+        if _needs_summary_migration(cursor):
+            _run_summary_migration(conn)
             conn.commit()
     finally:
         conn.close()

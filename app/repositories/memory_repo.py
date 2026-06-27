@@ -1,7 +1,5 @@
 import json
-import re
 import uuid
-from datetime import datetime, timezone
 
 from app.db import get_connection
 from app.schemas import (
@@ -13,14 +11,7 @@ from app.schemas import (
     PinMemoryRequest,
     UpdateMemoryRequest,
 )
-
-
-def _normalize_content(content: str) -> str:
-    """Normalize content for search: lowercase, strip punctuation, collapse whitespace."""
-    text = content.lower()
-    text = re.sub(r"[^\w\s]", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+from app.services.text_utils import get_utc_now, normalize_content as _normalize_content
 
 
 def _row_to_memory_item(row: dict) -> MemoryItem:
@@ -43,11 +34,6 @@ def _row_to_memory_item(row: dict) -> MemoryItem:
         archived=bool(row["archived"]),
         metadata=MemoryMetadata.model_validate_json(row["metadata_json"]),
     )
-
-
-def _get_utc_now() -> str:
-    """Get current UTC time in ISO-8601 format."""
-    return datetime.now(timezone.utc).isoformat()
 
 
 def insert_memory(memory: MemoryItem) -> MemoryItem:
@@ -87,7 +73,7 @@ def insert_memory(memory: MemoryItem) -> MemoryItem:
 
 def create_memory(request: CreateMemoryRequest) -> MemoryItem:
     """Create a new memory from a request."""
-    now = _get_utc_now()
+    now = get_utc_now()
     # Normalize content: strip leading/trailing whitespace
     content = request.content.strip()
     memory = MemoryItem(
@@ -280,7 +266,7 @@ def update_memory(memory_id: str, payload: UpdateMemoryRequest) -> MemoryItem | 
         return existing
 
     updates["updated_at"] = "?"
-    update_params.append(_get_utc_now())
+    update_params.append(get_utc_now())
     update_params.append(memory_id)
 
     set_sql = ", ".join(f"{col} = {val}" for col, val in updates.items())
@@ -318,7 +304,7 @@ def set_pinned(memory_id: str, pinned: bool) -> bool:
             SET pinned = ?, updated_at = ?
             WHERE id = ?
             """,
-            (int(pinned), _get_utc_now(), memory_id),
+            (int(pinned), get_utc_now(), memory_id),
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -334,7 +320,7 @@ def set_archived(memory_id: str, archived: bool) -> bool:
             SET archived = ?, updated_at = ?
             WHERE id = ?
             """,
-            (int(archived), _get_utc_now(), memory_id),
+            (int(archived), get_utc_now(), memory_id),
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -371,7 +357,7 @@ def increment_access_count(memory_id: str) -> bool:
 
     Called after retrieve to track usage metrics.
     """
-    now = _get_utc_now()
+    now = get_utc_now()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(

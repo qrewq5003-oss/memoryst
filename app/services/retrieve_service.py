@@ -12,6 +12,7 @@ from app.schemas import (
 )
 from app.services.formatter import format_memory_block
 from app.services import text_features
+from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
 
 KEYWORD_WEIGHT = 0.50
 ENTITY_WEIGHT = 0.25
@@ -153,8 +154,8 @@ def _compute_score_details(
 
         # Penalize question-like or query-echo episodic lines that add little scene value.
         # This is an anti-noise guardrail, not a universal episodic penalty.
-        normalized_query = _normalize_for_similarity(user_input_text)
-        normalized_memory = _normalize_for_similarity(memory.content)
+        normalized_query = normalize_for_similarity(user_input_text)
+        normalized_memory = normalize_for_similarity(memory.content)
         question_like_memory = memory.content.strip().endswith("?")
         query_echo_like = (
             normalized_query != ""
@@ -162,7 +163,7 @@ def _compute_score_details(
             and (
                 normalized_memory == normalized_query
                 or normalized_memory in normalized_query
-                or _token_overlap_ratio(memory.content, user_input_text) >= 0.85
+                or token_overlap_ratio(memory.content, user_input_text) >= 0.85
             )
         )
         if question_like_memory and query_echo_like and episodic_detail_score < 0.45:
@@ -214,35 +215,18 @@ def _compute_score(
     return _compute_score_details(memory, input_keywords, input_entities)["score"]
 
 
-def _normalize_for_similarity(text: str) -> str:
-    """Normalize text for retrieval-side near-duplicate checks."""
-    normalized = text.lower().strip()
-    normalized = re.sub(r"[^\w\s]", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized
-
-
-def _token_overlap_ratio(text1: str, text2: str) -> float:
-    """Compute overlap ratio using the smaller token set as the denominator."""
-    tokens1 = set(_normalize_for_similarity(text1).split())
-    tokens2 = set(_normalize_for_similarity(text2).split())
-    if not tokens1 or not tokens2:
-        return 0.0
-    return len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
-
-
 def _is_too_similar_to_selected(candidate: MemoryItem, selected: list[MemoryItem]) -> bool:
     """Skip near-duplicate memories so top slots stay diverse."""
-    candidate_normalized = _normalize_for_similarity(candidate.content)
+    candidate_normalized = normalize_for_similarity(candidate.content)
     if not candidate_normalized:
         return True
 
     for existing in selected:
-        existing_normalized = _normalize_for_similarity(existing.content)
+        existing_normalized = normalize_for_similarity(existing.content)
         if candidate_normalized == existing_normalized:
             return True
 
-        overlap_ratio = _token_overlap_ratio(candidate.content, existing.content)
+        overlap_ratio = token_overlap_ratio(candidate.content, existing.content)
         if overlap_ratio >= NEAR_DUPLICATE_TOKEN_OVERLAP:
             return True
 

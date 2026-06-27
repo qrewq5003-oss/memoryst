@@ -2,6 +2,7 @@ import re
 
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
+from app.services.text_utils import truncate_content
 
 PREFERENCE_MARKERS_RU = [
     "мне нравится",
@@ -294,17 +295,6 @@ def _is_meaningful(text: str) -> bool:
     return True
 
 
-def _truncate_content(text: str, max_length: int = 500) -> str:
-    """Truncate content to reasonable length."""
-    if len(text) <= max_length:
-        return text
-    truncated = text[:max_length]
-    last_period = truncated.rfind(".")
-    if last_period > max_length // 2:
-        return truncated[: last_period + 1]
-    return truncated + "..."
-
-
 def extract_memories(
     chat_id: str,
     character_id: str,
@@ -352,7 +342,7 @@ def extract_memories(
         if memory_type is None:
             continue
 
-        content = _truncate_content(text)
+        content = truncate_content(text)
         entities = text_features.extract_entities(text)
         keywords = text_features.extract_keywords(text)
 

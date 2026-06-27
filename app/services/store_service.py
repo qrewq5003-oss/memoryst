@@ -1,10 +1,8 @@
-import re
 from app.repositories.memory_repo import (
     create_memory,
     find_memory_by_normalized_content,
     list_memories,
     update_memory,
-    _normalize_content,
 )
 from app.schemas import (
     CreateMemoryRequest,
@@ -22,7 +20,11 @@ from app.services.deduper import (
     check_soft_match,
     merge_candidate_with_existing,
 )
-from datetime import datetime, timezone
+from app.services.text_utils import (
+    get_utc_now,
+    normalize_content as _normalize_content,
+    normalize_for_similarity as _normalize_quality_text,
+)
 
 MIN_MEMORY_CONTENT_LENGTH = 12
 MIN_MEMORY_WORD_COUNT = 3
@@ -47,19 +49,6 @@ LOW_VALUE_PATTERNS = {
     "да",
     "нет",
 }
-
-
-def _get_utc_now() -> str:
-    """Get current UTC time in ISO-8601 format."""
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _normalize_quality_text(text: str) -> str:
-    """Normalize text for lightweight quality checks."""
-    normalized = text.lower().strip()
-    normalized = re.sub(r"[^\w\s]", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized
 
 
 def _evaluate_memory_quality_gate(candidate: CreateMemoryRequest) -> tuple[bool, str]:

@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
+from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -158,20 +160,6 @@ def _build_friendly_scope_label(value: str) -> str:
     return _shorten_display_text(compact)
 
 
-def _normalize_for_similarity(text: str) -> str:
-    normalized = text.lower().strip()
-    normalized = " ".join(normalized.split())
-    return "".join(char if char.isalnum() or char.isspace() else " " for char in normalized)
-
-
-def _token_overlap_ratio(text1: str, text2: str) -> float:
-    tokens1 = set(_normalize_for_similarity(text1).split())
-    tokens2 = set(_normalize_for_similarity(text2).split())
-    if not tokens1 or not tokens2:
-        return 0.0
-    return len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
-
-
 def _shared_signal_count(left: MemoryItem, right: MemoryItem) -> int:
     left_signals = set(item.lower() for item in left.metadata.entities + left.metadata.keywords)
     right_signals = set(item.lower() for item in right.metadata.entities + right.metadata.keywords)
@@ -207,8 +195,8 @@ def _build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[d
             if item.pinned or other.pinned:
                 continue
 
-            overlap = _token_overlap_ratio(item.content, other.content)
-            exact_duplicate = _normalize_for_similarity(item.content) == _normalize_for_similarity(other.content)
+            overlap = token_overlap_ratio(item.content, other.content)
+            exact_duplicate = normalize_for_similarity(item.content) == normalize_for_similarity(other.content)
             if exact_duplicate or overlap >= 0.85:
                 reason = "Near-duplicate content cluster."
                 candidate_map[item.id].append(
