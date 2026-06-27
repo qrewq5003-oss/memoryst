@@ -4,8 +4,10 @@ from unittest.mock import patch
 
 from fastapi import Request
 
-from app.routes.ui import _build_consolidation_data, ui_memories_page
+from app.routes.ui import ui_memories_page
+from app.ui_helpers.consolidation import build_consolidation_data
 from app.schemas import ListMemoriesResponse, MemoryItem, MemoryMetadata
+from tests.conftest_helpers import build_group_summaries
 
 
 def _request(path: str = "/ui") -> Request:
@@ -82,8 +84,8 @@ class UiConsolidationCandidatesTests(unittest.TestCase):
             keywords=["museum", "trip", "friday"],
         )
 
-        with patch("app.routes.ui._utc_now", return_value=self.now):
-            candidate_map, summary = _build_consolidation_data([first, duplicate])
+        with patch("app.ui_helpers.classifiers.utc_now", return_value=self.now):
+            candidate_map, summary = build_consolidation_data([first, duplicate])
 
         self.assertTrue(any(item["type"] == "near_duplicate" for item in candidate_map[first.id]))
         self.assertTrue(any(item["type"] == "near_duplicate" for item in candidate_map[duplicate.id]))
@@ -114,8 +116,8 @@ class UiConsolidationCandidatesTests(unittest.TestCase):
             keywords=["jazz", "rome"],
         )
 
-        with patch("app.routes.ui._utc_now", return_value=self.now):
-            candidate_map, _ = _build_consolidation_data([stale_episode, active_stable])
+        with patch("app.ui_helpers.classifiers.utc_now", return_value=self.now):
+            candidate_map, _ = build_consolidation_data([stale_episode, active_stable])
 
         self.assertTrue(any(item["type"] == "stale_low_value_episode" for item in candidate_map[stale_episode.id]))
         self.assertEqual(candidate_map[active_stable.id], [])
@@ -156,8 +158,10 @@ class UiConsolidationCandidatesTests(unittest.TestCase):
         )
 
         with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
             patch("app.routes.ui.list_memories", return_value=memories),
-            patch("app.routes.ui._utc_now", return_value=self.now),
+            patch("app.ui_helpers.classifiers.utc_now", return_value=self.now),
         ):
             response = ui_memories_page(_request(), consolidation="candidates_only")
 

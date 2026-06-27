@@ -1,9 +1,4 @@
-import re
-from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import parse_qsl, urlencode
-
-from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -13,47 +8,47 @@ from app.repositories.memory_repo import (
     create_memory,
     delete_memory,
     get_memory_by_id,
+    list_chat_group_summaries,
     list_memories,
+    list_ui_filtered_memories,
     set_archived,
     set_pinned,
     update_memory,
 )
 from app.schemas import (
-    ConsolidationHistoryEntry,
     CreateMemoryRequest,
     ListMemoriesResponse,
     MemoryMetadata,
-    MemoryItem,
     MessageInput,
     RetrieveMemoryRequest,
-    RetrieveMemoryResponse,
     StoreMemoryRequest,
-    StoreMemoryResponse,
     UpdateMemoryRequest,
 )
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
+from app.ui_helpers.classifiers import build_memory_card
+from app.ui_helpers.consolidation import (
+    append_consolidation_history,
+    build_consolidation_data,
+    build_consolidation_result,
+)
+from app.ui_helpers.presentation import (
+    build_chat_groups,
+    build_query_string,
+    build_retrieve_summary,
+    build_scope_query,
+    build_store_summary,
+    normalize_redirect_query,
+    normalize_scope_value,
+    parse_list,
+    redirect_query_to_render_args,
+    resolve_selected_group,
+)
 
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["ui"])
 
 UI_SEARCH_SCAN_LIMIT = 2000
-
-
-def _parse_list(value: str) -> list[str]:
-    """Parse comma-separated string into list."""
-    if not value:
-        return []
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-def _normalize_redirect_query(value: Any) -> str:
-    return value if isinstance(value, str) else ""
-
-
-def _build_query_string(params: dict[str, Any]) -> str:
-    """Build query string from params, excluding empty values."""
-    return urlencode({k: v for k, v in params.items() if v not in (None, "")})
 
 
 def _parse_messages(value: str) -> list[MessageInput]:
@@ -65,505 +60,6 @@ def _parse_messages(value: str) -> list[MessageInput]:
             continue
         messages.append(MessageInput(role="user", text=text))
     return messages
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _parse_iso_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-
-def _days_since(value: str | None) -> int | None:
-    parsed = _parse_iso_datetime(value)
-    if parsed is None:
-        return None
-    return max((_utc_now() - parsed).days, 0)
-
-
-def _get_freshness_bucket(memory: MemoryItem) -> str:
-    updated_days = _days_since(memory.updated_at)
-    if updated_days is None or updated_days <= 7:
-        return "fresh"
-    if updated_days <= 30:
-        return "warm"
-    return "stale"
-
-
-def _get_activity_bucket(memory: MemoryItem) -> str:
-    accessed_days = _days_since(memory.last_accessed_at)
-    if memory.access_count <= 0 or memory.last_accessed_at is None:
-        return "never_used"
-    if memory.access_count >= 5 or (accessed_days is not None and accessed_days <= 14):
-        return "active"
-    return "low_use"
-
-
-def _get_touch_state(memory: MemoryItem) -> str:
-    updated_days = _days_since(memory.updated_at)
-    accessed_days = _days_since(memory.last_accessed_at)
-    if accessed_days is not None and accessed_days <= 14:
-        return "recently_accessed"
-    if updated_days is not None and updated_days <= 14:
-        return "recently_updated"
-    if memory.access_count <= 0 and updated_days is not None and updated_days > 30:
-        return "stale_unused"
-    return "quiet"
-
-
-def _build_memory_card(memory: MemoryItem) -> dict[str, Any]:
-    updated_days = _days_since(memory.updated_at)
-    accessed_days = _days_since(memory.last_accessed_at)
-    return {
-        **memory.model_dump(),
-        "freshness": _get_freshness_bucket(memory),
-        "activity": _get_activity_bucket(memory),
-        "touch_state": _get_touch_state(memory),
-        "updated_days": updated_days,
-        "accessed_days": accessed_days,
-    }
-
-
-def _normalize_scope_value(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    return normalized or None
-
-
-def _shorten_display_text(value: str, max_length: int = 36) -> str:
-    if len(value) <= max_length:
-        return value
-    return f"{value[: max_length - 3].rstrip()}..."
-
-
-def _build_friendly_scope_label(value: str) -> str:
-    compact = " ".join(value.split()).strip()
-    if not compact:
-        return "Unnamed chat"
-
-    friendly = re.sub(r"[-_/]+", " ", compact)
-    friendly = " ".join(friendly.split())
-    if friendly != compact and not any(char.isupper() for char in friendly):
-        friendly = friendly.title()
-
-    if len(friendly) > 36:
-        return _shorten_display_text(friendly)
-    if friendly != compact:
-        return friendly
-    return _shorten_display_text(compact)
-
-
-def _shared_signal_count(left: MemoryItem, right: MemoryItem) -> int:
-    left_signals = set(item.lower() for item in left.metadata.entities + left.metadata.keywords)
-    right_signals = set(item.lower() for item in right.metadata.entities + right.metadata.keywords)
-    return len(left_signals & right_signals)
-
-
-def _build_consolidation_data(items: list[MemoryItem]) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
-    candidate_map: dict[str, list[dict[str, Any]]] = {item.id: [] for item in items}
-    summary_counts = {
-        "total_candidates": 0,
-        "near_duplicate": 0,
-        "stale_low_value_episode": 0,
-        "shadowed_by_stable": 0,
-    }
-
-    for index, item in enumerate(items):
-        if item.pinned or item.metadata.review_status == "reviewed_keep":
-            continue
-
-        freshness = _get_freshness_bucket(item)
-        activity = _get_activity_bucket(item)
-
-        if item.layer == "episodic" and freshness == "stale" and activity in {"never_used", "low_use"}:
-            candidate_map[item.id].append(
-                {
-                    "type": "stale_low_value_episode",
-                    "reason": "Stale episodic memory with low retrieval activity.",
-                }
-            )
-
-        for other_index in range(index + 1, len(items)):
-            other = items[other_index]
-            if item.pinned or other.pinned:
-                continue
-
-            overlap = token_overlap_ratio(item.content, other.content)
-            exact_duplicate = normalize_for_similarity(item.content) == normalize_for_similarity(other.content)
-            if exact_duplicate or overlap >= 0.85:
-                reason = "Near-duplicate content cluster."
-                candidate_map[item.id].append(
-                    {
-                        "type": "near_duplicate",
-                        "reason": reason,
-                        "related_id": other.id,
-                    }
-                )
-                candidate_map[other.id].append(
-                    {
-                        "type": "near_duplicate",
-                        "reason": reason,
-                        "related_id": item.id,
-                    }
-                )
-
-        if item.layer == "episodic" and activity != "active":
-            for other in items:
-                if other.id == item.id or other.layer != "stable":
-                    continue
-                if _shared_signal_count(item, other) >= 2:
-                    candidate_map[item.id].append(
-                        {
-                            "type": "shadowed_by_stable",
-                            "reason": "Similar topic already represented by a stable memory.",
-                            "related_id": other.id,
-                        }
-                    )
-                    break
-
-    unique_type_counts = {
-        "near_duplicate": 0,
-        "stale_low_value_episode": 0,
-        "shadowed_by_stable": 0,
-    }
-    total_candidates = 0
-    for candidate_list in candidate_map.values():
-        if candidate_list:
-            total_candidates += 1
-        for candidate_type in unique_type_counts:
-            if any(candidate["type"] == candidate_type for candidate in candidate_list):
-                unique_type_counts[candidate_type] += 1
-
-    summary_counts["total_candidates"] = total_candidates
-    summary_counts.update(unique_type_counts)
-    return candidate_map, summary_counts
-
-
-def _build_consolidation_result(action: str, memory_id: str, related_memory_id: str | None, note: str | None) -> dict[str, Any]:
-    labels = {
-        "mark_consolidated_archive": "Candidate archived for consolidation review.",
-        "mark_reviewed_keep": "Candidate marked as reviewed and kept.",
-        "link_to_related_memory": "Candidate linked to related memory.",
-    }
-    return {
-        "memory_id": memory_id,
-        "action": action,
-        "message": labels.get(action, "Consolidation action applied."),
-        "related_memory_id": related_memory_id or None,
-        "note": note or None,
-    }
-
-
-def _append_consolidation_history(
-    metadata: MemoryMetadata,
-    action: str,
-    related_memory_id: str | None,
-    note: str | None,
-) -> list[ConsolidationHistoryEntry]:
-    entry = ConsolidationHistoryEntry(
-        action=action,
-        timestamp=_utc_now().isoformat(),
-        related_memory_id=related_memory_id or None,
-        note=note or None,
-    )
-    return [*metadata.consolidation_history, entry]
-
-
-def _matches_memory_search(memory: MemoryItem, search: str) -> bool:
-    """Apply a simple text search across memory content and metadata signals."""
-    query = " ".join(search.lower().split())
-    if not query:
-        return True
-
-    haystacks = [
-        memory.id,
-        memory.content,
-        memory.normalized_content,
-        memory.type,
-        memory.source,
-        memory.layer,
-        " ".join(memory.metadata.entities),
-        " ".join(memory.metadata.keywords),
-    ]
-    return query in " ".join(haystacks).lower()
-
-
-def _sort_memories(items: list[MemoryItem], sort: str) -> list[MemoryItem]:
-    if sort == "last_accessed_desc":
-        return sorted(
-            items,
-            key=lambda item: (
-                _parse_iso_datetime(item.last_accessed_at) or datetime.min.replace(tzinfo=timezone.utc),
-                _parse_iso_datetime(item.updated_at) or datetime.min.replace(tzinfo=timezone.utc),
-            ),
-            reverse=True,
-        )
-    if sort == "access_count_desc":
-        return sorted(
-            items,
-            key=lambda item: (item.access_count, _parse_iso_datetime(item.last_accessed_at) or datetime.min.replace(tzinfo=timezone.utc)),
-            reverse=True,
-        )
-    if sort == "stalest_first":
-        return sorted(
-            items,
-            key=lambda item: (
-                _parse_iso_datetime(item.updated_at) or _utc_now(),
-                _parse_iso_datetime(item.last_accessed_at) or _utc_now(),
-            ),
-        )
-    return sorted(
-        items,
-        key=lambda item: _parse_iso_datetime(item.updated_at) or datetime.min.replace(tzinfo=timezone.utc),
-        reverse=True,
-    )
-
-
-def _filter_and_page_memories(
-    items: list[MemoryItem],
-    search: str | None,
-    freshness: str | None,
-    activity: str | None,
-    consolidation: str | None,
-    sort: str,
-    limit: int,
-    offset: int,
-    candidate_map: dict[str, list[dict[str, Any]]] | None = None,
-) -> ListMemoriesResponse:
-    """Apply UI-only filters and sorting, then paginate the filtered list."""
-    filtered_items = list(items)
-    if search:
-        filtered_items = [item for item in filtered_items if _matches_memory_search(item, search)]
-    if freshness:
-        filtered_items = [item for item in filtered_items if _get_freshness_bucket(item) == freshness]
-    if activity:
-        filtered_items = [item for item in filtered_items if _get_activity_bucket(item) == activity]
-    if consolidation == "candidates_only" and candidate_map is not None:
-        filtered_items = [item for item in filtered_items if candidate_map.get(item.id)]
-    elif consolidation and consolidation != "candidates_only" and candidate_map is not None:
-        filtered_items = [
-            item for item in filtered_items
-            if any(candidate["type"] == consolidation for candidate in candidate_map.get(item.id, []))
-        ]
-
-    filtered_items = _sort_memories(filtered_items, sort)
-    paginated_items = filtered_items[offset: offset + limit]
-    return ListMemoriesResponse(
-        items=paginated_items,
-        total=len(filtered_items),
-        limit=limit,
-        offset=offset,
-    )
-
-
-def _sorted_breakdown(items: dict[str, int]) -> list[dict[str, Any]]:
-    """Convert a counter dict into a stable list for template rendering."""
-    return [
-        {"label": label, "count": count}
-        for label, count in sorted(items.items())
-    ]
-
-
-def _build_scope_query(
-    *,
-    view: str,
-    selected_chat_id: str | None,
-    selected_character_id: str | None,
-) -> str:
-    return _build_query_string(
-        {
-            "view": view if view == "all" else None,
-            "selected_chat_id": selected_chat_id if view != "all" else None,
-            "selected_character_id": selected_character_id if view != "all" else None,
-        }
-    )
-
-
-def _redirect_query_to_render_args(redirect_query: str) -> dict[str, Any]:
-    redirect_query = _normalize_redirect_query(redirect_query)
-    if not redirect_query:
-        return {}
-
-    params = dict(parse_qsl(redirect_query, keep_blank_values=False))
-    render_args: dict[str, Any] = {}
-    string_keys = {
-        "selected_chat_id",
-        "selected_character_id",
-        "view",
-        "type",
-        "source",
-        "layer",
-        "search",
-        "freshness",
-        "activity",
-        "consolidation",
-        "sort",
-        "archived",
-        "pinned",
-    }
-    int_keys = {"limit", "offset"}
-
-    for key in string_keys:
-        if key in params:
-            render_args[key] = params[key]
-    for key in int_keys:
-        if key in params:
-            try:
-                render_args[key] = int(params[key])
-            except ValueError:
-                continue
-
-    return render_args
-
-
-def _build_chat_groups(items: list[MemoryItem]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str], dict[str, Any]] = {}
-    for item in items:
-        key = (item.chat_id, item.character_id)
-        group = grouped.get(key)
-        if group is None:
-            group = {
-                "chat_id": item.chat_id,
-                "character_id": item.character_id,
-                "total_count": 0,
-                "summary_count": 0,
-                "stable_count": 0,
-                "episodic_count": 0,
-                "last_updated": item.updated_at,
-            }
-            grouped[key] = group
-
-        group["total_count"] += 1
-        if item.type == "summary" or item.metadata.is_summary:
-            group["summary_count"] += 1
-        elif item.layer == "stable":
-            group["stable_count"] += 1
-        else:
-            group["episodic_count"] += 1
-
-        if item.updated_at > group["last_updated"]:
-            group["last_updated"] = item.updated_at
-
-    groups = list(grouped.values())
-    groups.sort(
-        key=lambda group: (
-            group["last_updated"],
-            group["chat_id"],
-            group["character_id"],
-        ),
-        reverse=True,
-    )
-    for group in groups:
-        group["last_updated_days"] = _days_since(group["last_updated"])
-        group["display_label"] = _build_friendly_scope_label(group["chat_id"])
-        group["display_character_label"] = _build_friendly_scope_label(group["character_id"])
-        group["has_friendly_label"] = group["display_label"] != group["chat_id"]
-    return groups
-
-
-def _resolve_selected_group(
-    chat_groups: list[dict[str, Any]],
-    *,
-    requested_chat_id: str | None,
-    requested_character_id: str | None,
-    view: str,
-) -> dict[str, Any] | None:
-    if view == "all":
-        return None
-
-    if requested_chat_id and requested_character_id:
-        for group in chat_groups:
-            if (
-                group["chat_id"] == requested_chat_id
-                and group["character_id"] == requested_character_id
-            ):
-                return group
-
-    return chat_groups[0] if chat_groups else None
-
-
-def _build_store_summary(store_result: StoreMemoryResponse | None) -> dict[str, Any] | None:
-    """Build compact aggregate summary for a store run."""
-    if store_result is None:
-        return None
-
-    summary = {
-        "stored": store_result.stored,
-        "updated": store_result.updated,
-        "skipped": store_result.skipped,
-        "debug_breakdown": None,
-    }
-
-    if store_result.debug is None:
-        return summary
-
-    decision_counts: dict[str, int] = {}
-    reason_counts: dict[str, int] = {}
-    branch_counts: dict[str, int] = {}
-
-    for candidate in store_result.debug.candidates:
-        decision_counts[candidate.decision] = decision_counts.get(candidate.decision, 0) + 1
-        reason_counts[candidate.reason] = reason_counts.get(candidate.reason, 0) + 1
-        branch_counts[candidate.branch] = branch_counts.get(candidate.branch, 0) + 1
-
-    summary["debug_breakdown"] = {
-        "decisions": _sorted_breakdown(decision_counts),
-        "reasons": _sorted_breakdown(reason_counts),
-        "branches": _sorted_breakdown(branch_counts),
-    }
-    return summary
-
-
-def _build_retrieve_summary(retrieve_result: RetrieveMemoryResponse | None) -> dict[str, Any] | None:
-    """Build compact aggregate summary for a retrieval run."""
-    if retrieve_result is None:
-        return None
-
-    summary = {
-        "total_candidates": retrieve_result.total_candidates,
-        "selected_count": len(retrieve_result.items),
-        "top_score": None,
-        "avg_selected_score": None,
-        "debug_breakdown": None,
-    }
-
-    if retrieve_result.debug is None:
-        return summary
-
-    reason_counts: dict[str, int] = {}
-    below_threshold = 0
-    filtered_by_diversity = 0
-    selected_top = 0
-    selected_scores: list[float] = []
-
-    for candidate in retrieve_result.debug.candidates:
-        reason_counts[candidate.reason] = reason_counts.get(candidate.reason, 0) + 1
-        if not candidate.passed_threshold:
-            below_threshold += 1
-        if candidate.filtered_by_diversity:
-            filtered_by_diversity += 1
-        if candidate.selected:
-            selected_top += 1
-            selected_scores.append(candidate.score)
-
-    if selected_scores:
-        summary["top_score"] = max(selected_scores)
-        summary["avg_selected_score"] = sum(selected_scores) / len(selected_scores)
-
-    summary["debug_breakdown"] = {
-        "below_threshold": below_threshold,
-        "filtered_by_diversity": filtered_by_diversity,
-        "selected_top": selected_top,
-        "reasons": _sorted_breakdown(reason_counts),
-    }
-    return summary
 
 
 def _render_memories_page(
@@ -586,17 +82,17 @@ def _render_memories_page(
     pinned: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    store_result: StoreMemoryResponse | None = None,
-    retrieve_result: RetrieveMemoryResponse | None = None,
+    store_result=None,
+    retrieve_result=None,
     consolidation_result: dict[str, Any] | None = None,
     store_form: dict[str, Any] | None = None,
     retrieve_form: dict[str, Any] | None = None,
 ) -> Any:
     """Render the memories page with optional store/retrieve diagnostics sections."""
-    legacy_chat_id = _normalize_scope_value(chat_id)
-    legacy_character_id = _normalize_scope_value(character_id)
-    requested_chat_id = _normalize_scope_value(selected_chat_id) or legacy_chat_id
-    requested_character_id = _normalize_scope_value(selected_character_id) or legacy_character_id
+    legacy_chat_id = normalize_scope_value(chat_id)
+    legacy_character_id = normalize_scope_value(character_id)
+    requested_chat_id = normalize_scope_value(selected_chat_id) or legacy_chat_id
+    requested_character_id = normalize_scope_value(selected_character_id) or legacy_character_id
     view_mode = "all" if view == "all" else "chat"
     type = type or None
     source = source or None
@@ -620,17 +116,15 @@ def _render_memories_page(
     else:
         pinned_bool = None
 
-    base_memories = list_memories(
+    group_summaries = list_chat_group_summaries(
         memory_type=type,
         source=source,
         layer=layer,
         archived=archived_bool,
         pinned=pinned_bool,
-        limit=UI_SEARCH_SCAN_LIMIT,
-        offset=0,
     )
-    chat_groups = _build_chat_groups(base_memories.items)
-    selected_group = _resolve_selected_group(
+    chat_groups = build_chat_groups(group_summaries)
+    selected_group = resolve_selected_group(
         chat_groups,
         requested_chat_id=requested_chat_id,
         requested_character_id=requested_character_id,
@@ -639,39 +133,90 @@ def _render_memories_page(
     active_chat_id = selected_group["chat_id"] if selected_group else None
     active_character_id = selected_group["character_id"] if selected_group else None
 
+    # SQL-level filtered + sorted + paginated results for display
     if view_mode == "all":
-        scoped_items = list(base_memories.items)
+        memories = list_ui_filtered_memories(
+            memory_type=type,
+            source=source,
+            layer=layer,
+            archived=archived_bool,
+            pinned=pinned_bool,
+            search=search,
+            freshness=freshness,
+            activity=activity,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
     elif active_chat_id and active_character_id:
-        scoped_items = [
-            item
-            for item in base_memories.items
-            if item.chat_id == active_chat_id and item.character_id == active_character_id
-        ]
+        memories = list_ui_filtered_memories(
+            chat_id=active_chat_id,
+            character_id=active_character_id,
+            memory_type=type,
+            source=source,
+            layer=layer,
+            archived=archived_bool,
+            pinned=pinned_bool,
+            search=search,
+            freshness=freshness,
+            activity=activity,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
     else:
-        scoped_items = []
+        memories = ListMemoriesResponse(items=[], total=0, limit=limit, offset=offset)
 
-    candidate_map, consolidation_summary = _build_consolidation_data(scoped_items)
-    memories = _filter_and_page_memories(
-        scoped_items,
-        search=search,
-        freshness=freshness,
-        activity=activity,
-        consolidation=consolidation,
-        sort=sort,
-        limit=limit,
-        offset=offset,
-        candidate_map=candidate_map,
-    )
+    # Load all items in scope for consolidation analysis (O(n²), needs full content)
+    if view_mode == "all":
+        consolidation_items = list_memories(
+            memory_type=type,
+            source=source,
+            layer=layer,
+            archived=archived_bool,
+            pinned=pinned_bool,
+            limit=UI_SEARCH_SCAN_LIMIT,
+            offset=0,
+        ).items
+    elif active_chat_id and active_character_id:
+        consolidation_items = list_memories(
+            chat_id=active_chat_id,
+            character_id=active_character_id,
+            memory_type=type,
+            source=source,
+            layer=layer,
+            archived=archived_bool,
+            pinned=pinned_bool,
+            limit=UI_SEARCH_SCAN_LIMIT,
+            offset=0,
+        ).items
+    else:
+        consolidation_items = []
+
+    candidate_map, consolidation_summary = build_consolidation_data(consolidation_items)
+
+    # Apply consolidation filter in Python if needed (overrides SQL pagination)
+    if consolidation and consolidation_items:
+        consolidation_ids = set()
+        for item in consolidation_items:
+            candidates = candidate_map.get(item.id, [])
+            if consolidation == "candidates_only" and candidates:
+                consolidation_ids.add(item.id)
+            elif consolidation != "candidates_only" and any(c["type"] == consolidation for c in candidates):
+                consolidation_ids.add(item.id)
+        if consolidation_ids:
+            filtered = [item for item in memories.items if item.id in consolidation_ids]
+            memories = ListMemoriesResponse(items=filtered, total=len(filtered), limit=limit, offset=offset)
     memory_cards = [
         {
-            **_build_memory_card(item),
+            **build_memory_card(item),
             "consolidation_candidates": candidate_map.get(item.id, []),
             "is_consolidation_candidate": bool(candidate_map.get(item.id)),
         }
         for item in memories.items
     ]
 
-    redirect_query = _build_query_string(
+    redirect_query = build_query_string(
         {
             "view": view_mode if view_mode == "all" else None,
             "selected_chat_id": active_chat_id if view_mode != "all" else None,
@@ -690,7 +235,7 @@ def _render_memories_page(
             "offset": offset,
         }
     )
-    clear_filters_query = _build_scope_query(
+    clear_filters_query = build_scope_query(
         view=view_mode,
         selected_chat_id=active_chat_id,
         selected_character_id=active_character_id,
@@ -699,7 +244,7 @@ def _render_memories_page(
     if clear_filters_query:
         clear_filters_url = f"/ui?{clear_filters_query}"
 
-    all_chats_query = _build_query_string(
+    all_chats_query = build_query_string(
         {
             "view": "all",
             "type": type,
@@ -718,7 +263,7 @@ def _render_memories_page(
     all_chats_url = f"/ui?{all_chats_query}" if all_chats_query else "/ui"
 
     for group in chat_groups:
-        group_query = _build_query_string(
+        group_query = build_query_string(
             {
                 "selected_chat_id": group["chat_id"],
                 "selected_character_id": group["character_id"],
@@ -775,7 +320,7 @@ def _render_memories_page(
         "pinned": pinned,
         "limit": limit,
         "offset": offset,
-        "query_string": _build_query_string(
+        "query_string": build_query_string(
             {
                 "view": view_mode if view_mode == "all" else None,
                 "selected_chat_id": active_chat_id if view_mode != "all" else None,
@@ -816,8 +361,8 @@ def _render_memories_page(
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,
             "consolidation_result": consolidation_result,
-            "store_summary": _build_store_summary(store_result),
-            "retrieve_summary": _build_retrieve_summary(retrieve_result),
+            "store_summary": build_store_summary(store_result),
+            "retrieve_summary": build_retrieve_summary(retrieve_result),
             "store_form": store_form or {
                 "chat_id": active_chat_id or "",
                 "character_id": active_character_id or "",
@@ -992,12 +537,12 @@ def ui_create_memory(
         pinned=pinned,
         archived=archived,
         metadata=MemoryMetadata(
-            entities=_parse_list(entities),
-            keywords=_parse_list(keywords),
+            entities=parse_list(entities),
+            keywords=parse_list(keywords),
         ),
     )
     create_memory(request)
-    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_query = normalize_redirect_query(redirect_query)
     redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
     return RedirectResponse(url=redirect_url, status_code=303)
 
@@ -1026,12 +571,12 @@ def ui_update_memory(
         pinned=pinned,
         archived=archived,
         metadata=MemoryMetadata(
-            entities=_parse_list(entities),
-            keywords=_parse_list(keywords),
+            entities=parse_list(entities),
+            keywords=parse_list(keywords),
         ),
     )
     update_memory(memory_id, request)
-    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_query = normalize_redirect_query(redirect_query)
     redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
     return RedirectResponse(url=redirect_url, status_code=303)
 
@@ -1042,7 +587,7 @@ def ui_toggle_pin(memory_id: str, redirect_query: str = Form("")) -> RedirectRes
     memory = get_memory_by_id(memory_id)
     if memory:
         set_pinned(memory_id, not memory.pinned)
-    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_query = normalize_redirect_query(redirect_query)
     redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
     return RedirectResponse(url=redirect_url, status_code=303)
 
@@ -1053,7 +598,7 @@ def ui_toggle_archive(memory_id: str, redirect_query: str = Form("")) -> Redirec
     memory = get_memory_by_id(memory_id)
     if memory:
         set_archived(memory_id, not memory.archived)
-    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_query = normalize_redirect_query(redirect_query)
     redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
     return RedirectResponse(url=redirect_url, status_code=303)
 
@@ -1062,7 +607,7 @@ def ui_toggle_archive(memory_id: str, redirect_query: str = Form("")) -> Redirec
 def ui_delete_memory(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
     """Delete a memory and redirect back to UI."""
     delete_memory(memory_id)
-    redirect_query = _normalize_redirect_query(redirect_query)
+    redirect_query = normalize_redirect_query(redirect_query)
     redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
     return RedirectResponse(url=redirect_url, status_code=303)
 
@@ -1102,7 +647,7 @@ def ui_consolidate_memory(
             }.get(action, memory.metadata.review_status),
             "related_memory_id": related_memory_id or memory.metadata.related_memory_id,
             "consolidation_note": note or memory.metadata.consolidation_note,
-            "consolidation_history": _append_consolidation_history(
+            "consolidation_history": append_consolidation_history(
                 memory.metadata,
                 action,
                 related_memory_id,
@@ -1122,6 +667,6 @@ def ui_consolidate_memory(
 
     return _render_memories_page(
         request,
-        **_redirect_query_to_render_args(redirect_query),
-        consolidation_result=_build_consolidation_result(action, memory_id, related_memory_id, note),
+        **redirect_query_to_render_args(redirect_query),
+        consolidation_result=build_consolidation_result(action, memory_id, related_memory_id, note),
     )

@@ -5,6 +5,7 @@ from fastapi import Request
 
 from app.routes.ui import ui_memories_page
 from app.schemas import ListMemoriesResponse, MemoryItem, MemoryMetadata
+from tests.conftest_helpers import build_group_summaries
 
 
 def _request(path: str = "/ui") -> Request:
@@ -82,14 +83,19 @@ class UiMemoryListUxTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+            patch("app.routes.ui.list_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request())
 
         body = response.body.decode()
-        self.assertIn("chat-new", body)
-        self.assertIn("Alice planned the Rome museum trip.", body)
-        self.assertNotIn("Bob fixed the Paris calendar.", body)
         self.assertIn("All Chats", body)
+        self.assertIn("Chat New", body)
+        self.assertIn("Chat Old", body)
+        self.assertIn("Current scope", body)
+        self.assertIn("chat-group-link-active", body)
 
     def test_text_search_filters_rendered_memories(self) -> None:
         memories = ListMemoriesResponse(
@@ -112,7 +118,25 @@ class UiMemoryListUxTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        filtered_memories = ListMemoriesResponse(
+            items=[memories.items[0]],
+            total=1,
+            limit=50,
+            offset=0,
+        )
+
+        scoped_memories = ListMemoriesResponse(
+            items=[memories.items[0]],
+            total=1,
+            limit=50,
+            offset=0,
+        )
+
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=scoped_memories),
+            patch("app.routes.ui.list_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request(), search="rome")
 
         body = response.body.decode()
@@ -137,9 +161,10 @@ class UiMemoryListUxTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch(
-            "app.routes.ui.list_memories",
-            return_value=memories,
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+            patch("app.routes.ui.list_memories", return_value=memories),
         ):
             response = ui_memories_page(
                 _request(),
@@ -166,9 +191,11 @@ class UiMemoryListUxTests(unittest.TestCase):
         self.assertIn('name="limit" value="25"', body)
 
     def test_clear_filters_link_and_empty_search_render_cleanly(self) -> None:
-        with patch(
-            "app.routes.ui.list_memories",
-            return_value=ListMemoriesResponse(items=[], total=0, limit=50, offset=0),
+        empty = ListMemoriesResponse(items=[], total=0, limit=50, offset=0)
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=[]),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=empty),
+            patch("app.routes.ui.list_memories", return_value=empty),
         ):
             response = ui_memories_page(_request())
 
@@ -196,7 +223,11 @@ class UiMemoryListUxTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+            patch("app.routes.ui.list_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request())
 
         body = response.body.decode()

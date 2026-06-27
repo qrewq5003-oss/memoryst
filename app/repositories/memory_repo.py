@@ -217,6 +217,177 @@ def list_retrieval_candidates(
         return [_row_to_memory_item(dict(row)) for row in rows]
 
 
+def list_chat_group_summaries(
+    memory_type: str | None = None,
+    source: str | None = None,
+    layer: str | None = None,
+    archived: bool | None = None,
+    pinned: bool | None = None,
+) -> list[dict[str, object]]:
+    """
+    Lightweight query for the chat sidebar: returns one row per (chat_id, character_id)
+    with counts and last_updated, without loading full memory rows.
+    """
+    where_clauses: list[str] = []
+    params: list[object] = []
+
+    if memory_type is not None:
+        where_clauses.append("type = ?")
+        params.append(memory_type)
+    if source is not None:
+        where_clauses.append("source = ?")
+        params.append(source)
+    if layer is not None:
+        where_clauses.append("layer = ?")
+        params.append(layer)
+    if archived is not None:
+        where_clauses.append("archived = ?")
+        params.append(int(archived))
+    if pinned is not None:
+        where_clauses.append("pinned = ?")
+        params.append(int(pinned))
+
+    where_sql = ""
+    if where_clauses:
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT
+                chat_id,
+                character_id,
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN type = 'summary' OR json_extract(metadata_json, '$.is_summary') = 1 THEN 1 ELSE 0 END) AS summary_count,
+                SUM(CASE WHEN layer = 'stable' AND type != 'summary' AND json_extract(metadata_json, '$.is_summary') != 1 THEN 1 ELSE 0 END) AS stable_count,
+                SUM(CASE WHEN layer = 'episodic' AND type != 'summary' AND json_extract(metadata_json, '$.is_summary') != 1 THEN 1 ELSE 0 END) AS episodic_count,
+                MAX(updated_at) AS last_updated
+            FROM memories
+            {where_sql}
+            GROUP BY chat_id, character_id
+            ORDER BY last_updated DESC
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+SORT_ORDERS = {
+    "updated_desc": "updated_at DESC",
+    "last_accessed_desc": "COALESCE(last_accessed_at, '') DESC, updated_at DESC",
+    "access_count_desc": "access_count DESC, COALESCE(last_accessed_at, '') DESC",
+    "stalest_first": "updated_at ASC, last_accessed_at ASC",
+}
+
+FRESHNESS_SQL = {
+    "fresh": "julianday('now') - julianday(updated_at) <= 7",
+    "warm": "julianday('now') - julianday(updated_at) > 7 AND julianday('now') - julianday(updated_at) <= 30",
+    "stale": "julianday('now') - julianday(updated_at) > 30",
+}
+
+ACTIVITY_SQL = {
+    "never_used": "access_count <= 0 OR last_accessed_at IS NULL",
+    "active": "access_count >= 5 OR (last_accessed_at IS NOT NULL AND julianday('now') - julianday(last_accessed_at) <= 14)",
+    "low_use": "access_count > 0 AND access_count < 5 AND (last_accessed_at IS NULL OR julianday('now') - julianday(last_accessed_at) > 14)",
+}
+
+
+def list_ui_filtered_memories(
+    *,
+    chat_id: str | None = None,
+    character_id: str | None = None,
+    memory_type: str | None = None,
+    source: str | None = None,
+    layer: str | None = None,
+    archived: bool | None = None,
+    pinned: bool | None = None,
+    search: str | None = None,
+    freshness: str | None = None,
+    activity: str | None = None,
+    sort: str = "updated_desc",
+    limit: int = 50,
+    offset: int = 0,
+) -> ListMemoriesResponse:
+    """
+    List memories with UI-level filters applied in SQL.
+    Handles search (LIKE), freshness/activity (date math), sorting, and pagination.
+    """
+    where_clauses: list[str] = []
+    params: list[object] = []
+
+    if chat_id is not None:
+        where_clauses.append("chat_id = ?")
+        params.append(chat_id)
+    if character_id is not None:
+        where_clauses.append("character_id = ?")
+        params.append(character_id)
+    if memory_type is not None:
+        where_clauses.append("type = ?")
+        params.append(memory_type)
+    if source is not None:
+        where_clauses.append("source = ?")
+        params.append(source)
+    if layer is not None:
+        where_clauses.append("layer = ?")
+        params.append(layer)
+    if archived is not None:
+        where_clauses.append("archived = ?")
+        params.append(int(archived))
+    if pinned is not None:
+        where_clauses.append("pinned = ?")
+        params.append(int(pinned))
+
+    if search:
+        query = " ".join(search.lower().split())
+        if query:
+            like_pattern = f"%{query}%"
+            where_clauses.append(
+                "(LOWER(content) LIKE ? OR LOWER(normalized_content) LIKE ? OR LOWER(type) LIKE ? OR LOWER(source) LIKE ? OR LOWER(layer) LIKE ? OR LOWER(metadata_json) LIKE ?)"
+            )
+            params.extend([like_pattern] * 6)
+
+    if freshness and freshness in FRESHNESS_SQL:
+        where_clauses.append(f"({FRESHNESS_SQL[freshness]})")
+
+    if activity and activity in ACTIVITY_SQL:
+        where_clauses.append(f"({ACTIVITY_SQL[activity]})")
+
+    where_sql = ""
+    if where_clauses:
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+    order_sql = SORT_ORDERS.get(sort, SORT_ORDERS["updated_desc"])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            f"SELECT COUNT(*) FROM memories {where_sql}",
+            params,
+        )
+        total = cursor.fetchone()[0]
+
+        cursor.execute(
+            f"""
+            SELECT * FROM memories {where_sql}
+            ORDER BY {order_sql}
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        )
+        rows = cursor.fetchall()
+        items = [_row_to_memory_item(dict(row)) for row in rows]
+
+    return ListMemoriesResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 def update_memory(memory_id: str, payload: UpdateMemoryRequest) -> MemoryItem | None:
     """Update a memory record. Only updates provided fields."""
     existing = get_memory_by_id(memory_id)
