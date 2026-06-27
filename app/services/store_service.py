@@ -123,6 +123,13 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     skipped_count = 0
     debug_candidates: list[StoreCandidateDebug] = []
 
+    # Load existing memories once for soft-match checks (not per candidate)
+    existing_memories = list_memories(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        limit=200,
+    ).items
+
     for candidate in candidates:
         normalized = _normalize_content(candidate.content)
         quality_ok, quality_reason = _evaluate_memory_quality_gate(candidate)
@@ -207,15 +214,8 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                     )
         else:
             # No exact match - check for soft match
-            # Get all memories for this chat/character to check soft matches
-            all_memories = list_memories(
-                chat_id=request.chat_id,
-                character_id=request.character_id,
-                limit=200,
-            ).items
-            
             soft_match_found = False
-            for existing_memory in all_memories:
+            for existing_memory in existing_memories:
                 if check_soft_match(candidate, existing_memory):
                     # Soft match found - update existing (is_exact=False for lower importance boost)
                     merged, _ = merge_candidate_with_existing(candidate, existing_memory, is_exact=False)
