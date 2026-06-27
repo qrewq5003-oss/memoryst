@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from app.auth import require_api_key
 from app.repositories.memory_repo import (
@@ -29,6 +30,7 @@ from app.schemas import (
 )
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
+from app.services import vector_store
 
 router = APIRouter(
     prefix="/memory",
@@ -135,3 +137,38 @@ def delete_memory_endpoint(id: str) -> DeleteMemoryResponse:
     if not result:
         raise HTTPException(status_code=404, detail="Memory not found")
     return DeleteMemoryResponse(id=id, deleted=True)
+
+
+class AddKeyRequest(BaseModel):
+    key: str
+
+
+class RemoveKeyRequest(BaseModel):
+    key: str
+
+
+class KeyStatus(BaseModel):
+    masked: str
+    active: bool
+
+
+@router.get("/keys", response_model=list[KeyStatus])
+def list_keys_endpoint() -> list[KeyStatus]:
+    """List all Google API keys (masked)."""
+    return [KeyStatus(**k) for k in vector_store.list_keys()]
+
+
+@router.post("/keys")
+def add_key_endpoint(request: AddKeyRequest) -> dict:
+    """Add a new Google API key to the pool."""
+    vector_store.add_key(request.key)
+    return {"status": "added", "total_keys": vector_store.get_key_count()}
+
+
+@router.delete("/keys")
+def remove_key_endpoint(request: RemoveKeyRequest) -> dict:
+    """Remove a Google API key from the pool."""
+    removed = vector_store.remove_key(request.key)
+    if not removed:
+        raise HTTPException(status_code=400, detail="Key not found or cannot remove last key")
+    return {"status": "removed", "total_keys": vector_store.get_key_count()}

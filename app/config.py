@@ -30,7 +30,9 @@ class Config:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "zai-org/glm-4.7")
     LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
 
-    GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+    GOOGLE_API_KEYS: list[str] = [
+        k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()
+    ]
     GOOGLE_EMBEDDING_MODEL: str = os.getenv("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-2-preview")
     CHROMADB_PATH: str = os.getenv("CHROMADB_PATH", "data/chromadb")
 
