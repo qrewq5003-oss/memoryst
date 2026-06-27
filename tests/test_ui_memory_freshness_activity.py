@@ -98,7 +98,6 @@ class UiMemoryFreshnessActivityTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=filtered_memories),
-            patch("app.routes.ui.list_memories", return_value=memories),
             patch("app.ui_helpers.classifiers.utc_now", return_value=self.now),
         ):
             response = ui_memories_page(
@@ -129,7 +128,6 @@ class UiMemoryFreshnessActivityTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
-            patch("app.routes.ui.list_memories", return_value=memories),
             patch("app.ui_helpers.classifiers.utc_now", return_value=self.now),
         ):
             response = ui_memories_page(_request(), sort="access_count_desc")

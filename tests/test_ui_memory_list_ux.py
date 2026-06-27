@@ -86,7 +86,6 @@ class UiMemoryListUxTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
-            patch("app.routes.ui.list_memories", return_value=memories),
         ):
             response = ui_memories_page(_request())
 
@@ -135,7 +134,6 @@ class UiMemoryListUxTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=scoped_memories),
-            patch("app.routes.ui.list_memories", return_value=memories),
         ):
             response = ui_memories_page(_request(), search="rome")
 
@@ -164,7 +162,6 @@ class UiMemoryListUxTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
-            patch("app.routes.ui.list_memories", return_value=memories),
         ):
             response = ui_memories_page(
                 _request(),
@@ -195,7 +192,6 @@ class UiMemoryListUxTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=[]),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=empty),
-            patch("app.routes.ui.list_memories", return_value=empty),
         ):
             response = ui_memories_page(_request())
 
@@ -226,7 +222,6 @@ class UiMemoryListUxTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
-            patch("app.routes.ui.list_memories", return_value=memories),
         ):
             response = ui_memories_page(_request())
 

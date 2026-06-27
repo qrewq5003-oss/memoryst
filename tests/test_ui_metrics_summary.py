@@ -62,7 +62,6 @@ class UiMetricsSummaryTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=[]),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=self.empty_memories),
-            patch("app.routes.ui.list_memories", return_value=self.empty_memories),
             patch("app.routes.ui.store_memories") as store_mock,
         ):
             store_mock.return_value = StoreMemoryResponse(
@@ -119,7 +118,6 @@ class UiMetricsSummaryTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=[]),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=self.empty_memories),
-            patch("app.routes.ui.list_memories", return_value=self.empty_memories),
             patch("app.routes.ui.retrieve_memories") as retrieve_mock,
         ):
             retrieve_mock.return_value = RetrieveMemoryResponse(
@@ -206,7 +204,6 @@ class UiMetricsSummaryTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=[]),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=self.empty_memories),
-            patch("app.routes.ui.list_memories", return_value=self.empty_memories),
             patch("app.routes.ui.retrieve_memories") as retrieve_mock,
         ):
             retrieve_mock.return_value = RetrieveMemoryResponse(

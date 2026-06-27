@@ -79,7 +79,6 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
             patch("app.routes.ui.update_memory") as update_mock,
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(re_render_memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=re_render_memories),
-            patch("app.routes.ui.list_memories", return_value=re_render_memories),
         ):
             response = ui_consolidate_memory(
                 _request("/ui/memory-1/consolidate"),
@@ -130,7 +129,6 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
             patch("app.routes.ui.update_memory") as update_mock,
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(re_render_memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=re_render_memories),
-            patch("app.routes.ui.list_memories", return_value=re_render_memories),
         ):
             response = ui_consolidate_memory(
                 _request("/ui/memory-1/consolidate"),
@@ -204,7 +202,6 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
             patch("app.routes.ui.update_memory") as update_mock,
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(re_render_memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=re_render_memories),
-            patch("app.routes.ui.list_memories", return_value=re_render_memories),
         ):
             response = ui_consolidate_memory(
                 _request("/ui/memory-1/consolidate"),
@@ -255,7 +252,6 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(render_memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=render_memories),
-            patch("app.routes.ui.list_memories", return_value=render_memories),
         ):
             response = ui_memories_page(_request("/ui"))
 
@@ -290,7 +286,6 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(render_memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=render_memories),
-            patch("app.routes.ui.list_memories", return_value=render_memories),
         ):
             response = ui_memories_page(_request("/ui"))
 
@@ -324,7 +319,6 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         with (
             patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(render_memories)),
             patch("app.routes.ui.list_ui_filtered_memories", return_value=render_memories),
-            patch("app.routes.ui.list_memories", return_value=render_memories),
         ):
             response = ui_memories_page(_request("/ui"))
 

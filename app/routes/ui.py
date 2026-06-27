@@ -9,7 +9,6 @@ from app.repositories.memory_repo import (
     delete_memory,
     get_memory_by_id,
     list_chat_group_summaries,
-    list_memories,
     list_ui_filtered_memories,
     set_archived,
     set_pinned,
@@ -167,9 +166,9 @@ def _render_memories_page(
     else:
         memories = ListMemoriesResponse(items=[], total=0, limit=limit, offset=offset)
 
-    # Load all items in scope for consolidation analysis (O(n²), needs full content)
+    # Load items in scope for consolidation analysis (SQL-filtered by scope)
     if view_mode == "all":
-        consolidation_items = list_memories(
+        consolidation_items = list_ui_filtered_memories(
             memory_type=type,
             source=source,
             layer=layer,
@@ -179,7 +178,7 @@ def _render_memories_page(
             offset=0,
         ).items
     elif active_chat_id and active_character_id:
-        consolidation_items = list_memories(
+        consolidation_items = list_ui_filtered_memories(
             chat_id=active_chat_id,
             character_id=active_character_id,
             memory_type=type,
