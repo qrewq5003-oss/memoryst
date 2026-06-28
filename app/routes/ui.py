@@ -613,6 +613,27 @@ def ui_delete_memory(memory_id: str, redirect_query: str = Form("")) -> Redirect
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
+@router.post("/ui/delete-chat")
+def ui_delete_chat(
+    chat_id: str = Form(...),
+    character_id: str = Form(""),
+    redirect_query: str = Form(""),
+) -> RedirectResponse:
+    """Delete all memories for a chat and redirect back to UI."""
+    from app.repositories.memory_repo import list_memories
+    from app.services import vector_store
+
+    char_id = character_id.strip() or None
+    items = list_memories(chat_id=chat_id, character_id=char_id, limit=10000).items
+    for item in items:
+        delete_memory(item.id)
+        vector_store.delete_memory(item.id)
+
+    redirect_query = normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
 @router.post("/ui/{memory_id}/consolidate")
 def ui_consolidate_memory(
     request: Request,
