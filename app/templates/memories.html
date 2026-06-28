@@ -728,4 +728,30 @@
         <button type="submit">Create</button>
     </form>
 </section>
+
+<section class="create-form">
+    <h2>Import / Export</h2>
+    <div class="form-row">
+        <div>
+            <h3>Backfill from .jsonl</h3>
+            <form method="POST" action="/ui/backfill-file" enctype="multipart/form-data">
+                <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] or 'backfill' }}">
+                <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or 'backfill' }}">
+                <div style="margin:8px 0;">
+                    <input type="file" name="file" accept=".jsonl,.json" required>
+                </div>
+                <button type="submit">Upload & Backfill</button>
+            </form>
+            <p style="font-size:0.85em;opacity:0.7;margin-top:4px;">Upload a SillyTavern .jsonl chat file. Messages are extracted and stored as memories.</p>
+        </div>
+        <div>
+            <h3>Export Memories</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <a href="/ui/export?chat_id={{ filters['selected_chat_id'] or '' }}&character_id={{ filters['selected_character_id'] or '' }}" class="button" download>Export Current Scope</a>
+                <a href="/ui/export" class="button secondary" download>Export All</a>
+            </div>
+            <p style="font-size:0.85em;opacity:0.7;margin-top:4px;">Download memories as .jsonl file.</p>
+        </div>
+    </div>
+</section>
 {% endblock %}

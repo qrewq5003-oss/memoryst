@@ -1,6 +1,7 @@
+import json
 from typing import Any
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -634,7 +635,82 @@ def ui_delete_chat(
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
-@router.post("/ui/{memory_id}/consolidate")
+@router.post("/ui/backfill-file")
+async def ui_backfill_file(
+    request: Request,
+    chat_id: str = Form(...),
+    character_id: str = Form(...),
+    file: UploadFile = File(...),
+) -> RedirectResponse:
+    """Backfill memories from an uploaded .jsonl file."""
+    from app.services.extractor import extract_memories
+    from app.repositories.memory_repo import find_memory_by_normalized_content
+    from app.services.text_utils import normalize_content
+    from app.services.store_service import passes_memory_quality_gate
+    from app.services import vector_store as vs
+
+    content = (await file.read()).decode("utf-8")
+    messages = []
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict) and "role" in obj and "content" in obj:
+                messages.append(MessageInput(role=obj["role"], text=obj["content"]))
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    if messages:
+        candidates = extract_memories(chat_id=chat_id, character_id=character_id, messages=messages)
+        for candidate in candidates:
+            if not passes_memory_quality_gate(candidate):
+                continue
+            normalized = normalize_content(candidate.content)
+            existing = find_memory_by_normalized_content(chat_id=chat_id, character_id=character_id, normalized_content=normalized)
+            if existing is not None:
+                continue
+            created = create_memory(candidate)
+            vs.add_memory(created.id, created.content, {"chat_id": created.chat_id, "character_id": created.character_id})
+
+    return RedirectResponse(url="/ui", status_code=303)
+
+
+@router.get("/ui/export")
+def ui_export_memories(
+    chat_id: str | None = None,
+    character_id: str | None = None,
+) -> Any:
+    """Export memories as .jsonl download."""
+    from app.repositories.memory_repo import list_memories as lm
+
+    items = lm(chat_id=chat_id, character_id=character_id, limit=10000).items
+    lines = []
+    for item in items:
+        lines.append(json.dumps({
+            "id": item.id,
+            "chat_id": item.chat_id,
+            "character_id": item.character_id,
+            "type": item.type,
+            "layer": item.layer,
+            "content": item.content,
+            "importance": item.importance,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "pinned": item.pinned,
+            "entities": item.metadata.entities,
+            "keywords": item.metadata.keywords,
+        }, ensure_ascii=False))
+
+    body = "\n".join(lines)
+    filename = f"memories_{chat_id or 'all'}.jsonl"
+    from fastapi.responses import Response
+    return Response(
+        content=body,
+        media_type="application/jsonl",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 def ui_consolidate_memory(
     request: Request,
     memory_id: str,
