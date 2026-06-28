@@ -6,6 +6,23 @@ set -e
 
 echo "=== memoryst Termux Setup ==="
 
+# Check if running from external storage (symlinks won't work)
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+case "$SCRIPT_DIR" in
+    /storage/emulated/*|/sdcard/*|/mnt/*)
+        echo ""
+        echo "ERROR: Cannot setup on external storage."
+        echo "External storage doesn't support symlinks (needed for Python venv)."
+        echo ""
+        echo "Fix: Copy project to Termux home first:"
+        echo "  cp -r '$SCRIPT_DIR' ~/memoryst"
+        echo "  cd ~/memoryst"
+        echo "  bash scripts/termux-setup.sh"
+        echo ""
+        exit 1
+        ;;
+esac
+
 # Install system dependencies
 echo "[1/5] Installing system packages..."
 pkg update -y
@@ -37,7 +54,7 @@ LLM_MODEL=zai-org/glm-4.7
 
 # Server
 APP_HOST=0.0.0.0
-APP_PORT=8000
+APP_PORT=8001
 API_KEY=
 EOF
     echo "  Edit .env with your API keys before starting."

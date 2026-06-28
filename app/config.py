@@ -20,7 +20,7 @@ def _parse_port(value: str) -> int:
 
 class Config:
     APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
-    APP_PORT: int = _parse_port(os.getenv("APP_PORT", "8000"))
+    APP_PORT: int = _parse_port(os.getenv("APP_PORT", "8001"))
     DATABASE_PATH: str = os.getenv("DATABASE_PATH", "data/memory.db")
     API_KEY: str = os.getenv("API_KEY", "")
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
