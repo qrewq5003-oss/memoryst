@@ -25,7 +25,7 @@ Rules:
 - type must be one of: event, relationship, profile"""
 
 
-def extract_with_llm(messages_text: str) -> dict | None:
+def extract_with_llm(messages_text: str, *, model: str | None = None) -> dict | None:
     """
     Use LLM to extract structured memory from a scene.
 
@@ -40,8 +40,7 @@ def extract_with_llm(messages_text: str) -> dict | None:
     ]
 
     try:
-        response = chat_completion(messages, max_tokens=500, temperature=0.3)
-        # Extract JSON from response (handle markdown code blocks)
+        response = chat_completion(messages, model=model, max_tokens=500, temperature=0.3)
         json_match = re.search(r"\{[^{}]*\}", response, re.DOTALL)
         if json_match:
             return json.loads(json_match.group())

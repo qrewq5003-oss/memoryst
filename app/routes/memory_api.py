@@ -175,6 +175,50 @@ def remove_key_endpoint(request: RemoveKeyRequest) -> dict:
     return {"status": "removed", "total_keys": vector_store.get_key_count()}
 
 
+class ClipRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    text: str
+    title: str | None = None
+
+
+class ClipResponse(BaseModel):
+    stored: bool
+    memory_id: str | None = None
+
+
+@router.post("/clip", response_model=ClipResponse)
+def clip_endpoint(request: ClipRequest) -> ClipResponse:
+    """Quick-save a fact as a pinned memory (clip)."""
+    from app.services import vector_store
+
+    content = request.text.strip()
+    if not content or len(content) < 3:
+        return ClipResponse(stored=False)
+
+    created = create_memory(
+        CreateMemoryRequest(
+            chat_id=request.chat_id,
+            character_id=request.character_id,
+            type="profile",
+            content=content,
+            source="manual",
+            layer="stable",
+            importance=0.9,
+            pinned=True,
+            archived=False,
+            metadata=MemoryMetadata(entities=[], keywords=[]),
+        )
+    )
+
+    vector_store.add_memory(
+        created.id, created.content,
+        {"chat_id": created.chat_id, "character_id": created.character_id},
+    )
+
+    return ClipResponse(stored=True, memory_id=created.id)
+
+
 class SummarizeRequest(BaseModel):
     chat_id: str
     character_id: str
@@ -207,6 +251,41 @@ def summarize_endpoint(request: SummarizeRequest) -> SummarizeResponse:
         summary_text=result.summary_text,
         summarized_count=result.summarized_count,
         new_input_count=result.new_input_count,
+    )
+
+
+class ConsolidateRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    tier: str  # arc, chapter, book
+    source_ids: list[str] = []
+    model: str | None = None
+
+
+class ConsolidateResponse(BaseModel):
+    action: str
+    summary_memory_id: str | None = None
+    summary_text: str = ""
+    summarized_count: int = 0
+
+
+@router.post("/consolidate", response_model=ConsolidateResponse)
+def consolidate_endpoint(request: ConsolidateRequest) -> ConsolidateResponse:
+    """Consolidate memories into a higher-tier summary (arc/chapter/book)."""
+    from app.services.summary_service import generate_tiered_consolidation
+
+    result = generate_tiered_consolidation(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        tier=request.tier,
+        source_ids=request.source_ids or None,
+        model=request.model,
+    )
+    return ConsolidateResponse(
+        action=result.action,
+        summary_memory_id=result.summary_memory_id,
+        summary_text=result.summary_text,
+        summarized_count=result.summarized_count,
     )
 
 
@@ -282,6 +361,7 @@ class SceneExtractRequest(BaseModel):
     chat_id: str
     character_id: str
     messages: list[MessageInput]
+    model: str | None = None
 
 
 class SceneExtractResponse(BaseModel):
@@ -305,7 +385,7 @@ def scene_extract_endpoint(request: SceneExtractRequest) -> SceneExtractResponse
         [{"role": m.role, "text": m.text} for m in request.messages]
     )
 
-    result = extract_with_llm(messages_text)
+    result = extract_with_llm(messages_text, model=request.model)
     if not result:
         return SceneExtractResponse(stored=False)
 
@@ -380,3 +460,10 @@ def delete_chat_endpoint(chat_id: str, character_id: str = Query(None)) -> Delet
             vector_store.delete_memory(item.id)
             deleted += 1
     return DeleteChatResponse(deleted=deleted)
+
+
+@router.get("/models")
+def list_models_endpoint() -> dict:
+    """List available LLM models."""
+    from app.services.llm_client import list_models
+    return {"models": list_models(), "default": config.LLM_MODEL}

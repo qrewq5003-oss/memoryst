@@ -746,14 +746,56 @@
 </section>
 
 <section class="create-form">
+    <h2>Consolidation</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Combine memories into higher-level summaries: Episodic → Arc → Chapter → Book.</p>
+    <form id="consolidate-form">
+        <input type="hidden" id="consolidate-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+        <input type="hidden" id="consolidate-char-id" value="{{ filters['selected_character_id'] or '' }}">
+        <div class="form-row">
+            <label>Tier:
+                <select id="consolidate-tier">
+                    <option value="arc">Arc (from episodic memories)</option>
+                    <option value="chapter">Chapter (from arcs)</option>
+                    <option value="book">Book (from chapters)</option>
+                </select>
+            </label>
+            <label>Model: <select id="consolidate-model" style="max-width:200px;"><option value="">default</option></select></label>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+            <button type="submit">Consolidate</button>
+            <span id="consolidate-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+    <div id="consolidate-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid #2d5a2d;border-radius:8px;background:#1a3a1a;">
+        <strong id="consolidate-preview-title"></strong>
+        <p id="consolidate-preview-content" style="margin-top:4px;"></p>
+    </div>
+</section>
+
+<section class="create-form">
+    <h2>Clip — Quick Save Fact</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Pin an important fact, promise, or detail. Saved as a pinned stable memory.</p>
+    <form id="clip-form">
+        <input type="hidden" id="clip-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+        <input type="hidden" id="clip-char-id" value="{{ filters['selected_character_id'] or '' }}">
+        <textarea id="clip-text" rows="3" style="width:100%;box-sizing:border-box;" placeholder="Elena promised to meet at the tavern at midnight..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+            <button type="submit">Save Clip</button>
+            <span id="clip-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+</section>
+
+<section class="create-form">
     <h2>Scene Extraction (LLM)</h2>
     <p style="margin-bottom:8px;opacity:0.8;">Paste a scene (character messages only) and let LLM extract a structured memory with title, summary, and keywords.</p>
     <form id="scene-extract-form">
         <input type="hidden" id="scene-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
         <input type="hidden" id="scene-char-id" value="{{ filters['selected_character_id'] or '' }}">
         <textarea id="scene-text" rows="8" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.85em;" placeholder="[assistant]: Изабель смотрит на тебя...&#10;[assistant]: Она встаёт и подходит к окну...&#10;[assistant]: — Ты говоришь «надеяться что урожай будет хороший»..."></textarea>
-        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <button type="submit">Extract Scene Memory</button>
+            <label style="font-size:0.85em;">Model: <select id="scene-model" style="max-width:200px;"><option value="">default</option></select></label>
             <span id="scene-result" style="font-size:0.9em;"></span>
         </div>
     </form>
@@ -791,17 +833,110 @@
 </section>
 
 <script>
+// Consolidation handler
+document.getElementById('consolidate-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const chatId = document.getElementById('consolidate-chat-id').value;
+    const charId = document.getElementById('consolidate-char-id').value;
+    const tier = document.getElementById('consolidate-tier').value;
+    const model = document.getElementById('consolidate-model').value || null;
+    const result = document.getElementById('consolidate-result');
+    const preview = document.getElementById('consolidate-preview');
+
+    if (!chatId) { result.textContent = 'Select a chat first.'; return; }
+
+    result.textContent = `Consolidating (${tier})...`;
+    preview.style.display = 'none';
+
+    try {
+        const body = { chat_id: chatId, character_id: charId, tier };
+        if (model) body.model = model;
+
+        const resp = await fetch('/memory/consolidate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.action === 'created') {
+                result.textContent = `${tier} created (${data.summarized_count} sources)!`;
+                document.getElementById('consolidate-preview-title').textContent = `${tier.toUpperCase()} Summary`;
+                document.getElementById('consolidate-preview-content').textContent = data.summary_text || '';
+                preview.style.display = 'block';
+            } else {
+                result.textContent = `${data.action} (${data.summarized_count} sources)`;
+            }
+        } else {
+            result.textContent = `Error: ${resp.status}`;
+        }
+    } catch (e) {
+        result.textContent = `Error: ${e.message}`;
+    }
+});
+
+// Clip handler
+document.getElementById('clip-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = document.getElementById('clip-text').value.trim();
+    const chatId = document.getElementById('clip-chat-id').value || 'clip';
+    const charId = document.getElementById('clip-char-id').value || 'clip';
+    const result = document.getElementById('clip-result');
+
+    if (!text) { result.textContent = 'Enter a fact to save.'; return; }
+
+    try {
+        const resp = await fetch('/memory/clip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, character_id: charId, text }),
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            result.textContent = data.stored ? 'Clip saved!' : 'Failed.';
+            if (data.stored) document.getElementById('clip-text').value = '';
+        } else {
+            result.textContent = `Error: ${resp.status}`;
+        }
+    } catch (e) {
+        result.textContent = `Error: ${e.message}`;
+    }
+});
+
+// Load available models
+(async () => {
+    try {
+        const resp = await fetch('/memory/models');
+        if (resp.ok) {
+            const data = await resp.json();
+            const models = data.models || [];
+            const def = data.default;
+            ['scene-model', 'consolidate-model'].forEach(id => {
+                const select = document.getElementById(id);
+                if (!select) return;
+                models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m === def ? `${m} (default)` : m;
+                    select.appendChild(opt);
+                });
+            });
+        }
+    } catch (e) {}
+})();
+
 document.getElementById('scene-extract-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = document.getElementById('scene-text').value.trim();
     const chatId = document.getElementById('scene-chat-id').value || 'scene';
     const charId = document.getElementById('scene-char-id').value || 'scene';
+    const model = document.getElementById('scene-model').value || null;
     const result = document.getElementById('scene-result');
     const preview = document.getElementById('scene-preview');
 
     if (!text) { result.textContent = 'Paste scene text first.'; return; }
 
-    // Parse messages from text
     const messages = text.split('\n').map(line => {
         const m = line.match(/^\[(user|assistant)\]:\s*(.+)$/i);
         return m ? { role: m[1].toLowerCase(), text: m[2].trim() } : null;
@@ -816,10 +951,13 @@ document.getElementById('scene-extract-form').addEventListener('submit', async (
     preview.style.display = 'none';
 
     try {
+        const body = { chat_id: chatId, character_id: charId, messages };
+        if (model) body.model = model;
+
         const resp = await fetch('/memory/scene', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
+            body: JSON.stringify(body),
         });
 
         if (resp.ok) {

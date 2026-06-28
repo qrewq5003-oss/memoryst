@@ -286,3 +286,113 @@ def generate_rolling_summary(
         new_input_count=new_input_count,
         refresh_threshold_used=min_new_memories_for_refresh,
     )
+
+
+CONSOLIDATION_TIERS = {
+    "arc": {"min_inputs": 3, "source_layer": "episodic", "source_type": None, "importance": 0.85},
+    "chapter": {"min_inputs": 3, "source_layer": None, "source_type": "summary", "importance": 0.90},
+    "book": {"min_inputs": 3, "source_layer": None, "source_type": "summary", "importance": 0.95},
+}
+
+CONSOLIDATION_PROMPT = """You are consolidating multiple memories into a single higher-level summary.
+
+Tier: {tier}
+Source memories:
+{memories_text}
+
+Write a consolidated summary that captures:
+1. Key events and their significance
+2. Character development and relationship arcs
+3. Recurring themes and patterns
+4. What changed over time
+
+Write in the SAME LANGUAGE as the input.
+Be concise but comprehensive. Max 200 words."""
+
+
+def generate_tiered_consolidation(
+    chat_id: str,
+    character_id: str,
+    tier: str,
+    source_ids: list[str] | None = None,
+    model: str | None = None,
+) -> RollingSummaryResult:
+    """
+    Consolidate memories into a higher-tier summary (arc/chapter/book).
+    """
+    if tier not in CONSOLIDATION_TIERS:
+        return RollingSummaryResult(
+            action="skipped_invalid_tier",
+            chat_id=chat_id, character_id=character_id,
+            summary_memory_id=None, summary_text="",
+            source_memory_ids=[], summarized_count=0,
+            new_input_count=0, refresh_threshold_used=0,
+        )
+
+    tier_config = CONSOLIDATION_TIERS[tier]
+
+    # Get source memories
+    if source_ids:
+        all_items = list_memories(chat_id=chat_id, character_id=character_id, limit=1000).items
+        source_memories = [m for m in all_items if m.id in set(source_ids)]
+    else:
+        filters = {"chat_id": chat_id, "character_id": character_id, "archived": False}
+        if tier_config["source_layer"]:
+            filters["layer"] = tier_config["source_layer"]
+        if tier_config["source_type"]:
+            filters["memory_type"] = tier_config["source_type"]
+        source_memories = list_memories(limit=50, **filters).items
+
+    if len(source_memories) < tier_config["min_inputs"]:
+        return RollingSummaryResult(
+            action="skipped_not_enough_inputs",
+            chat_id=chat_id, character_id=character_id,
+            summary_memory_id=None, summary_text="",
+            source_memory_ids=[m.id for m in source_memories],
+            summarized_count=len(source_memories),
+            new_input_count=0, refresh_threshold_used=tier_config["min_inputs"],
+        )
+
+    # Build summary text
+    if is_llm_enabled():
+        memories_text = "\n".join(f"- [{m.type}] {m.content}" for m in source_memories)
+        prompt = CONSOLIDATION_PROMPT.format(tier=tier, memories_text=memories_text)
+        messages = [
+            {"role": "system", "content": "You are a memory consolidation system."},
+            {"role": "user", "content": prompt},
+        ]
+        try:
+            summary_text = chat_completion(messages, model=model, max_tokens=600, temperature=0.3)
+        except Exception:
+            summary_text = build_rolling_summary_text(source_memories)
+    else:
+        summary_text = build_rolling_summary_text(source_memories)
+
+    summary_metadata = _build_summary_metadata(source_memories, summary_text)
+    summary_metadata = summary_metadata.model_copy(update={
+        "summary_kind": f"tiered_{tier}",
+    })
+
+    created = create_memory(
+        CreateMemoryRequest(
+            chat_id=chat_id,
+            character_id=character_id,
+            type="summary",
+            content=summary_text,
+            source="auto",
+            layer="stable",
+            importance=tier_config["importance"],
+            pinned=False,
+            archived=False,
+            metadata=summary_metadata,
+        )
+    )
+
+    return RollingSummaryResult(
+        action="created",
+        chat_id=chat_id, character_id=character_id,
+        summary_memory_id=created.id, summary_text=summary_text,
+        source_memory_ids=[m.id for m in source_memories],
+        summarized_count=len(source_memories),
+        new_input_count=0, refresh_threshold_used=tier_config["min_inputs"],
+    )
