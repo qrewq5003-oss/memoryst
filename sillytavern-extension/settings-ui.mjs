@@ -371,7 +371,15 @@ export function renderSettingsUi({
             if (!trimmed) continue;
             try {
                 const obj = JSON.parse(trimmed);
-                if (obj.role && obj.content) {
+                // SillyTavern format: {name, mes, is_user}
+                if (obj.mes && typeof obj.is_user === 'boolean') {
+                    if (obj.is_system && !obj.is_user) continue;
+                    const role = obj.is_user ? 'user' : 'assistant';
+                    const text = (obj.mes || '').trim();
+                    if (text) messages.push({ role, text });
+                }
+                // Standard format: {role, content}
+                else if (obj.role && obj.content) {
                     messages.push({ role: obj.role, text: obj.content });
                 }
             } catch (e) {

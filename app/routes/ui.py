@@ -592,7 +592,18 @@ async def ui_backfill_file(
             continue
         try:
             obj = json.loads(line)
-            if isinstance(obj, dict) and "role" in obj and "content" in obj:
+            if not isinstance(obj, dict):
+                continue
+            # SillyTavern format: {name, mes, is_user, is_system}
+            if "mes" in obj and "is_user" in obj:
+                if obj.get("is_system") and not obj.get("is_user"):
+                    continue  # skip system messages
+                role = "user" if obj["is_user"] else "assistant"
+                text = obj["mes"].strip()
+                if text:
+                    messages.append(MessageInput(role=role, text=text))
+            # Standard format: {role, content}
+            elif "role" in obj and "content" in obj:
                 messages.append(MessageInput(role=obj["role"], text=obj["content"]))
         except (json.JSONDecodeError, KeyError):
             pass
