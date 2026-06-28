@@ -603,10 +603,6 @@ async def ui_backfill_file(
                 world = obj.get("world_info", "")
                 if world:
                     detected_chat_id = world
-                # Try charMemory or persona for character
-                persona = obj.get("persona", "")
-                if persona:
-                    detected_char_id = persona.split("-")[0] if "-" in persona else persona
 
             # SillyTavern format: {name, mes, is_user, is_system}
             if "mes" in obj and "is_user" in obj:
