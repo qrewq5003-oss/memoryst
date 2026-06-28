@@ -10,7 +10,7 @@ import {
 
 export const DEFAULT_CONNECTION_SETTINGS = {
     enabled: false,
-    memoryServiceUrl: 'http://localhost:8000',
+    memoryServiceUrl: 'http://localhost:8001',
     apiKey: '',
 };
 
