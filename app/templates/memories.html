@@ -746,6 +746,25 @@
 </section>
 
 <section class="create-form">
+    <h2>Scene Extraction (LLM)</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Paste a scene (character messages only) and let LLM extract a structured memory with title, summary, and keywords.</p>
+    <form id="scene-extract-form">
+        <input type="hidden" id="scene-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+        <input type="hidden" id="scene-char-id" value="{{ filters['selected_character_id'] or '' }}">
+        <textarea id="scene-text" rows="8" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.85em;" placeholder="[assistant]: Изабель смотрит на тебя...&#10;[assistant]: Она встаёт и подходит к окну...&#10;[assistant]: — Ты говоришь «надеяться что урожай будет хороший»..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+            <button type="submit">Extract Scene Memory</button>
+            <span id="scene-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+    <div id="scene-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid #2d5a2d;border-radius:8px;background:#1a3a1a;">
+        <strong id="scene-preview-title"></strong>
+        <p id="scene-preview-content" style="margin-top:4px;"></p>
+        <p id="scene-preview-meta" style="margin-top:4px;font-size:0.85em;opacity:0.7;"></p>
+    </div>
+</section>
+
+<section class="create-form">
     <h2>Import / Export</h2>
     <div class="form-row">
         <div>
@@ -770,4 +789,57 @@
         </div>
     </div>
 </section>
+
+<script>
+document.getElementById('scene-extract-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = document.getElementById('scene-text').value.trim();
+    const chatId = document.getElementById('scene-chat-id').value || 'scene';
+    const charId = document.getElementById('scene-char-id').value || 'scene';
+    const result = document.getElementById('scene-result');
+    const preview = document.getElementById('scene-preview');
+
+    if (!text) { result.textContent = 'Paste scene text first.'; return; }
+
+    // Parse messages from text
+    const messages = text.split('\n').map(line => {
+        const m = line.match(/^\[(user|assistant)\]:\s*(.+)$/i);
+        return m ? { role: m[1].toLowerCase(), text: m[2].trim() } : null;
+    }).filter(Boolean);
+
+    if (messages.length === 0) {
+        result.textContent = 'No valid messages. Use format: [assistant]: text';
+        return;
+    }
+
+    result.textContent = 'Extracting with LLM...';
+    preview.style.display = 'none';
+
+    try {
+        const resp = await fetch('/memory/scene', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
+        });
+
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.stored) {
+                result.textContent = 'Memory stored!';
+                document.getElementById('scene-preview-title').textContent = data.title || 'Untitled';
+                document.getElementById('scene-preview-content').textContent = data.content || '';
+                document.getElementById('scene-preview-meta').textContent =
+                    `Type: ${data.type || '?'} | Keywords: ${(data.keywords || []).join(', ')} | Mood: ${data.mood || '?'}`;
+                preview.style.display = 'block';
+            } else {
+                result.textContent = 'LLM extraction failed or duplicate. Try with different text.';
+            }
+        } else {
+            result.textContent = `Error: ${resp.status}`;
+        }
+    } catch (e) {
+        result.textContent = `Error: ${e.message}`;
+    }
+});
+</script>
 {% endblock %}

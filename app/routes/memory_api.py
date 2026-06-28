@@ -278,6 +278,92 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
     )
 
 
+class SceneExtractRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    messages: list[MessageInput]
+
+
+class SceneExtractResponse(BaseModel):
+    stored: bool
+    title: str | None = None
+    content: str | None = None
+    type: str | None = None
+    keywords: list[str] = []
+    mood: str | None = None
+
+
+@router.post("/scene", response_model=SceneExtractResponse)
+def scene_extract_endpoint(request: SceneExtractRequest) -> SceneExtractResponse:
+    """Extract a structured memory from a scene using LLM."""
+    from app.services.llm_extractor import extract_with_llm, build_scene_text
+    from app.repositories.memory_repo import find_memory_by_normalized_content
+    from app.services.text_utils import normalize_content
+    from app.services import vector_store
+
+    messages_text = build_scene_text(
+        [{"role": m.role, "text": m.text} for m in request.messages]
+    )
+
+    result = extract_with_llm(messages_text)
+    if not result:
+        return SceneExtractResponse(stored=False)
+
+    content = result.get("content", "").strip()
+    if not content:
+        return SceneExtractResponse(stored=False)
+
+    normalized = normalize_content(content)
+    existing = find_memory_by_normalized_content(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        normalized_content=normalized,
+    )
+    if existing is not None:
+        return SceneExtractResponse(
+            stored=False,
+            title=result.get("title"),
+            content=content,
+        )
+
+    memory_type = result.get("type", "event")
+    if memory_type not in ("event", "relationship", "profile"):
+        memory_type = "event"
+
+    created = create_memory(
+        CreateMemoryRequest(
+            chat_id=request.chat_id,
+            character_id=request.character_id,
+            type=memory_type,
+            content=content,
+            source="auto",
+            layer="episodic" if memory_type == "event" else "stable",
+            importance=0.7 if memory_type == "event" else 0.8,
+            pinned=False,
+            archived=False,
+            metadata=MemoryMetadata(
+                entities=[],
+                keywords=result.get("keywords", []),
+            ),
+        )
+    )
+
+    vector_store.add_memory(
+        created.id,
+        created.content,
+        {"chat_id": created.chat_id, "character_id": created.character_id},
+    )
+
+    return SceneExtractResponse(
+        stored=True,
+        title=result.get("title"),
+        content=content,
+        type=memory_type,
+        keywords=result.get("keywords", []),
+        mood=result.get("mood"),
+    )
+
+
 class DeleteChatResponse(BaseModel):
     deleted: int
 
