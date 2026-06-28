@@ -276,3 +276,21 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
         skipped=skipped,
         duplicates=duplicates,
     )
+
+
+class DeleteChatResponse(BaseModel):
+    deleted: int
+
+
+@router.delete("/chat/{chat_id}", response_model=DeleteChatResponse)
+def delete_chat_endpoint(chat_id: str, character_id: str = Query(None)) -> DeleteChatResponse:
+    """Delete all memories for a chat (optionally filtered by character)."""
+    from app.repositories.memory_repo import list_memories
+
+    all_items = list_memories(chat_id=chat_id, character_id=character_id, limit=10000).items
+    deleted = 0
+    for item in all_items:
+        if delete_memory(item.id):
+            vector_store.delete_memory(item.id)
+            deleted += 1
+    return DeleteChatResponse(deleted=deleted)
