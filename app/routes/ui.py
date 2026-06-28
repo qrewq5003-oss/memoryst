@@ -549,71 +549,6 @@ def ui_create_memory(
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
-@router.post("/ui/{memory_id}/update")
-def ui_update_memory(
-    memory_id: str,
-    content: str = Form(...),
-    type: str = Form(...),
-    source: str = Form(...),
-    layer: str = Form(...),
-    importance: float = Form(0.5),
-    pinned: bool = Form(False),
-    archived: bool = Form(False),
-    entities: str = Form(""),
-    keywords: str = Form(""),
-    redirect_query: str = Form(""),
-) -> RedirectResponse:
-    """Update a memory and redirect back to UI."""
-    request = UpdateMemoryRequest(
-        content=content,
-        type=type,  # type: ignore
-        source=source,  # type: ignore
-        layer=layer,  # type: ignore
-        importance=min(max(importance, 0.0), 1.0),
-        pinned=pinned,
-        archived=archived,
-        metadata=MemoryMetadata(
-            entities=parse_list(entities),
-            keywords=parse_list(keywords),
-        ),
-    )
-    update_memory(memory_id, request)
-    redirect_query = normalize_redirect_query(redirect_query)
-    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
-    return RedirectResponse(url=redirect_url, status_code=303)
-
-
-@router.post("/ui/{memory_id}/pin")
-def ui_toggle_pin(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
-    """Toggle pinned status and redirect back to UI."""
-    memory = get_memory_by_id(memory_id)
-    if memory:
-        set_pinned(memory_id, not memory.pinned)
-    redirect_query = normalize_redirect_query(redirect_query)
-    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
-    return RedirectResponse(url=redirect_url, status_code=303)
-
-
-@router.post("/ui/{memory_id}/archive")
-def ui_toggle_archive(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
-    """Toggle archived status and redirect back to UI."""
-    memory = get_memory_by_id(memory_id)
-    if memory:
-        set_archived(memory_id, not memory.archived)
-    redirect_query = normalize_redirect_query(redirect_query)
-    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
-    return RedirectResponse(url=redirect_url, status_code=303)
-
-
-@router.post("/ui/{memory_id}/delete")
-def ui_delete_memory(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
-    """Delete a memory and redirect back to UI."""
-    delete_memory(memory_id)
-    redirect_query = normalize_redirect_query(redirect_query)
-    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
-    return RedirectResponse(url=redirect_url, status_code=303)
-
-
 @router.post("/ui/delete-chat")
 def ui_delete_chat(
     chat_id: str = Form(...),
@@ -684,6 +619,7 @@ def ui_export_memories(
 ) -> Any:
     """Export memories as .jsonl download."""
     from app.repositories.memory_repo import list_memories as lm
+    from fastapi.responses import Response
 
     items = lm(chat_id=chat_id, character_id=character_id, limit=10000).items
     lines = []
@@ -705,12 +641,79 @@ def ui_export_memories(
 
     body = "\n".join(lines)
     filename = f"memories_{chat_id or 'all'}.jsonl"
-    from fastapi.responses import Response
     return Response(
         content=body,
         media_type="application/jsonl",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/ui/{memory_id}/update")
+def ui_update_memory(
+    memory_id: str,
+    content: str = Form(...),
+    type: str = Form(...),
+    source: str = Form(...),
+    layer: str = Form(...),
+    importance: float = Form(0.5),
+    pinned: bool = Form(False),
+    archived: bool = Form(False),
+    entities: str = Form(""),
+    keywords: str = Form(""),
+    redirect_query: str = Form(""),
+) -> RedirectResponse:
+    """Update a memory and redirect back to UI."""
+    request = UpdateMemoryRequest(
+        content=content,
+        type=type,  # type: ignore
+        source=source,  # type: ignore
+        layer=layer,  # type: ignore
+        importance=min(max(importance, 0.0), 1.0),
+        pinned=pinned,
+        archived=archived,
+        metadata=MemoryMetadata(
+            entities=parse_list(entities),
+            keywords=parse_list(keywords),
+        ),
+    )
+    update_memory(memory_id, request)
+    redirect_query = normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.post("/ui/{memory_id}/pin")
+def ui_toggle_pin(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
+    """Toggle pinned status and redirect back to UI."""
+    memory = get_memory_by_id(memory_id)
+    if memory:
+        set_pinned(memory_id, not memory.pinned)
+    redirect_query = normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.post("/ui/{memory_id}/archive")
+def ui_toggle_archive(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
+    """Toggle archived status and redirect back to UI."""
+    memory = get_memory_by_id(memory_id)
+    if memory:
+        set_archived(memory_id, not memory.archived)
+    redirect_query = normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.post("/ui/{memory_id}/delete")
+def ui_delete_memory(memory_id: str, redirect_query: str = Form("")) -> RedirectResponse:
+    """Delete a memory and redirect back to UI."""
+    delete_memory(memory_id)
+    redirect_query = normalize_redirect_query(redirect_query)
+    redirect_url = f"/ui?{redirect_query}" if redirect_query else "/ui"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@router.post("/ui/{memory_id}/consolidate")
 def ui_consolidate_memory(
     request: Request,
     memory_id: str,
