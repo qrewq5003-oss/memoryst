@@ -256,6 +256,15 @@ export function buildSettingsUiMarkup(settings = {}) {
                 <span class="memory-service-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
             </div>
             <div class="memory-service-settings-grid">${sections}</div>
+            <section class="memory-service-settings-group">
+                <h4>Backfill</h4>
+                <p class="memory-service-settings-group-copy">Import existing chat history into memory. Paste messages below (one per line, format: "user: text" or "assistant: text").</p>
+                <textarea id="memory-service-backfill-text" rows="6" style="width:100%;box-sizing:border-box;margin-top:8px;font-family:monospace;font-size:0.85em;" placeholder="user: Hello, I am Alice&#10;assistant: Hi Alice, nice to meet you!&#10;user: Let me tell you about the war..."></textarea>
+                <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+                    <button type="button" id="memory-service-backfill-btn">Backfill Current Chat</button>
+                    <span id="memory-service-backfill-status" style="font-size:0.9em;"></span>
+                </div>
+            </section>
         </div>
     `;
 }
@@ -303,6 +312,7 @@ export function renderSettingsUi({
     settings,
     onSettingsChanged,
     onApplyRecommendedBaseline,
+    getChatContext,
 }) {
     const host = findSettingsUiHost(document);
     if (!host || typeof host.querySelector !== 'function') {
@@ -340,6 +350,70 @@ export function renderSettingsUi({
         });
     }
 
+    const backfillBtn = panel.querySelector('#memory-service-backfill-btn');
+    const backfillText = panel.querySelector('#memory-service-backfill-text');
+    const backfillStatus = panel.querySelector('#memory-service-backfill-status');
+    if (backfillBtn && backfillText) {
+        backfillBtn.addEventListener('click', async () => {
+            const raw = backfillText.value.trim();
+            if (!raw) {
+                backfillStatus.textContent = 'Paste messages first.';
+                return;
+            }
+
+            const messages = raw.split('\n')
+                .map(line => {
+                    const match = line.match(/^(user|assistant|system):\s*(.+)$/i);
+                    if (match) {
+                        return { role: match[1].toLowerCase(), text: match[2].trim() };
+                    }
+                    return null;
+                })
+                .filter(Boolean);
+
+            if (messages.length === 0) {
+                backfillStatus.textContent = 'No valid messages found. Use format: "user: text"';
+                return;
+            }
+
+            backfillBtn.disabled = true;
+            backfillStatus.textContent = `Processing ${messages.length} messages...`;
+
+            try {
+                const url = `${settings.memoryServiceUrl}/memory/backfill`;
+                const headers = { 'Content-Type': 'application/json' };
+                if (settings.apiKey) {
+                    headers['X-API-Key'] = settings.apiKey;
+                }
+
+                const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
+                const chatId = ctx.chatId || 'backfill';
+                const charId = ctx.characterId || 'backfill';
+
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        character_id: charId,
+                        messages: messages,
+                    }),
+                });
+
+                if (resp.ok) {
+                    const result = await resp.json();
+                    backfillStatus.textContent = `Done: ${result.stored} stored, ${result.skipped} skipped, ${result.duplicates} duplicates (${result.processed} processed)`;
+                } else {
+                    backfillStatus.textContent = `Error: ${resp.status} ${resp.statusText}`;
+                }
+            } catch (e) {
+                backfillStatus.textContent = `Error: ${e.message}`;
+            } finally {
+                backfillBtn.disabled = false;
+            }
+        });
+    }
+
     return true;
 }
 
@@ -348,6 +422,7 @@ export function mountSettingsUi({
     settings,
     onSettingsChanged,
     onApplyRecommendedBaseline,
+    getChatContext,
     retries = 10,
     retryDelayMs = 500,
     scheduleRetry = null,
@@ -357,6 +432,7 @@ export function mountSettingsUi({
         settings,
         onSettingsChanged,
         onApplyRecommendedBaseline,
+        getChatContext,
     });
 
     if (rendered || retries <= 0) {
@@ -374,6 +450,7 @@ export function mountSettingsUi({
                 settings,
                 onSettingsChanged,
                 onApplyRecommendedBaseline,
+                getChatContext,
                 retries: retries - 1,
                 retryDelayMs,
                 scheduleRetry,

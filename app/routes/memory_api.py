@@ -19,6 +19,7 @@ from app.schemas import (
     DeleteMemoryResponse,
     ListMemoriesResponse,
     MemoryItem,
+    MessageInput,
     PinMemoryRequest,
     PinMemoryResponse,
     RetrieveMemoryRequest,
@@ -206,4 +207,72 @@ def summarize_endpoint(request: SummarizeRequest) -> SummarizeResponse:
         summary_text=result.summary_text,
         summarized_count=result.summarized_count,
         new_input_count=result.new_input_count,
+    )
+
+
+class BackfillRequest(BaseModel):
+    chat_id: str
+    character_id: str
+    messages: list[MessageInput]
+
+
+class BackfillResponse(BaseModel):
+    processed: int
+    stored: int
+    skipped: int
+    duplicates: int
+
+
+@router.post("/backfill", response_model=BackfillResponse)
+def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
+    """Backfill memories from existing chat history."""
+    from app.services.extractor import extract_memories
+    from app.repositories.memory_repo import (
+        create_memory,
+        find_memory_by_normalized_content,
+    )
+    from app.services.text_utils import normalize_content
+    from app.services.store_service import passes_memory_quality_gate
+    from app.services import vector_store
+
+    candidates = extract_memories(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        messages=request.messages,
+    )
+
+    stored = 0
+    skipped = 0
+    duplicates = 0
+
+    for candidate in candidates:
+        if not passes_memory_quality_gate(candidate):
+            skipped += 1
+            continue
+
+        normalized = normalize_content(candidate.content)
+        existing = find_memory_by_normalized_content(
+            chat_id=request.chat_id,
+            character_id=request.character_id,
+            normalized_content=normalized,
+        )
+
+        if existing is not None:
+            duplicates += 1
+            continue
+
+        created = create_memory(candidate)
+        stored += 1
+
+        vector_store.add_memory(
+            created.id,
+            created.content,
+            {"chat_id": created.chat_id, "character_id": created.character_id},
+        )
+
+    return BackfillResponse(
+        processed=len(request.messages),
+        stored=stored,
+        skipped=skipped,
+        duplicates=duplicates,
     )
