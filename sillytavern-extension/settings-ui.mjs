@@ -373,7 +373,6 @@ export function renderSettingsUi({
                 const obj = JSON.parse(trimmed);
                 // SillyTavern format: {name, mes, is_user}
                 if (obj.mes && typeof obj.is_user === 'boolean') {
-                    if (obj.is_system && !obj.is_user) continue;
                     const role = obj.is_user ? 'user' : 'assistant';
                     const text = (obj.mes || '').trim();
                     if (text) messages.push({ role, text });

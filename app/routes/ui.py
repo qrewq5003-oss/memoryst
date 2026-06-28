@@ -612,10 +612,8 @@ async def ui_backfill_file(
                 if world:
                     detected_chat_id = world
 
-            # SillyTavern format: {name, mes, is_user, is_system}
+            # SillyTavern format: {name, mes, is_user}
             if "mes" in obj and "is_user" in obj:
-                if obj.get("is_system") and not obj.get("is_user"):
-                    continue  # skip system messages
                 role = "user" if obj["is_user"] else "assistant"
                 text = obj["mes"].strip()
                 if text:

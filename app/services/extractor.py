@@ -374,17 +374,27 @@ def extract_for_backfill(
     messages: list[MessageInput],
 ) -> list[CreateMemoryRequest]:
     """
-    Extract memory candidates for backfill — stores all meaningful messages.
+    Extract memory candidates for backfill — stores all meaningful assistant messages.
 
-    Unlike extract_memories, this does NOT require type markers.
-    Every substantial message becomes an event memory.
+    Skips: user messages, OOC messages, system messages, too-short messages.
     """
     candidates = []
 
     for msg in messages:
+        # Only store assistant messages (character responses)
+        if msg.role != "assistant":
+            continue
+
         text = msg.text
 
         if not _is_meaningful(text):
+            continue
+
+        # Skip OOC (out of character) messages
+        stripped = text.strip()
+        if stripped.startswith("OOC:") or stripped.startswith("OOC(") or stripped.startswith("(OOC"):
+            continue
+        if stripped.startswith("ooc:") or stripped.startswith("ooc("):
             continue
 
         content = truncate_content(text)
