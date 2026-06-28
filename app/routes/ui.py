@@ -586,6 +586,9 @@ async def ui_backfill_file(
 
     content = (await file.read()).decode("utf-8")
     messages = []
+    detected_chat_id = None
+    detected_char_id = None
+
     for line in content.split("\n"):
         line = line.strip()
         if not line:
@@ -594,6 +597,17 @@ async def ui_backfill_file(
             obj = json.loads(line)
             if not isinstance(obj, dict):
                 continue
+
+            # Extract chat_id from metadata (first line)
+            if "chat_metadata" in obj and not detected_chat_id:
+                world = obj.get("world_info", "")
+                if world:
+                    detected_chat_id = world
+                # Try charMemory or persona for character
+                persona = obj.get("persona", "")
+                if persona:
+                    detected_char_id = persona.split("-")[0] if "-" in persona else persona
+
             # SillyTavern format: {name, mes, is_user, is_system}
             if "mes" in obj and "is_user" in obj:
                 if obj.get("is_system") and not obj.get("is_user"):
@@ -602,11 +616,23 @@ async def ui_backfill_file(
                 text = obj["mes"].strip()
                 if text:
                     messages.append(MessageInput(role=role, text=text))
+                # Detect character name from assistant messages
+                if not obj["is_user"] and not detected_char_id:
+                    name = obj.get("name", "")
+                    if name and name != "undefined":
+                        detected_char_id = name
+
             # Standard format: {role, content}
             elif "role" in obj and "content" in obj:
                 messages.append(MessageInput(role=obj["role"], text=obj["content"]))
         except (json.JSONDecodeError, KeyError):
             pass
+
+    # Use detected IDs if form didn't provide specific ones
+    if chat_id == "backfill" and detected_chat_id:
+        chat_id = detected_chat_id
+    if character_id == "backfill" and detected_char_id:
+        character_id = detected_char_id
 
     stored = 0
     skipped = 0
@@ -627,7 +653,7 @@ async def ui_backfill_file(
             vs.add_memory(created.id, created.content, {"chat_id": created.chat_id, "character_id": created.character_id})
             stored += 1
 
-    result = f"backfill_done&stored={stored}&skipped={skipped}&duplicates={duplicates}&total_messages={len(messages)}"
+    result = f"backfill_done&stored={stored}&skipped={skipped}&duplicates={duplicates}&total_messages={len(messages)}&detected_chat={chat_id}&detected_char={character_id}"
     return RedirectResponse(url=f"/ui?{result}", status_code=303)
 
 

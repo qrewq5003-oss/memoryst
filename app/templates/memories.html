@@ -17,6 +17,12 @@
     {{ request.query_params.get("duplicates", "0") }} duplicates,
     {{ request.query_params.get("skipped", "0") }} skipped
     ({{ request.query_params.get("total_messages", "0") }} messages processed)
+    {% if request.query_params.get("detected_chat") %}
+    <br>Chat: <code>{{ request.query_params.get("detected_chat") }}</code>
+    {% if request.query_params.get("detected_char") %}
+    | Character: <code>{{ request.query_params.get("detected_char") }}</code>
+    {% endif %}
+    {% endif %}
 </div>
 {% endif %}
 
