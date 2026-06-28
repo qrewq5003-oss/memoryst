@@ -1,26 +1,34 @@
 import json
+import math
 import threading
 from pathlib import Path
 
-import chromadb
 import httpx
 
 from app.config import config
 
-_client: chromadb.ClientAPI | None = None
-_collection: chromadb.Collection | None = None
+try:
+    import chromadb
+
+    HAS_CHROMADB = True
+except ImportError:
+    HAS_CHROMADB = False
+
+_client = None
+_collection = None
 
 _key_lock = threading.Lock()
 _keys: list[str] = []
 _key_index: int = 0
 
 KEYS_FILE = Path(config.CHROMADB_PATH).parent / "google_keys.json"
-
+VECTORS_FILE = Path(config.CHROMADB_PATH).parent / "vectors.json"
 EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent"
+
+_vectors_db: dict[str, dict] = {}
 
 
 def _load_keys() -> list[str]:
-    """Load keys from file, falling back to config."""
     keys = list(config.GOOGLE_API_KEYS)
     if KEYS_FILE.exists():
         try:
@@ -33,7 +41,6 @@ def _load_keys() -> list[str]:
 
 
 def _save_keys() -> None:
-    """Persist current keys to file."""
     KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
     KEYS_FILE.write_text(json.dumps(_keys, indent=2))
 
@@ -50,7 +57,6 @@ def _get_active_key() -> str:
 
 
 def _rotate_key() -> bool:
-    """Rotate to the next API key. Returns False if no more keys."""
     global _key_index
     with _key_lock:
         if len(_keys) <= 1:
@@ -60,57 +66,142 @@ def _rotate_key() -> bool:
 
 
 def _call_embed(text: str | list[str]) -> list[list[float]]:
-    """Call Google embeddings API directly with httpx."""
     _ensure_keys()
     if not _keys:
         raise RuntimeError("No Google API keys configured")
 
     url = EMBED_URL.format(model=config.GOOGLE_EMBEDDING_MODEL)
 
-    attempts = len(_keys)
-    for attempt in range(attempts):
+    for attempt in range(len(_keys)):
         key = _get_active_key()
         api_url = f"{url}?key={key}"
 
         if isinstance(text, list):
             payload = {"requests": [{"model": f"models/{config.GOOGLE_EMBEDDING_MODEL}", "content": {"parts": [{"text": t}]}} for t in text]}
-            resp = httpx.post(api_url, json=payload, timeout=30)
         else:
             payload = {"model": f"models/{config.GOOGLE_EMBEDDING_MODEL}", "content": {"parts": [{"text": text}]}}
-            resp = httpx.post(api_url, json=payload, timeout=30)
+
+        resp = httpx.post(api_url, json=payload, timeout=30)
 
         if resp.status_code == 200:
             data = resp.json()
             if isinstance(text, list):
                 return [r["embedding"]["values"] for r in data["embeddings"]]
-            else:
-                return [data["embedding"]["values"]]
+            return [data["embedding"]["values"]]
 
         if resp.status_code == 429:
-            if attempt < attempts - 1 and _rotate_key():
+            if attempt < len(_keys) - 1 and _rotate_key():
                 continue
-            raise RuntimeError(f"Rate limited on all {attempts} keys: {resp.text}")
+            raise RuntimeError(f"Rate limited on all keys: {resp.text}")
 
         raise RuntimeError(f"Embedding API error {resp.status_code}: {resp.text}")
 
     raise RuntimeError("All API keys exhausted")
 
 
-def _get_client() -> chromadb.ClientAPI:
-    global _client
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+# --- ChromaDB backend ---
+
+def _chroma_get_collection():
+    global _client, _collection
     if _client is None:
         _client = chromadb.PersistentClient(path=config.CHROMADB_PATH)
-    return _client
-
-
-def _get_collection() -> chromadb.Collection:
-    global _collection
     if _collection is None:
-        _collection = _get_client().get_or_create_collection(
-            name="memories",
-            metadata={"hnsw:space": "cosine"},
-        )
+        _collection = _client.get_or_create_collection(name="memories", metadata={"hnsw:space": "cosine"})
     return _collection
+
+
+def _chroma_add(memory_id: str, embedding: list[float], metadata: dict) -> None:
+    _chroma_get_collection().upsert(ids=[memory_id], embeddings=[embedding], metadatas=[metadata])
+
+
+def _chroma_query(embedding: list[float], n_results: int, where: dict | None) -> list[dict]:
+    col = _chroma_get_collection()
+    count = col.count()
+    if count <= 0:
+        return []
+    kwargs: dict = {"query_embeddings": [embedding], "n_results": min(n_results, count)}
+    if where:
+        kwargs["where"] = where
+    results = col.query(**kwargs)
+    items = []
+    for i in range(len(results["ids"][0])):
+        items.append({"id": results["ids"][0][i], "distance": results["distances"][0][i], "metadata": results["metadatas"][0][i] if results["metadatas"] else {}})
+    return items
+
+
+def _chroma_delete(memory_id: str) -> None:
+    try:
+        _chroma_get_collection().delete(ids=[memory_id])
+    except Exception:
+        pass
+
+
+def _chroma_count() -> int:
+    return _chroma_get_collection().count()
+
+
+# --- JSON file backend (fallback) ---
+
+def _json_load() -> None:
+    global _vectors_db
+    if _vectors_db:
+        return
+    if VECTORS_FILE.exists():
+        try:
+            _vectors_db = json.loads(VECTORS_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            _vectors_db = {}
+
+
+def _json_save() -> None:
+    VECTORS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    VECTORS_FILE.write_text(json.dumps(_vectors_db))
+
+
+def _json_add(memory_id: str, embedding: list[float], metadata: dict) -> None:
+    _json_load()
+    _vectors_db[memory_id] = {"embedding": embedding, "metadata": metadata}
+    _json_save()
+
+
+def _json_query(embedding: list[float], n_results: int, where: dict | None) -> list[dict]:
+    _json_load()
+    scored = []
+    for mid, entry in _vectors_db.items():
+        if where:
+            match = all(entry["metadata"].get(k) == v for k, v in where.items())
+            if not match:
+                continue
+        sim = _cosine_similarity(embedding, entry["embedding"])
+        scored.append({"id": mid, "distance": 1.0 - sim, "metadata": entry["metadata"]})
+    scored.sort(key=lambda x: x["distance"])
+    return scored[:n_results]
+
+
+def _json_delete(memory_id: str) -> None:
+    _json_load()
+    _vectors_db.pop(memory_id, None)
+    _json_save()
+
+
+def _json_count() -> int:
+    _json_load()
+    return len(_vectors_db)
+
+
+# --- Dispatch ---
+
+def _use_chroma() -> bool:
+    return HAS_CHROMADB
 
 
 def is_vector_store_enabled() -> bool:
@@ -129,17 +220,14 @@ def get_key_count() -> int:
 
 
 def embed_text(text: str) -> list[float]:
-    """Generate embedding for a single text."""
     return _call_embed(text)[0]
 
 
 def embed_batch(texts: list[str]) -> list[list[float]]:
-    """Generate embeddings for multiple texts."""
     return _call_embed(texts)
 
 
 def add_key(key: str) -> None:
-    """Add a new API key to the pool."""
     _ensure_keys()
     with _key_lock:
         if key not in _keys:
@@ -148,7 +236,6 @@ def add_key(key: str) -> None:
 
 
 def remove_key(key: str) -> bool:
-    """Remove an API key from the pool."""
     global _key_index
     _ensure_keys()
     with _key_lock:
@@ -162,7 +249,6 @@ def remove_key(key: str) -> bool:
 
 
 def list_keys() -> list[dict[str, str]]:
-    """List all keys (masked) with active indicator."""
     _ensure_keys()
     with _key_lock:
         result = []
@@ -173,78 +259,42 @@ def list_keys() -> list[dict[str, str]]:
 
 
 def add_memory(memory_id: str, content: str, metadata: dict | None = None) -> None:
-    """Store a memory's embedding in the vector store."""
     if not is_vector_store_enabled():
         return
-
     embedding = embed_text(content)
-    collection = _get_collection()
-    collection.upsert(
-        ids=[memory_id],
-        embeddings=[embedding],
-        metadatas=[metadata or {}],
-    )
+    meta = metadata or {}
+    if _use_chroma():
+        _chroma_add(memory_id, embedding, meta)
+    else:
+        _json_add(memory_id, embedding, meta)
 
 
-def query_similar(
-    text: str,
-    *,
-    n_results: int = 10,
-    chat_id: str | None = None,
-    character_id: str | None = None,
-) -> list[dict]:
-    """Find memories similar to the given text."""
+def query_similar(text: str, *, n_results: int = 10, chat_id: str | None = None, character_id: str | None = None) -> list[dict]:
     if not is_vector_store_enabled():
         return []
-
     embedding = embed_text(text)
-    collection = _get_collection()
-
-    count = collection.count()
-    if count <= 0:
-        return []
-
-    query_kwargs: dict = {
-        "query_embeddings": [embedding],
-        "n_results": min(n_results, count),
-    }
-
-    where_conditions = []
+    where = {}
     if chat_id:
-        where_conditions.append({"chat_id": chat_id})
+        where["chat_id"] = chat_id
     if character_id:
-        where_conditions.append({"character_id": character_id})
-    if len(where_conditions) == 1:
-        query_kwargs["where"] = where_conditions[0]
-    elif len(where_conditions) > 1:
-        query_kwargs["where"] = {"$and": where_conditions}
-
-    results = collection.query(**query_kwargs)
-
-    items = []
-    for i in range(len(results["ids"][0])):
-        items.append({
-            "id": results["ids"][0][i],
-            "distance": results["distances"][0][i],
-            "metadata": results["metadatas"][0][i] if results["metadatas"] else {},
-        })
-    return items
+        where["character_id"] = character_id
+    if _use_chroma():
+        return _chroma_query(embedding, n_results, where or None)
+    return _json_query(embedding, n_results, where or None)
 
 
 def delete_memory(memory_id: str) -> None:
-    """Remove a memory's embedding from the vector store."""
     if not is_vector_store_enabled():
         return
-
-    collection = _get_collection()
-    try:
-        collection.delete(ids=[memory_id])
-    except Exception:
-        pass
+    if _use_chroma():
+        _chroma_delete(memory_id)
+    else:
+        _json_delete(memory_id)
 
 
 def get_collection_count() -> int:
-    """Return the number of embeddings in the store."""
     if not is_vector_store_enabled():
         return 0
-    return _get_collection().count()
+    if _use_chroma():
+        return _chroma_count()
+    return _json_count()
