@@ -366,3 +366,47 @@ def extract_memories(
         )
 
     return candidates[:3]
+
+
+def extract_for_backfill(
+    chat_id: str,
+    character_id: str,
+    messages: list[MessageInput],
+) -> list[CreateMemoryRequest]:
+    """
+    Extract memory candidates for backfill — stores all meaningful messages.
+
+    Unlike extract_memories, this does NOT require type markers.
+    Every substantial message becomes an event memory.
+    """
+    candidates = []
+
+    for msg in messages:
+        text = msg.text
+
+        if not _is_meaningful(text):
+            continue
+
+        content = truncate_content(text)
+        entities = text_features.extract_entities(text)
+        keywords = text_features.extract_keywords(text)
+
+        # Detect type if possible, otherwise default to event
+        memory_type = _detect_type(text) or "event"
+
+        candidates.append(
+            CreateMemoryRequest(
+                chat_id=chat_id,
+                character_id=character_id,
+                type=memory_type,
+                content=content,
+                source="auto",
+                layer=_get_layer(memory_type, text),
+                importance=_get_importance(memory_type),
+                pinned=False,
+                archived=False,
+                metadata=MemoryMetadata(entities=entities, keywords=keywords),
+            )
+        )
+
+    return candidates
