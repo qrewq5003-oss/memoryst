@@ -589,6 +589,14 @@ async def ui_backfill_file(
     detected_chat_id = None
     detected_char_id = None
 
+    # Extract chat name from filename: "Paris1775 - 2026-06-24@...jsonl" → "Paris1775"
+    if file.filename:
+        fname = file.filename.rsplit(".", 1)[0]  # remove extension
+        if " - " in fname:
+            detected_chat_id = fname.split(" - ")[0].strip()
+        else:
+            detected_chat_id = fname.strip()
+
     for line in content.split("\n"):
         line = line.strip()
         if not line:
