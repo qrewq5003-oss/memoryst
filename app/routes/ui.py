@@ -597,19 +597,27 @@ async def ui_backfill_file(
         except (json.JSONDecodeError, KeyError):
             pass
 
+    stored = 0
+    skipped = 0
+    duplicates = 0
+
     if messages:
         candidates = extract_memories(chat_id=chat_id, character_id=character_id, messages=messages)
         for candidate in candidates:
             if not passes_memory_quality_gate(candidate):
+                skipped += 1
                 continue
             normalized = normalize_content(candidate.content)
             existing = find_memory_by_normalized_content(chat_id=chat_id, character_id=character_id, normalized_content=normalized)
             if existing is not None:
+                duplicates += 1
                 continue
             created = create_memory(candidate)
             vs.add_memory(created.id, created.content, {"chat_id": created.chat_id, "character_id": created.character_id})
+            stored += 1
 
-    return RedirectResponse(url="/ui", status_code=303)
+    result = f"backfill_done&stored={stored}&skipped={skipped}&duplicates={duplicates}&total_messages={len(messages)}"
+    return RedirectResponse(url=f"/ui?{result}", status_code=303)
 
 
 @router.get("/ui/export")
