@@ -132,6 +132,10 @@ function refreshSettingsUi() {
             saveSettings();
             refreshSettingsUi();
         },
+        getChatContext: () => {
+            const ctx = getChatContext();
+            return { chatId: ctx.chatId, characterId: ctx.characterId };
+        },
     });
 }
 

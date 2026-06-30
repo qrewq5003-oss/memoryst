@@ -256,6 +256,23 @@ export function buildSettingsUiMarkup(settings = {}) {
                 <span class="memory-service-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
             </div>
             <div class="memory-service-settings-grid">${sections}</div>
+            <section class="memory-service-settings-group">
+                <h4>Backfill</h4>
+                <p class="memory-service-settings-group-copy">Import existing chat history into memory.</p>
+                <div style="margin-top:8px;">
+                    <label style="font-weight:600;">Upload .jsonl file (SillyTavern chat format):</label><br>
+                    <input type="file" id="memory-service-backfill-file" accept=".jsonl,.json" style="margin-top:4px;">
+                </div>
+                <div style="margin-top:8px;">
+                    <label style="font-weight:600;">Or paste messages (one per line: "user: text" / "assistant: text"):</label>
+                    <textarea id="memory-service-backfill-text" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:monospace;font-size:0.85em;" placeholder="user: Hello Alice&#10;assistant: Hi, nice to meet you!"></textarea>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <button type="button" id="memory-service-backfill-btn">Backfill Current Chat</button>
+                    <button type="button" id="memory-service-delete-chat-btn" style="color:#e74c3c;">Delete Chat Memories</button>
+                    <span id="memory-service-backfill-status" style="font-size:0.9em;"></span>
+                </div>
+            </section>
         </div>
     `;
 }
@@ -303,6 +320,7 @@ export function renderSettingsUi({
     settings,
     onSettingsChanged,
     onApplyRecommendedBaseline,
+    getChatContext,
 }) {
     const host = findSettingsUiHost(document);
     if (!host || typeof host.querySelector !== 'function') {
@@ -340,6 +358,155 @@ export function renderSettingsUi({
         });
     }
 
+    const backfillBtn = panel.querySelector('#memory-service-backfill-btn');
+    const backfillText = panel.querySelector('#memory-service-backfill-text');
+    const backfillFile = panel.querySelector('#memory-service-backfill-file');
+    const backfillStatus = panel.querySelector('#memory-service-backfill-status');
+    const deleteChatBtn = panel.querySelector('#memory-service-delete-chat-btn');
+
+    function parseJsonl(raw) {
+        const messages = [];
+        for (const line of raw.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const obj = JSON.parse(trimmed);
+                // SillyTavern format: {name, mes, is_user}
+                if (obj.mes && typeof obj.is_user === 'boolean') {
+                    const role = obj.is_user ? 'user' : 'assistant';
+                    const text = (obj.mes || '').trim();
+                    if (text) messages.push({ role, text });
+                }
+                // Standard format: {role, content}
+                else if (obj.role && obj.content) {
+                    messages.push({ role: obj.role, text: obj.content });
+                }
+            } catch (e) {
+                // not JSON, skip
+            }
+        }
+        return messages;
+    }
+
+    function parseTextFormat(raw) {
+        return raw.split('\n')
+            .map(line => {
+                const match = line.match(/^(user|assistant|system):\s*(.+)$/i);
+                if (match) return { role: match[1].toLowerCase(), text: match[2].trim() };
+                return null;
+            })
+            .filter(Boolean);
+    }
+
+    async function runBackfill(messages) {
+        const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
+        const chatId = ctx.chatId || 'backfill';
+        const charId = ctx.characterId || 'backfill';
+
+        const url = `${settings.memoryServiceUrl}/memory/backfill`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
+        });
+
+        if (resp.ok) {
+            const r = await resp.json();
+            backfillStatus.textContent = `Done: ${r.stored} stored, ${r.skipped} skipped, ${r.duplicates} duplicates (${r.processed} processed)`;
+        } else {
+            backfillStatus.textContent = `Error: ${resp.status} ${resp.statusText}`;
+        }
+    }
+
+    if (backfillBtn) {
+        backfillBtn.addEventListener('click', async () => {
+            // Check file first
+            if (backfillFile && backfillFile.files.length > 0) {
+                backfillBtn.disabled = true;
+                backfillStatus.textContent = 'Reading file...';
+                try {
+                    const raw = await backfillFile.files[0].text();
+                    const messages = parseJsonl(raw);
+                    if (messages.length === 0) {
+                        backfillStatus.textContent = 'No valid messages in .jsonl file.';
+                        backfillBtn.disabled = false;
+                        return;
+                    }
+                    backfillStatus.textContent = `Processing ${messages.length} messages from file...`;
+                    await runBackfill(messages);
+                } catch (e) {
+                    backfillStatus.textContent = `Error: ${e.message}`;
+                } finally {
+                    backfillBtn.disabled = false;
+                }
+                return;
+            }
+
+            // Fall back to text area
+            const raw = backfillText?.value?.trim();
+            if (!raw) {
+                backfillStatus.textContent = 'Paste messages or select a .jsonl file.';
+                return;
+            }
+
+            const messages = parseTextFormat(raw);
+            if (messages.length === 0) {
+                backfillStatus.textContent = 'No valid messages. Use format: "user: text"';
+                return;
+            }
+
+            backfillBtn.disabled = true;
+            backfillStatus.textContent = `Processing ${messages.length} messages...`;
+            try {
+                await runBackfill(messages);
+            } catch (e) {
+                backfillStatus.textContent = `Error: ${e.message}`;
+            } finally {
+                backfillBtn.disabled = false;
+            }
+        });
+    }
+
+    if (deleteChatBtn) {
+        deleteChatBtn.addEventListener('click', async () => {
+            const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
+            const chatId = ctx.chatId;
+            if (!chatId) {
+                backfillStatus.textContent = 'No chat selected.';
+                return;
+            }
+
+            if (!confirm(`Delete ALL memories for chat "${chatId}"? This cannot be undone.`)) {
+                return;
+            }
+
+            deleteChatBtn.disabled = true;
+            backfillStatus.textContent = 'Deleting...';
+
+            try {
+                const url = `${settings.memoryServiceUrl}/memory/chat/${encodeURIComponent(chatId)}`;
+                const headers = {};
+                if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
+
+                const resp = await fetch(url, { method: 'DELETE', headers });
+
+                if (resp.ok) {
+                    const r = await resp.json();
+                    backfillStatus.textContent = `Deleted ${r.deleted} memories for this chat.`;
+                } else {
+                    backfillStatus.textContent = `Error: ${resp.status} ${resp.statusText}`;
+                }
+            } catch (e) {
+                backfillStatus.textContent = `Error: ${e.message}`;
+            } finally {
+                deleteChatBtn.disabled = false;
+            }
+        });
+    }
+
     return true;
 }
 
@@ -348,6 +515,7 @@ export function mountSettingsUi({
     settings,
     onSettingsChanged,
     onApplyRecommendedBaseline,
+    getChatContext,
     retries = 10,
     retryDelayMs = 500,
     scheduleRetry = null,
@@ -357,6 +525,7 @@ export function mountSettingsUi({
         settings,
         onSettingsChanged,
         onApplyRecommendedBaseline,
+        getChatContext,
     });
 
     if (rendered || retries <= 0) {
@@ -374,6 +543,7 @@ export function mountSettingsUi({
                 settings,
                 onSettingsChanged,
                 onApplyRecommendedBaseline,
+                getChatContext,
                 retries: retries - 1,
                 retryDelayMs,
                 scheduleRetry,

@@ -1,10 +1,8 @@
-import re
 from app.repositories.memory_repo import (
     create_memory,
     find_memory_by_normalized_content,
     list_memories,
     update_memory,
-    _normalize_content,
 )
 from app.schemas import (
     CreateMemoryRequest,
@@ -22,7 +20,12 @@ from app.services.deduper import (
     check_soft_match,
     merge_candidate_with_existing,
 )
-from datetime import datetime, timezone
+from app.services.text_utils import (
+    get_utc_now,
+    normalize_content as _normalize_content,
+    normalize_for_similarity as _normalize_quality_text,
+)
+from app.services import vector_store
 
 MIN_MEMORY_CONTENT_LENGTH = 12
 MIN_MEMORY_WORD_COUNT = 3
@@ -47,19 +50,6 @@ LOW_VALUE_PATTERNS = {
     "да",
     "нет",
 }
-
-
-def _get_utc_now() -> str:
-    """Get current UTC time in ISO-8601 format."""
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _normalize_quality_text(text: str) -> str:
-    """Normalize text for lightweight quality checks."""
-    normalized = text.lower().strip()
-    normalized = re.sub(r"[^\w\s]", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized
 
 
 def _evaluate_memory_quality_gate(candidate: CreateMemoryRequest) -> tuple[bool, str]:
@@ -133,6 +123,13 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     updated_count = 0
     skipped_count = 0
     debug_candidates: list[StoreCandidateDebug] = []
+
+    # Load existing memories once for soft-match checks (not per candidate)
+    existing_memories = list_memories(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        limit=200,
+    ).items
 
     for candidate in candidates:
         normalized = _normalize_content(candidate.content)
@@ -218,15 +215,8 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                     )
         else:
             # No exact match - check for soft match
-            # Get all memories for this chat/character to check soft matches
-            all_memories = list_memories(
-                chat_id=request.chat_id,
-                character_id=request.character_id,
-                limit=200,
-            ).items
-            
             soft_match_found = False
-            for existing_memory in all_memories:
+            for existing_memory in existing_memories:
                 if check_soft_match(candidate, existing_memory):
                     # Soft match found - update existing (is_exact=False for lower importance boost)
                     merged, _ = merge_candidate_with_existing(candidate, existing_memory, is_exact=False)
@@ -275,6 +265,11 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                 created = create_memory(candidate)
                 stored_items.append(created)
                 stored_count += 1
+                vector_store.add_memory(
+                    created.id,
+                    created.content,
+                    {"chat_id": created.chat_id, "character_id": created.character_id},
+                )
                 if request.debug:
                     debug_candidates.append(
                         StoreCandidateDebug(

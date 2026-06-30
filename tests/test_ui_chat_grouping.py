@@ -5,6 +5,7 @@ from fastapi import Request
 
 from app.routes.ui import ui_memories_page
 from app.schemas import ListMemoriesResponse, MemoryItem, MemoryMetadata
+from tests.conftest_helpers import build_group_summaries
 
 
 def _request(path: str = "/ui") -> Request:
@@ -64,7 +65,10 @@ class UiChatGroupingTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request(), view="all")
 
         body = response.body.decode()
@@ -87,7 +91,10 @@ class UiChatGroupingTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request())
 
         body = response.body.decode()
@@ -106,7 +113,10 @@ class UiChatGroupingTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request(), selected_chat_id="chat-secondary", selected_character_id="char-b")
 
         body = response.body.decode()
@@ -126,7 +136,10 @@ class UiChatGroupingTests(unittest.TestCase):
             offset=0,
         )
 
-        with patch("app.routes.ui.list_memories", return_value=memories):
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+        ):
             response = ui_memories_page(_request())
 
         body = response.body.decode()

@@ -11,7 +11,8 @@ from app.schemas import (
     RetrieveMemoryResponse,
 )
 from app.services.formatter import format_memory_block
-from app.services import text_features
+from app.services import text_features, vector_store
+from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
 
 KEYWORD_WEIGHT = 0.50
 ENTITY_WEIGHT = 0.25
@@ -22,6 +23,7 @@ BOTH_MATCH_BONUS = 0.10
 MIN_RETRIEVAL_SCORE = 0.15
 NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
 CLOSE_SCORE_LAYER_TIE_EPSILON = 0.05
+SEMANTIC_BOOST = 0.15
 RELATIONSHIP_CUE_WEIGHT = 0.14
 RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
     "summary": 0.03,
@@ -30,6 +32,13 @@ RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
 }
 EPISODIC_SPECIFICITY_BONUS = 0.06
 EPISODIC_LOW_VALUE_PENALTY = 0.12
+COMBINED_OVERLAP_KEYWORD_WEIGHT = 0.65
+COMBINED_OVERLAP_ENTITY_WEIGHT = 0.35
+SUPPORT_STRONG_THRESHOLD = 0.60
+SUPPORT_MEDIUM_THRESHOLD = 0.30
+SUPPORT_MULTIPLIER_STRONG = 1.0
+SUPPORT_MULTIPLIER_MEDIUM = 0.6
+SUPPORT_MULTIPLIER_WEAK = 0.25
 # Narrow support-only policy for Russian relationship/general-state phrasing:
 # - gated by `relationship_query_like`
 # - uses only the bounded cue groups from text_features
@@ -153,8 +162,8 @@ def _compute_score_details(
 
         # Penalize question-like or query-echo episodic lines that add little scene value.
         # This is an anti-noise guardrail, not a universal episodic penalty.
-        normalized_query = _normalize_for_similarity(user_input_text)
-        normalized_memory = _normalize_for_similarity(memory.content)
+        normalized_query = normalize_for_similarity(user_input_text)
+        normalized_memory = normalize_for_similarity(memory.content)
         question_like_memory = memory.content.strip().endswith("?")
         query_echo_like = (
             normalized_query != ""
@@ -162,20 +171,20 @@ def _compute_score_details(
             and (
                 normalized_memory == normalized_query
                 or normalized_memory in normalized_query
-                or _token_overlap_ratio(memory.content, user_input_text) >= 0.85
+                or token_overlap_ratio(memory.content, user_input_text) >= 0.85
             )
         )
         if question_like_memory and query_echo_like and episodic_detail_score < 0.45:
             episodic_low_value_penalty = EPISODIC_LOW_VALUE_PENALTY
 
     # Weak matches should not climb mainly on importance or freshness.
-    combined_overlap = (keyword_overlap * 0.65) + (entity_overlap * 0.35)
-    if combined_overlap >= 0.60:
-        support_multiplier = 1.0
-    elif combined_overlap >= 0.30:
-        support_multiplier = 0.6
+    combined_overlap = (keyword_overlap * COMBINED_OVERLAP_KEYWORD_WEIGHT) + (entity_overlap * COMBINED_OVERLAP_ENTITY_WEIGHT)
+    if combined_overlap >= SUPPORT_STRONG_THRESHOLD:
+        support_multiplier = SUPPORT_MULTIPLIER_STRONG
+    elif combined_overlap >= SUPPORT_MEDIUM_THRESHOLD:
+        support_multiplier = SUPPORT_MULTIPLIER_MEDIUM
     else:
-        support_multiplier = 0.25
+        support_multiplier = SUPPORT_MULTIPLIER_WEAK
 
     support_score = (
         memory.importance * IMPORTANCE_WEIGHT +
@@ -214,35 +223,18 @@ def _compute_score(
     return _compute_score_details(memory, input_keywords, input_entities)["score"]
 
 
-def _normalize_for_similarity(text: str) -> str:
-    """Normalize text for retrieval-side near-duplicate checks."""
-    normalized = text.lower().strip()
-    normalized = re.sub(r"[^\w\s]", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized
-
-
-def _token_overlap_ratio(text1: str, text2: str) -> float:
-    """Compute overlap ratio using the smaller token set as the denominator."""
-    tokens1 = set(_normalize_for_similarity(text1).split())
-    tokens2 = set(_normalize_for_similarity(text2).split())
-    if not tokens1 or not tokens2:
-        return 0.0
-    return len(tokens1 & tokens2) / min(len(tokens1), len(tokens2))
-
-
 def _is_too_similar_to_selected(candidate: MemoryItem, selected: list[MemoryItem]) -> bool:
     """Skip near-duplicate memories so top slots stay diverse."""
-    candidate_normalized = _normalize_for_similarity(candidate.content)
+    candidate_normalized = normalize_for_similarity(candidate.content)
     if not candidate_normalized:
         return True
 
     for existing in selected:
-        existing_normalized = _normalize_for_similarity(existing.content)
+        existing_normalized = normalize_for_similarity(existing.content)
         if candidate_normalized == existing_normalized:
             return True
 
-        overlap_ratio = _token_overlap_ratio(candidate.content, existing.content)
+        overlap_ratio = token_overlap_ratio(candidate.content, existing.content)
         if overlap_ratio >= NEAR_DUPLICATE_TOKEN_OVERLAP:
             return True
 
@@ -366,6 +358,17 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     )
     total_candidates = len(all_candidates)
 
+    # Query vector store for semantic matches (if enabled)
+    semantic_ids: set[str] = set()
+    if vector_store.is_vector_store_enabled() and total_candidates > 0:
+        semantic_results = vector_store.query_similar(
+            request.user_input,
+            n_results=min(10, total_candidates),
+            chat_id=request.chat_id,
+            character_id=request.character_id,
+        )
+        semantic_ids = {r["id"] for r in semantic_results}
+
     # Score each candidate and partition them into explicit retrieval layers.
     scored_entries: list[dict[str, object]] = []
     debug_candidates: list[RetrieveCandidateDebug] = []
@@ -388,6 +391,11 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
             input_relationship_cues=input_relationship_cues,
         )
         score = details["score"]
+
+        # Boost score for semantically similar memories
+        if memory.id in semantic_ids:
+            score = min(score + SEMANTIC_BOOST, 1.0)
+
         passed_threshold = score >= MIN_RETRIEVAL_SCORE
         if passed_threshold:
             scored_entries.append(

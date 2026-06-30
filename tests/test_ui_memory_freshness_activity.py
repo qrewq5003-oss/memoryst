@@ -4,12 +4,10 @@ from unittest.mock import patch
 
 from fastapi import Request
 
-from app.routes.ui import (
-    _get_activity_bucket,
-    _get_freshness_bucket,
-    ui_memories_page,
-)
+from app.routes.ui import ui_memories_page
+from app.ui_helpers.classifiers import get_activity_bucket, get_freshness_bucket
 from app.schemas import ListMemoriesResponse, MemoryItem, MemoryMetadata
+from tests.conftest_helpers import build_group_summaries
 
 
 def _request(path: str = "/ui") -> Request:
@@ -69,14 +67,14 @@ class UiMemoryFreshnessActivityTests(unittest.TestCase):
         warm = _memory("warm", "Warm", updated_days_ago=20, access_count=2, last_accessed_days_ago=25)
         stale = _memory("stale", "Stale", updated_days_ago=60, access_count=7, last_accessed_days_ago=2)
 
-        with patch("app.routes.ui._utc_now", return_value=self.now):
-            self.assertEqual(_get_freshness_bucket(fresh), "fresh")
-            self.assertEqual(_get_freshness_bucket(warm), "warm")
-            self.assertEqual(_get_freshness_bucket(stale), "stale")
+        with patch("app.ui_helpers.classifiers.utc_now", return_value=self.now):
+            self.assertEqual(get_freshness_bucket(fresh), "fresh")
+            self.assertEqual(get_freshness_bucket(warm), "warm")
+            self.assertEqual(get_freshness_bucket(stale), "stale")
 
-            self.assertEqual(_get_activity_bucket(fresh), "never_used")
-            self.assertEqual(_get_activity_bucket(warm), "low_use")
-            self.assertEqual(_get_activity_bucket(stale), "active")
+            self.assertEqual(get_activity_bucket(fresh), "never_used")
+            self.assertEqual(get_activity_bucket(warm), "low_use")
+            self.assertEqual(get_activity_bucket(stale), "active")
 
     def test_ui_filter_and_sort_respect_freshness_and_activity_controls(self) -> None:
         memories = ListMemoriesResponse(
@@ -90,9 +88,17 @@ class UiMemoryFreshnessActivityTests(unittest.TestCase):
             offset=0,
         )
 
+        filtered_memories = ListMemoriesResponse(
+            items=[memories.items[2]],
+            total=1,
+            limit=50,
+            offset=0,
+        )
+
         with (
-            patch("app.routes.ui.list_memories", return_value=memories),
-            patch("app.routes.ui._utc_now", return_value=self.now),
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=filtered_memories),
+            patch("app.ui_helpers.classifiers.utc_now", return_value=self.now),
         ):
             response = ui_memories_page(
                 _request(),
@@ -120,8 +126,9 @@ class UiMemoryFreshnessActivityTests(unittest.TestCase):
         )
 
         with (
-            patch("app.routes.ui.list_memories", return_value=memories),
-            patch("app.routes.ui._utc_now", return_value=self.now),
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+            patch("app.ui_helpers.classifiers.utc_now", return_value=self.now),
         ):
             response = ui_memories_page(_request(), sort="access_count_desc")
 

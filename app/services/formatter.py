@@ -1,30 +1,8 @@
-import re
-
 from app.schemas import MemoryItem
+from app.services.text_utils import normalize_for_similarity as _normalize_for_dedup, truncate_content
 
 MAX_FORMATTED_MEMORIES = 4
 MAX_FORMATTED_CONTENT_LENGTH = 120
-
-
-def _normalize_for_dedup(text: str) -> str:
-    """Normalize text for near-duplicate detection."""
-    normalized = text.lower().strip()
-    normalized = re.sub(r"[^\w\s]", " ", normalized)
-    normalized = re.sub(r"\s+", " ", normalized)
-    return normalized
-
-
-def _truncate_content(text: str) -> str:
-    """Truncate long content to keep the memory block compact."""
-    compact = re.sub(r"\s+", " ", text.strip())
-    if len(compact) <= MAX_FORMATTED_CONTENT_LENGTH:
-        return compact
-
-    truncated = compact[: MAX_FORMATTED_CONTENT_LENGTH].rstrip()
-    last_space = truncated.rfind(" ")
-    if last_space >= MAX_FORMATTED_CONTENT_LENGTH // 2:
-        truncated = truncated[:last_space]
-    return f"{truncated}..."
 
 
 def _format_labels(item: MemoryItem) -> str:
@@ -71,6 +49,6 @@ def format_memory_block(items: list[MemoryItem]) -> str:
 
     lines = ["[Relevant Memory]"]
     for item in unique_items:
-        lines.append(f"- {_format_labels(item)} {_truncate_content(item.content)}")
+        lines.append(f"- {_format_labels(item)} {truncate_content(item.content, MAX_FORMATTED_CONTENT_LENGTH)}")
 
     return "\n".join(lines)

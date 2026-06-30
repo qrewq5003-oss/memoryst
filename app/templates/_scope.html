@@ -1,0 +1,31 @@
+        <section class="scope-summary">
+            <div>
+                <div class="scope-title-row">
+                    <h2>{{ scope_title }}</h2>
+                    {% if not scope_is_all_chats %}
+                    <span class="scope-pill scope-pill-header">Current scope</span>
+                    {% endif %}
+                </div>
+                {% if scope_subtitle %}
+                <div class="scope-subtitle">{{ scope_subtitle }}</div>
+                {% endif %}
+                {% if scope_meta %}
+                <div class="scope-meta-list">
+                    {% for item in scope_meta %}
+                    <span class="scope-meta-item">{{ item["label"] }}: <code>{{ item["value"] }}</code></span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="scope-actions">
+                <a href="{{ filters["clear_filters_url"] }}" class="button secondary">Clear Filters</a>
+                {% if not scope_is_all_chats and filters["selected_chat_id"] %}
+                <form method="POST" action="/ui/delete-chat" style="display:inline;" onsubmit="return confirm('Delete ALL memories for this chat? This cannot be undone.');">
+                    <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] }}">
+                    <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or '' }}">
+                    <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                    <button type="submit" class="button" style="color:#e74c3c;border-color:#e74c3c;">Delete Chat</button>
+                </form>
+                {% endif %}
+            </div>
+        </section>

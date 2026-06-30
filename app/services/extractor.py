@@ -2,6 +2,7 @@ import re
 
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
+from app.services.text_utils import truncate_content
 
 PREFERENCE_MARKERS_RU = [
     "мне нравится",
@@ -289,20 +290,9 @@ def _is_meaningful(text: str) -> bool:
     """Check if text is meaningful enough to store."""
     if len(text.strip()) < 10:
         return False
-    if text.strip() in ["...", "???", "!!!", "???"]:
+    if text.strip() in ["...", "???", "!!!"]:
         return False
     return True
-
-
-def _truncate_content(text: str, max_length: int = 500) -> str:
-    """Truncate content to reasonable length."""
-    if len(text) <= max_length:
-        return text
-    truncated = text[:max_length]
-    last_period = truncated.rfind(".")
-    if last_period > max_length // 2:
-        return truncated[: last_period + 1]
-    return truncated + "..."
 
 
 def extract_memories(
@@ -352,7 +342,7 @@ def extract_memories(
         if memory_type is None:
             continue
 
-        content = _truncate_content(text)
+        content = truncate_content(text)
         entities = text_features.extract_entities(text)
         keywords = text_features.extract_keywords(text)
 
@@ -376,3 +366,57 @@ def extract_memories(
         )
 
     return candidates[:3]
+
+
+def extract_for_backfill(
+    chat_id: str,
+    character_id: str,
+    messages: list[MessageInput],
+) -> list[CreateMemoryRequest]:
+    """
+    Extract memory candidates for backfill — stores all meaningful assistant messages.
+
+    Skips: user messages, OOC messages, system messages, too-short messages.
+    """
+    candidates = []
+
+    for msg in messages:
+        # Only store assistant messages (character responses)
+        if msg.role != "assistant":
+            continue
+
+        text = msg.text
+
+        if not _is_meaningful(text):
+            continue
+
+        # Skip OOC (out of character) messages
+        stripped = text.strip()
+        if stripped.startswith("OOC:") or stripped.startswith("OOC(") or stripped.startswith("(OOC"):
+            continue
+        if stripped.startswith("ooc:") or stripped.startswith("ooc("):
+            continue
+
+        content = truncate_content(text)
+        entities = text_features.extract_entities(text)
+        keywords = text_features.extract_keywords(text)
+
+        # Detect type if possible, otherwise default to event
+        memory_type = _detect_type(text) or "event"
+
+        candidates.append(
+            CreateMemoryRequest(
+                chat_id=chat_id,
+                character_id=character_id,
+                type=memory_type,
+                content=content,
+                source="auto",
+                layer=_get_layer(memory_type, text),
+                importance=_get_importance(memory_type),
+                pinned=False,
+                archived=False,
+                metadata=MemoryMetadata(entities=entities, keywords=keywords),
+            )
+        )
+
+    return candidates

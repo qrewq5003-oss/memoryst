@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,10 +11,19 @@ from app.db import init_schema
 from app.routes.memory_api import router as memory_router
 from app.routes.ui import router as ui_router
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Initialize database schema on startup."""
+    init_schema()
+    yield
+
+
 app = FastAPI(
     title="Memory Service",
     description="External memory service for SillyTavern",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -22,12 +33,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Initialize database schema on startup."""
-    init_schema()
 
 
 @app.get("/health")
