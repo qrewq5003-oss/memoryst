@@ -571,7 +571,7 @@ def ui_delete_chat(
 
 
 @router.post("/ui/backfill-file")
-async def ui_backfill_file(
+def ui_backfill_file(
     request: Request,
     chat_id: str = Form(...),
     character_id: str = Form(...),
@@ -584,7 +584,7 @@ async def ui_backfill_file(
     from app.services.store_service import passes_memory_quality_gate
     from app.services import vector_store as vs
 
-    content = (await file.read()).decode("utf-8")
+    content = file.file.read().decode("utf-8")
     messages = []
     detected_chat_id = None
     detected_char_id = None
