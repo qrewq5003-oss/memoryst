@@ -3,7 +3,7 @@ from typing import Literal
 
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
-from app.services.text_utils import truncate_content
+from app.services.text_utils import is_ooc_text, truncate_content
 
 PREFERENCE_MARKERS_RU = [
     "мне нравится",
@@ -324,10 +324,7 @@ def extract_memories(
             continue
 
         if mode == "backfill":
-            stripped = text.strip()
-            if stripped.startswith("OOC:") or stripped.startswith("OOC(") or stripped.startswith("(OOC"):
-                continue
-            if stripped.startswith("ooc:") or stripped.startswith("ooc("):
+            if is_ooc_text(text):
                 continue
         elif (
             # Narrow anti-artifact filter only:

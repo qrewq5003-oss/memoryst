@@ -32,6 +32,12 @@ def normalize_content(content: str) -> str:
     return text
 
 
+def is_ooc_text(text: str) -> bool:
+    """Check whether text is an out-of-character (OOC) marker message, case-insensitively."""
+    lowered = text.strip().lower()
+    return lowered.startswith("ooc:") or lowered.startswith("ooc(") or lowered.startswith("(ooc")
+
+
 def truncate_content(text: str, max_length: int = 500) -> str:
     """Truncate content to reasonable length, breaking at sentence or word boundary."""
     compact = re.sub(r"\s+", " ", text.strip())

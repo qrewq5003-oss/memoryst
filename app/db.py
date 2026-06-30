@@ -39,6 +39,56 @@ MEMORIES_INDEX_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_memories_updated_at ON memories (updated_at)",
 )
 
+# Raw chat message storage (Stage 2). Only messages that have "cooled" out of the
+# hot buffer (see chat_buffer_service) land here, with a stable UUID assigned when
+# they first entered the buffer - not a sequential index, since edits/swipes in the
+# middle of history must not shift other messages' ids.
+CHAT_MESSAGES_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL,
+        character_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        sequence_index INTEGER NOT NULL
+    )
+"""
+
+CHAT_MESSAGES_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_character "
+    "ON chat_messages (chat_id, character_id, sequence_index)",
+)
+
+CHAT_MESSAGES_FTS_SQL = """
+    CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
+        text, content='chat_messages', content_rowid='rowid'
+    )
+"""
+
+# Keep the external-content FTS index in sync with chat_messages. chat_messages is
+# effectively insert-only (cooled rows aren't expected to change), but the
+# update/delete triggers are included so the index can't silently drift if that
+# ever changes (e.g. a future cleanup-on-chat-delete path).
+CHAT_MESSAGES_FTS_TRIGGERS_SQL = (
+    """
+    CREATE TRIGGER IF NOT EXISTS chat_messages_fts_ai AFTER INSERT ON chat_messages BEGIN
+        INSERT INTO chat_messages_fts(rowid, text) VALUES (new.rowid, new.text);
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS chat_messages_fts_ad AFTER DELETE ON chat_messages BEGIN
+        INSERT INTO chat_messages_fts(chat_messages_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS chat_messages_fts_au AFTER UPDATE ON chat_messages BEGIN
+        INSERT INTO chat_messages_fts(chat_messages_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+        INSERT INTO chat_messages_fts(rowid, text) VALUES (new.rowid, new.text);
+    END
+    """,
+)
+
 
 def get_connection() -> sqlite3.Connection:
     """Get database connection."""
@@ -55,6 +105,15 @@ def _create_memories_table(cursor: sqlite3.Cursor) -> None:
 
 def _create_memories_indexes(cursor: sqlite3.Cursor) -> None:
     for statement in MEMORIES_INDEX_SQL:
+        cursor.execute(statement)
+
+
+def _create_chat_messages_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(CHAT_MESSAGES_TABLE_SQL)
+    for statement in CHAT_MESSAGES_INDEX_SQL:
+        cursor.execute(statement)
+    cursor.execute(CHAT_MESSAGES_FTS_SQL)
+    for statement in CHAT_MESSAGES_FTS_TRIGGERS_SQL:
         cursor.execute(statement)
 
 
@@ -105,6 +164,7 @@ def init_schema() -> None:
 
         _create_memories_table(cursor)
         _create_memories_indexes(cursor)
+        _create_chat_messages_table(cursor)
 
         conn.commit()
 

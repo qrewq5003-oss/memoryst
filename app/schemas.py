@@ -15,6 +15,18 @@ class MessageInput(BaseModel):
     text: str = Field(..., min_length=1, max_length=10000)
 
 
+class ChatMessageItem(BaseModel):
+    """A single raw chat message, either still in the hot buffer or cooled into chat_messages."""
+
+    id: str
+    chat_id: str
+    character_id: str
+    role: Literal["user", "assistant"]
+    text: str
+    created_at: str
+    sequence_index: int
+
+
 class ConsolidationHistoryEntry(BaseModel):
     action: str
     timestamp: str
