@@ -1,0 +1,95 @@
+        <section class="filters">
+            <h2>Filters</h2>
+            <form method="GET" action="/ui" class="filter-form">
+                {% if filters["view"] == "all" %}
+                <input type="hidden" name="view" value="all">
+                {% elif filters["selected_chat_id"] and filters["selected_character_id"] %}
+                <input type="hidden" name="selected_chat_id" value="{{ filters["selected_chat_id"] }}">
+                <input type="hidden" name="selected_character_id" value="{{ filters["selected_character_id"] }}">
+                {% endif %}
+
+                <div class="form-row">
+                    <label>Type:
+                        <select name="type">
+                            <option value="">All</option>
+                            <option value="profile" {% if filters["type"] == 'profile' %}selected{% endif %}>Profile</option>
+                            <option value="relationship" {% if filters["type"] == 'relationship' %}selected{% endif %}>Relationship</option>
+                            <option value="event" {% if filters["type"] == 'event' %}selected{% endif %}>Event</option>
+                            <option value="summary" {% if filters["type"] == 'summary' %}selected{% endif %}>Summary</option>
+                        </select>
+                    </label>
+                    <label>Source:
+                        <select name="source">
+                            <option value="">All</option>
+                            <option value="auto" {% if filters["source"] == 'auto' %}selected{% endif %}>Auto</option>
+                            <option value="manual" {% if filters["source"] == 'manual' %}selected{% endif %}>Manual</option>
+                        </select>
+                    </label>
+                    <label>Layer:
+                        <select name="layer">
+                            <option value="">All</option>
+                            <option value="episodic" {% if filters["layer"] == 'episodic' %}selected{% endif %}>Episodic</option>
+                            <option value="stable" {% if filters["layer"] == 'stable' %}selected{% endif %}>Stable</option>
+                        </select>
+                    </label>
+                    <label class="search-field">Search:
+                        <input type="text" name="search" value="{{ filters["search"] or '' }}" placeholder="content, normalized text, keywords, entities">
+                    </label>
+                </div>
+                <div class="form-row">
+                    <label>Pinned:
+                        <select name="pinned">
+                            <option value="">All</option>
+                            <option value="true" {% if filters["pinned"] == 'true' %}selected{% endif %}>Yes</option>
+                            <option value="false" {% if filters["pinned"] == 'false' %}selected{% endif %}>No</option>
+                        </select>
+                    </label>
+                    <label>Archived:
+                        <select name="archived">
+                            <option value="">All</option>
+                            <option value="true" {% if filters["archived"] == 'true' %}selected{% endif %}>Yes</option>
+                            <option value="false" {% if filters["archived"] == 'false' %}selected{% endif %}>No</option>
+                        </select>
+                    </label>
+                    <label>Freshness:
+                        <select name="freshness">
+                            <option value="">All</option>
+                            <option value="fresh" {% if filters["freshness"] == 'fresh' %}selected{% endif %}>Fresh</option>
+                            <option value="warm" {% if filters["freshness"] == 'warm' %}selected{% endif %}>Warm</option>
+                            <option value="stale" {% if filters["freshness"] == 'stale' %}selected{% endif %}>Stale</option>
+                        </select>
+                    </label>
+                    <label>Activity:
+                        <select name="activity">
+                            <option value="">All</option>
+                            <option value="never_used" {% if filters["activity"] == 'never_used' %}selected{% endif %}>Never Used</option>
+                            <option value="low_use" {% if filters["activity"] == 'low_use' %}selected{% endif %}>Low Use</option>
+                            <option value="active" {% if filters["activity"] == 'active' %}selected{% endif %}>Active</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="form-row">
+                    <label>Sort:
+                        <select name="sort">
+                            <option value="updated_desc" {% if filters["sort"] == 'updated_desc' %}selected{% endif %}>Recently Updated</option>
+                            <option value="last_accessed_desc" {% if filters["sort"] == 'last_accessed_desc' %}selected{% endif %}>Recently Accessed</option>
+                            <option value="access_count_desc" {% if filters["sort"] == 'access_count_desc' %}selected{% endif %}>Most Used</option>
+                            <option value="stalest_first" {% if filters["sort"] == 'stalest_first' %}selected{% endif %}>Stalest First</option>
+                        </select>
+                    </label>
+                    <label>Consolidation:
+                        <select name="consolidation">
+                            <option value="">All</option>
+                            <option value="candidates_only" {% if filters["consolidation"] == 'candidates_only' %}selected{% endif %}>Candidates Only</option>
+                            <option value="near_duplicate" {% if filters["consolidation"] == 'near_duplicate' %}selected{% endif %}>Near Duplicates</option>
+                            <option value="stale_low_value_episode" {% if filters["consolidation"] == 'stale_low_value_episode' %}selected{% endif %}>Stale Episodic Cleanup</option>
+                            <option value="shadowed_by_stable" {% if filters["consolidation"] == 'shadowed_by_stable' %}selected{% endif %}>Shadowed By Stable</option>
+                        </select>
+                    </label>
+                    <label>Limit: <input type="number" name="limit" value="{{ filters["limit"] or 50 }}" min="1" max="200"></label>
+                </div>
+                <div class="filter-actions">
+                    <button type="submit">Apply Filters</button>
+                </div>
+            </form>
+        </section>

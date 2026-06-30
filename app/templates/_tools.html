@@ -1,0 +1,354 @@
+<section class="debug-tools">
+    <h2>Store Pipeline</h2>
+    <form method="POST" action="/ui/store">
+        <div class="form-row">
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ store_form["chat_id"] }}" required></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ store_form["character_id"] }}" required></label>
+            <label>Debug: <input type="checkbox" name="debug" value="true" {% if store_form["debug"] %}checked{% endif %}></label>
+        </div>
+        <label>Messages:
+            <textarea name="messages" rows="5" placeholder="One message per line" required>{{ store_form["messages"] }}</textarea>
+        </label>
+        <button type="submit">Run Store</button>
+    </form>
+
+    {% if store_result %}
+    {% if store_summary %}
+    <div class="summary-grid">
+        <article class="summary-card">
+            <div class="summary-label">Stored</div>
+            <div class="summary-value">{{ store_summary["stored"] }}</div>
+        </article>
+        <article class="summary-card">
+            <div class="summary-label">Updated</div>
+            <div class="summary-value">{{ store_summary["updated"] }}</div>
+        </article>
+        <article class="summary-card">
+            <div class="summary-label">Skipped</div>
+            <div class="summary-value">{{ store_summary["skipped"] }}</div>
+        </article>
+    </div>
+    {% endif %}
+
+    <div class="result-summary">
+        <strong>Store Result:</strong>
+        stored={{ store_result["stored"] }},
+        updated={{ store_result["updated"] }},
+        skipped={{ store_result["skipped"] }}
+    </div>
+
+    {% if store_result["items"] %}
+    <details class="result-details" open>
+        <summary>Stored/Updated Items</summary>
+        <ul class="debug-list">
+            {% for item in store_result["items"] %}
+            <li>
+                <strong>{{ item["id"][:8] }}...</strong>
+                {{ item["content"] }}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    {% if store_result["debug"] %}
+    {% if store_summary and store_summary["debug_breakdown"] %}
+    <details class="result-details" open>
+        <summary>Store Summary Breakdown</summary>
+        <div class="feature-summary">
+            <div><strong>Decisions:</strong>
+                {% for item in store_summary["debug_breakdown"]["decisions"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+            <div><strong>Branches:</strong>
+                {% for item in store_summary["debug_breakdown"]["branches"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+            <div><strong>Reasons:</strong>
+                {% for item in store_summary["debug_breakdown"]["reasons"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+    {% endif %}
+
+    <details class="result-details" open>
+        <summary>Store Diagnostics</summary>
+        <div class="diagnostics-grid">
+            {% for candidate in store_result["debug"]["candidates"] %}
+            <article class="diagnostic-card">
+                <div><strong>Decision:</strong> {{ candidate["decision"] }}</div>
+                <div><strong>Reason:</strong> {{ candidate["reason"] }}</div>
+                <div><strong>Branch:</strong> {{ candidate["branch"] }}</div>
+                {% if candidate["matched_existing_id"] %}
+                <div><strong>Matched ID:</strong> <code>{{ candidate["matched_existing_id"] }}</code></div>
+                {% endif %}
+                {% if candidate["normalized_content"] %}
+                <div><strong>Normalized:</strong> <code>{{ candidate["normalized_content"] }}</code></div>
+                {% endif %}
+                <div><strong>Content:</strong> {{ candidate["content"] }}</div>
+            </article>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+    {% endif %}
+</section>
+
+<section class="debug-tools">
+    <h2>Retrieve Pipeline</h2>
+    <form method="POST" action="/ui/retrieve">
+        <div class="form-row">
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ retrieve_form["chat_id"] }}" required></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ retrieve_form["character_id"] }}" required></label>
+            <label>Limit: <input type="number" name="limit" value="{{ retrieve_form["limit"] }}" min="1" max="20"></label>
+            <label>Include Archived: <input type="checkbox" name="include_archived" value="true" {% if retrieve_form["include_archived"] %}checked{% endif %}></label>
+            <label>Debug: <input type="checkbox" name="debug" value="true" {% if retrieve_form["debug"] %}checked{% endif %}></label>
+        </div>
+        <label>User Input:
+            <textarea name="user_input" rows="3" required>{{ retrieve_form["user_input"] }}</textarea>
+        </label>
+        <label>Recent Messages:
+            <textarea name="recent_messages" rows="4" placeholder="One message per line">{{ retrieve_form["recent_messages"] }}</textarea>
+        </label>
+        <button type="submit">Run Retrieve</button>
+    </form>
+
+    {% if retrieve_result %}
+    {% if retrieve_summary %}
+    <div class="summary-grid">
+        <article class="summary-card">
+            <div class="summary-label">Total Candidates</div>
+            <div class="summary-value">{{ retrieve_summary["total_candidates"] }}</div>
+        </article>
+        <article class="summary-card">
+            <div class="summary-label">Selected</div>
+            <div class="summary-value">{{ retrieve_summary["selected_count"] }}</div>
+        </article>
+        {% if retrieve_summary["top_score"] is not none %}
+        <article class="summary-card">
+            <div class="summary-label">Top Score</div>
+            <div class="summary-value">{{ "%.3f"|format(retrieve_summary["top_score"]) }}</div>
+        </article>
+        {% endif %}
+        {% if retrieve_summary["avg_selected_score"] is not none %}
+        <article class="summary-card">
+            <div class="summary-label">Avg Selected Score</div>
+            <div class="summary-value">{{ "%.3f"|format(retrieve_summary["avg_selected_score"]) }}</div>
+        </article>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="result-summary">
+        <strong>Retrieve Result:</strong>
+        items={{ retrieve_result["items"]|length }},
+        total_candidates={{ retrieve_result["total_candidates"] }}
+    </div>
+
+    {% if retrieve_result["memory_block"] %}
+    <details class="result-details" open>
+        <summary>Formatted Memory Block</summary>
+        <pre class="memory-block">{{ retrieve_result["memory_block"] }}</pre>
+    </details>
+    {% endif %}
+
+    {% if retrieve_result["items"] %}
+    <details class="result-details" open>
+        <summary>Selected Items</summary>
+        <ul class="debug-list">
+            {% for item in retrieve_result["items"] %}
+            <li>
+                <strong>{{ item["id"][:8] }}...</strong>
+                {{ item["content"] }}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    {% if retrieve_result["debug"] %}
+    {% if retrieve_summary and retrieve_summary["debug_breakdown"] %}
+    <details class="result-details" open>
+        <summary>Retrieve Summary Breakdown</summary>
+        <div class="feature-summary">
+            <div><strong>Below Threshold:</strong> {{ retrieve_summary["debug_breakdown"]["below_threshold"] }}</div>
+            <div><strong>Filtered by Diversity:</strong> {{ retrieve_summary["debug_breakdown"]["filtered_by_diversity"] }}</div>
+            <div><strong>Selected Top:</strong> {{ retrieve_summary["debug_breakdown"]["selected_top"] }}</div>
+            <div><strong>Reasons:</strong>
+                {% for item in retrieve_summary["debug_breakdown"]["reasons"] %}
+                <span class="metric-chip">{{ item["label"] }}={{ item["count"] }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </details>
+    {% endif %}
+
+    <details class="result-details" open>
+        <summary>Retrieve Diagnostics</summary>
+        <div class="feature-summary">
+            <div><strong>Query Keywords:</strong> {{ retrieve_result["debug"]["query_keywords"]|join(", ") }}</div>
+            <div><strong>Query Entities:</strong> {{ retrieve_result["debug"]["query_entities"]|join(", ") }}</div>
+            <div><strong>Recent Keywords:</strong> {{ retrieve_result["debug"]["recent_keywords"]|join(", ") }}</div>
+            <div><strong>Recent Entities:</strong> {{ retrieve_result["debug"]["recent_entities"]|join(", ") }}</div>
+            <div><strong>All Input Keywords:</strong> {{ retrieve_result["debug"]["input_keywords"]|join(", ") }}</div>
+            <div><strong>All Input Entities:</strong> {{ retrieve_result["debug"]["input_entities"]|join(", ") }}</div>
+        </div>
+        <div class="diagnostics-grid">
+            {% for candidate in retrieve_result["debug"]["candidates"] %}
+            <article class="diagnostic-card">
+                <div><strong>Memory ID:</strong> <code>{{ candidate["memory_id"] }}</code></div>
+                <div><strong>Score:</strong> {{ "%.3f"|format(candidate["score"]) }}</div>
+                <div><strong>Keyword Overlap:</strong> {{ "%.3f"|format(candidate["keyword_overlap"]) }}</div>
+                <div><strong>Entity Overlap:</strong> {{ "%.3f"|format(candidate["entity_overlap"]) }}</div>
+                <div><strong>Recency:</strong> {{ "%.3f"|format(candidate["recency"]) }}</div>
+                <div><strong>Passed Threshold:</strong> {{ candidate["passed_threshold"] }}</div>
+                <div><strong>Filtered by Diversity:</strong> {{ candidate["filtered_by_diversity"] }}</div>
+                <div><strong>Selected:</strong> {{ candidate["selected"] }}</div>
+                {% if candidate["rank"] %}
+                <div><strong>Rank:</strong> {{ candidate["rank"] }}</div>
+                {% endif %}
+                <div><strong>Reason:</strong> {{ candidate["reason"] }}</div>
+            </article>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+    {% endif %}
+</section>
+
+<section class="create-form">
+    <h2>Create Memory</h2>
+    <form method="POST" action="/ui/create">
+        <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+        <div class="form-row">
+            <label>Chat ID: <input type="text" name="chat_id" value="{{ filters["chat_id"] or '' }}" required></label>
+            <label>Character ID: <input type="text" name="character_id" value="{{ filters["character_id"] or '' }}" required></label>
+        </div>
+        <div class="form-row">
+            <label>Type:
+                <select name="type" required>
+                    <option value="profile">Profile</option>
+                    <option value="relationship">Relationship</option>
+                    <option value="event">Event</option>
+                    <option value="summary">Summary</option>
+                </select>
+            </label>
+            <label>Source:
+                <select name="source">
+                    <option value="auto">Auto</option>
+                    <option value="manual" selected>Manual</option>
+                </select>
+            </label>
+            <label>Layer:
+                <select name="layer" required>
+                    <option value="episodic">Episodic</option>
+                    <option value="stable">Stable</option>
+                </select>
+            </label>
+        </div>
+        <div class="form-row">
+            <label>Importance: <input type="number" name="importance" value="0.5" min="0" max="1" step="0.1"></label>
+            <label>Pinned: <input type="checkbox" name="pinned" value="true"></label>
+            <label>Archived: <input type="checkbox" name="archived" value="true"></label>
+        </div>
+        <label>Content:
+            <textarea name="content" rows="3" required></textarea>
+        </label>
+        <div class="form-row">
+            <label>Entities (comma-separated): <input type="text" name="entities" placeholder="Elena, Rome"></label>
+            <label>Keywords (comma-separated): <input type="text" name="keywords" placeholder="love, programming"></label>
+        </div>
+        <button type="submit">Create</button>
+    </form>
+</section>
+
+<section class="create-form">
+    <h2>Consolidation</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Combine memories into higher-level summaries: Episodic → Arc → Chapter → Book.</p>
+    <form id="consolidate-form">
+        <input type="hidden" id="consolidate-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+        <input type="hidden" id="consolidate-char-id" value="{{ filters['selected_character_id'] or '' }}">
+        <div class="form-row">
+            <label>Tier:
+                <select id="consolidate-tier">
+                    <option value="arc">Arc (from episodic memories)</option>
+                    <option value="chapter">Chapter (from arcs)</option>
+                    <option value="book">Book (from chapters)</option>
+                </select>
+            </label>
+            <label>Model: <select id="consolidate-model" style="max-width:200px;"><option value="">default</option></select></label>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+            <button type="submit">Consolidate</button>
+            <span id="consolidate-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+    <div id="consolidate-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid #2d5a2d;border-radius:8px;background:#1a3a1a;">
+        <strong id="consolidate-preview-title"></strong>
+        <p id="consolidate-preview-content" style="margin-top:4px;"></p>
+    </div>
+</section>
+
+<section class="create-form">
+    <h2>Clip — Quick Save Fact</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Pin an important fact, promise, or detail. Saved as a pinned stable memory.</p>
+    <form id="clip-form">
+        <input type="hidden" id="clip-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+        <input type="hidden" id="clip-char-id" value="{{ filters['selected_character_id'] or '' }}">
+        <textarea id="clip-text" rows="3" style="width:100%;box-sizing:border-box;" placeholder="Elena promised to meet at the tavern at midnight..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+            <button type="submit">Save Clip</button>
+            <span id="clip-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+</section>
+
+<section class="create-form">
+    <h2>Scene Extraction (LLM)</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Paste a scene (character messages only) and let LLM extract a structured memory with title, summary, and keywords.</p>
+    <form id="scene-extract-form">
+        <input type="hidden" id="scene-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+        <input type="hidden" id="scene-char-id" value="{{ filters['selected_character_id'] or '' }}">
+        <textarea id="scene-text" rows="8" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.85em;" placeholder="[assistant]: Изабель смотрит на тебя...&#10;[assistant]: Она встаёт и подходит к окну...&#10;[assistant]: — Ты говоришь «надеяться что урожай будет хороший»..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <button type="submit">Extract Scene Memory</button>
+            <label style="font-size:0.85em;">Model: <select id="scene-model" style="max-width:200px;"><option value="">default</option></select></label>
+            <span id="scene-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+    <div id="scene-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid #2d5a2d;border-radius:8px;background:#1a3a1a;">
+        <strong id="scene-preview-title"></strong>
+        <p id="scene-preview-content" style="margin-top:4px;"></p>
+        <p id="scene-preview-meta" style="margin-top:4px;font-size:0.85em;opacity:0.7;"></p>
+    </div>
+</section>
+
+<section class="create-form">
+    <h2>Import / Export</h2>
+    <div class="form-row">
+        <div>
+            <h3>Backfill from .jsonl</h3>
+            <form method="POST" action="/ui/backfill-file" enctype="multipart/form-data">
+                <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] or 'backfill' }}">
+                <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or 'backfill' }}">
+                <div style="margin:8px 0;">
+                    <input type="file" name="file" accept=".jsonl,.json" required>
+                </div>
+                <button type="submit">Upload & Backfill</button>
+            </form>
+            <p style="font-size:0.85em;opacity:0.7;margin-top:4px;">Upload a SillyTavern .jsonl chat file. Messages are extracted and stored as memories.</p>
+        </div>
+        <div>
+            <h3>Export Memories</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <a href="/ui/export?chat_id={{ filters['selected_chat_id'] or '' }}&character_id={{ filters['selected_character_id'] or '' }}" class="button" download>Export Current Scope</a>
+                <a href="/ui/export" class="button secondary" download>Export All</a>
+            </div>
+            <p style="font-size:0.85em;opacity:0.7;margin-top:4px;">Download memories as .jsonl file.</p>
+        </div>
+    </div>
+</section>
