@@ -246,6 +246,12 @@ def _compare_scored_entries(left: dict[str, object], right: dict[str, object]) -
     right_memory = right["memory"]
     if left_memory.updated_at != right_memory.updated_at:  # type: ignore[union-attr]
         return -1 if left_memory.updated_at > right_memory.updated_at else 1  # type: ignore[union-attr]
+    # Recency and layer durability didn't decide it — fall back to the exact
+    # raw score (even a sub-epsilon gap is real signal, e.g. an
+    # episodic_low_value_penalty vs. a specificity bonus) before resorting to
+    # an arbitrary id sort.
+    if left_score != right_score:
+        return -1 if left_score > right_score else 1
     if left_memory.id != right_memory.id:  # type: ignore[union-attr]
         return -1 if left_memory.id > right_memory.id else 1  # type: ignore[union-attr]
     return 0
