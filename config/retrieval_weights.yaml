@@ -1,0 +1,54 @@
+# Retrieval scoring weights for app/services/retrieve_service.py.
+#
+# Bump `version` whenever values here change so it's traceable in eval runs
+# and logs. Tune via scripts/run_retrieval_eval.py, not by hand-guessing —
+# these are tightly coupled to the eval cases in app/evals/retrieval_eval_cases.py.
+
+version: 1
+
+weights:
+  keyword_weight: 0.50
+  entity_weight: 0.25
+  importance_weight: 0.12
+  recency_weight: 0.03
+  pinned_bonus: 0.05
+  both_match_bonus: 0.10
+  min_retrieval_score: 0.15
+  near_duplicate_token_overlap: 0.80
+  close_score_layer_tie_epsilon: 0.05
+  semantic_boost: 0.15
+  relationship_cue_weight: 0.14
+  episodic_specificity_bonus: 0.06
+  episodic_low_value_penalty: 0.12
+  combined_overlap_keyword_weight: 0.65
+  combined_overlap_entity_weight: 0.35
+  support_strong_threshold: 0.60
+  support_medium_threshold: 0.30
+  support_multiplier_strong: 1.0
+  support_multiplier_medium: 0.6
+  support_multiplier_weak: 0.25
+
+# Narrow support-only policy for Russian relationship/general-state phrasing:
+# - gated by `relationship_query_like`
+# - uses only the bounded cue groups from text_features
+# - cannot replace the main lexical/entity ranking signal
+# - must stay regression/eval-backed rather than becoming a general retrieval crutch
+relationship_support_bonus_by_layer:
+  summary: 0.03
+  stable: 0.03
+  episodic: 0.015
+
+# Narrow support-only policy for Russian local-scene episodic precision:
+# - gated by `local_scene_query_like`
+# - only affects episodic candidates
+# - helps concrete scene outcomes beat low-value query echoes
+# - must not become a generic event heuristic or override a clearly stronger raw match
+layer_selection_caps:
+  summary: 1
+  stable: 2
+  episodic: 2
+
+layer_tie_priority:
+  summary: 2
+  stable: 1
+  episodic: 0

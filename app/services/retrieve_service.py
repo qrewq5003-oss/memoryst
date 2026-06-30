@@ -12,54 +12,32 @@ from app.schemas import (
 )
 from app.services.formatter import format_memory_block
 from app.services import text_features, vector_store
+from app.services.retrieval_config import (
+    BOTH_MATCH_BONUS,
+    CLOSE_SCORE_LAYER_TIE_EPSILON,
+    COMBINED_OVERLAP_ENTITY_WEIGHT,
+    COMBINED_OVERLAP_KEYWORD_WEIGHT,
+    ENTITY_WEIGHT,
+    EPISODIC_LOW_VALUE_PENALTY,
+    EPISODIC_SPECIFICITY_BONUS,
+    IMPORTANCE_WEIGHT,
+    KEYWORD_WEIGHT,
+    LAYER_SELECTION_CAPS,
+    LAYER_TIE_PRIORITY,
+    MIN_RETRIEVAL_SCORE,
+    NEAR_DUPLICATE_TOKEN_OVERLAP,
+    PINNED_BONUS,
+    RECENCY_WEIGHT,
+    RELATIONSHIP_CUE_WEIGHT,
+    RELATIONSHIP_SUPPORT_BONUS_BY_LAYER,
+    SEMANTIC_BOOST,
+    SUPPORT_MEDIUM_THRESHOLD,
+    SUPPORT_MULTIPLIER_MEDIUM,
+    SUPPORT_MULTIPLIER_STRONG,
+    SUPPORT_MULTIPLIER_WEAK,
+    SUPPORT_STRONG_THRESHOLD,
+)
 from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
-
-KEYWORD_WEIGHT = 0.50
-ENTITY_WEIGHT = 0.25
-IMPORTANCE_WEIGHT = 0.12
-RECENCY_WEIGHT = 0.03
-PINNED_BONUS = 0.05
-BOTH_MATCH_BONUS = 0.10
-MIN_RETRIEVAL_SCORE = 0.15
-NEAR_DUPLICATE_TOKEN_OVERLAP = 0.80
-CLOSE_SCORE_LAYER_TIE_EPSILON = 0.05
-SEMANTIC_BOOST = 0.15
-RELATIONSHIP_CUE_WEIGHT = 0.14
-RELATIONSHIP_SUPPORT_BONUS_BY_LAYER = {
-    "summary": 0.03,
-    "stable": 0.03,
-    "episodic": 0.015,
-}
-EPISODIC_SPECIFICITY_BONUS = 0.06
-EPISODIC_LOW_VALUE_PENALTY = 0.12
-COMBINED_OVERLAP_KEYWORD_WEIGHT = 0.65
-COMBINED_OVERLAP_ENTITY_WEIGHT = 0.35
-SUPPORT_STRONG_THRESHOLD = 0.60
-SUPPORT_MEDIUM_THRESHOLD = 0.30
-SUPPORT_MULTIPLIER_STRONG = 1.0
-SUPPORT_MULTIPLIER_MEDIUM = 0.6
-SUPPORT_MULTIPLIER_WEAK = 0.25
-# Narrow support-only policy for Russian relationship/general-state phrasing:
-# - gated by `relationship_query_like`
-# - uses only the bounded cue groups from text_features
-# - cannot replace the main lexical/entity ranking signal
-# - must stay regression/eval-backed rather than becoming a general retrieval crutch
-#
-# Narrow support-only policy for Russian local-scene episodic precision:
-# - gated by `local_scene_query_like`
-# - only affects episodic candidates
-# - helps concrete scene outcomes beat low-value query echoes
-# - must not become a generic event heuristic or override a clearly stronger raw match
-LAYER_SELECTION_CAPS = {
-    "summary": 1,
-    "stable": 2,
-    "episodic": 2,
-}
-LAYER_TIE_PRIORITY = {
-    "summary": 2,
-    "stable": 1,
-    "episodic": 0,
-}
 
 
 def _compute_score_details(
