@@ -571,20 +571,20 @@ def ui_delete_chat(
 
 
 @router.post("/ui/backfill-file")
-async def ui_backfill_file(
+def ui_backfill_file(
     request: Request,
     chat_id: str = Form(...),
     character_id: str = Form(...),
     file: UploadFile = File(...),
 ) -> RedirectResponse:
     """Backfill memories from an uploaded .jsonl file."""
-    from app.services.extractor import extract_for_backfill
+    from app.services.extractor import extract_memories
     from app.repositories.memory_repo import find_memory_by_normalized_content
     from app.services.text_utils import normalize_content
     from app.services.store_service import passes_memory_quality_gate
     from app.services import vector_store as vs
 
-    content = (await file.read()).decode("utf-8")
+    content = file.file.read().decode("utf-8")
     messages = []
     detected_chat_id = None
     detected_char_id = None
@@ -641,7 +641,7 @@ async def ui_backfill_file(
     duplicates = 0
 
     if messages:
-        candidates = extract_for_backfill(chat_id=chat_id, character_id=character_id, messages=messages)
+        candidates = extract_memories(chat_id=chat_id, character_id=character_id, messages=messages, mode="backfill")
         for candidate in candidates:
             if not passes_memory_quality_gate(candidate):
                 skipped += 1

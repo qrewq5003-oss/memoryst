@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import config
+from app.config import config, validate_security
 from app.db import init_schema
 from app.routes.memory_api import router as memory_router
 from app.routes.ui import router as ui_router
@@ -14,7 +14,8 @@ from app.routes.ui import router as ui_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Initialize database schema on startup."""
+    """Validate security config and initialize database schema on startup."""
+    validate_security()
     init_schema()
     yield
 

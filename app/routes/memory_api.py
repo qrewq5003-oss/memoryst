@@ -305,7 +305,7 @@ class BackfillResponse(BaseModel):
 @router.post("/backfill", response_model=BackfillResponse)
 def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
     """Backfill memories from existing chat history."""
-    from app.services.extractor import extract_for_backfill
+    from app.services.extractor import extract_memories
     from app.repositories.memory_repo import (
         create_memory,
         find_memory_by_normalized_content,
@@ -314,10 +314,11 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
     from app.services.store_service import passes_memory_quality_gate
     from app.services import vector_store
 
-    candidates = extract_for_backfill(
+    candidates = extract_memories(
         chat_id=request.chat_id,
         character_id=request.character_id,
         messages=request.messages,
+        mode="backfill",
     )
 
     stored = 0

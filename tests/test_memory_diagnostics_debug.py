@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from app.config import config
 from app.db import init_schema
+from app.services import chat_buffer_service
 from app.repositories.memory_repo import create_memory
 from app.schemas import (
     CreateMemoryRequest,
@@ -76,6 +77,8 @@ class MemoryDiagnosticsDebugTests(unittest.TestCase):
         config.DATABASE_PATH = str(Path(self.temp_dir.name) / "test.db")
         self.addCleanup(self._restore_db_path)
         init_schema()
+        chat_buffer_service.reset_all_buffers()
+        self.addCleanup(chat_buffer_service.reset_all_buffers)
 
     def _restore_db_path(self) -> None:
         config.DATABASE_PATH = self.original_db_path
@@ -87,7 +90,7 @@ class MemoryDiagnosticsDebugTests(unittest.TestCase):
             messages=[MessageInput(role="user", text="irrelevant")],
         )
         with patch(
-            "app.services.store_service.extract_memories",
+            "app.services.store_service.extract_scene_memories",
             return_value=[
                 _store_candidate(
                     "Alice planned the Rome museum trip for Friday.",
@@ -117,7 +120,7 @@ class MemoryDiagnosticsDebugTests(unittest.TestCase):
             debug=True,
         )
         with patch(
-            "app.services.store_service.extract_memories",
+            "app.services.store_service.extract_scene_memories",
             return_value=[
                 _store_candidate("Okay"),
                 _store_candidate(" Alice likes tea! ", keywords=["alice", "tea"], entities=["Alice"]),

@@ -3,7 +3,7 @@ import unittest
 from fastapi import HTTPException
 
 from app.auth import require_api_key
-from app.config import config
+from app.config import config, validate_security
 from app.main import app
 from app.routes.memory_api import router as memory_router
 
@@ -57,6 +57,36 @@ class MemoryApiKeyAuthTests(unittest.TestCase):
             ],
             [],
         )
+
+
+class ValidateSecurityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.original_api_key = config.API_KEY
+        self.original_app_host = config.APP_HOST
+        self.addCleanup(self._restore_config)
+
+    def _restore_config(self) -> None:
+        config.API_KEY = self.original_api_key
+        config.APP_HOST = self.original_app_host
+
+    def test_refuses_public_bind_with_no_api_key(self) -> None:
+        config.APP_HOST = "0.0.0.0"
+        config.API_KEY = ""
+
+        with self.assertRaises(RuntimeError):
+            validate_security()
+
+    def test_allows_public_bind_with_api_key_set(self) -> None:
+        config.APP_HOST = "0.0.0.0"
+        config.API_KEY = "secret-key"
+
+        self.assertIsNone(validate_security())
+
+    def test_allows_loopback_bind_with_no_api_key(self) -> None:
+        config.APP_HOST = "127.0.0.1"
+        config.API_KEY = ""
+
+        self.assertIsNone(validate_security())
 
 
 if __name__ == "__main__":

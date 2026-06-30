@@ -14,7 +14,8 @@ from app.schemas import (
     StoreMemoryResponse,
     UpdateMemoryRequest,
 )
-from app.services.extractor import extract_memories
+from app.services import chat_buffer_service
+from app.services.scene_extractor import extract_scene_memories
 from app.services.deduper import (
     can_auto_update,
     check_soft_match,
@@ -96,12 +97,13 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     Store memories from chat messages.
 
     Process:
-    1. Extract memory candidates using rule-based extractor
-    2. Check for exact match by normalized_content
-    3. Check for soft match by entity/keyword overlap
-    4. Update existing auto-records on match
-    5. Create new records for non-matches
-    6. Skip duplicates (manual/pinned/archived)
+    1. Cool messages into the raw-history buffer to get stable message ids (Stage 2)
+    2. Extract memory candidates from the whole scene via LLM, regex pre-filtered (Stage 3)
+    3. Check for exact match by normalized_content
+    4. Check for soft match by entity/keyword overlap
+    5. Update existing auto-records on match
+    6. Create new records for non-matches
+    7. Skip duplicates (manual/pinned/archived)
 
     Auto-update rules:
     - Only update records with source = "auto"
@@ -111,11 +113,18 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
 
     Returns count of stored, updated, skipped items.
     """
-    # Extract candidates
-    candidates = extract_memories(
+    # Assign stable ids to incoming messages (OOC/system filtered here, see
+    # chat_buffer_service) before extraction, so extracted facts can carry
+    # source_message_ids back to chat_messages.
+    buffered_messages = chat_buffer_service.add_messages(
+        request.chat_id, request.character_id, request.messages
+    )
+
+    # Extract candidates from the whole scene at once
+    candidates = extract_scene_memories(
         chat_id=request.chat_id,
         character_id=request.character_id,
-        messages=request.messages,
+        messages=buffered_messages,
     )
 
     stored_items: list[MemoryItem] = []

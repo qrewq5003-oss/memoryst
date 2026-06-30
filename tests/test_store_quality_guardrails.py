@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from app.config import config
 from app.db import init_schema
+from app.services import chat_buffer_service
 from app.repositories.memory_repo import create_memory, list_memories
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MessageInput, StoreMemoryRequest
 from app.services.store_service import passes_memory_quality_gate, store_memories
@@ -41,6 +42,8 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         config.DATABASE_PATH = str(Path(self.temp_dir.name) / "test.db")
         self.addCleanup(self._restore_db_path)
         init_schema()
+        chat_buffer_service.reset_all_buffers()
+        self.addCleanup(chat_buffer_service.reset_all_buffers)
 
     def _restore_db_path(self) -> None:
         config.DATABASE_PATH = self.original_db_path
@@ -51,7 +54,7 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
             character_id="char-1",
             messages=[MessageInput(role="user", text="irrelevant")],
         )
-        with patch("app.services.store_service.extract_memories", return_value=candidates):
+        with patch("app.services.store_service.extract_scene_memories", return_value=candidates):
             return store_memories(request)
 
     def test_low_value_candidate_is_skipped(self) -> None:

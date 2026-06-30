@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.config import config
 from app.db import init_schema
+from app.services import chat_buffer_service
 from app.repositories.memory_repo import list_memories
 from app.schemas import MessageInput, StoreMemoryRequest
 from app.services.store_service import store_memories
@@ -17,6 +18,8 @@ class DurableRelationshipFormationTests(unittest.TestCase):
         config.DATABASE_PATH = str(Path(self.temp_dir.name) / "test.db")
         self.addCleanup(self._restore_db_path)
         init_schema()
+        chat_buffer_service.reset_all_buffers()
+        self.addCleanup(chat_buffer_service.reset_all_buffers)
 
     def _restore_db_path(self) -> None:
         config.DATABASE_PATH = self.original_db_path

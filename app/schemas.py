@@ -15,6 +15,18 @@ class MessageInput(BaseModel):
     text: str = Field(..., min_length=1, max_length=10000)
 
 
+class ChatMessageItem(BaseModel):
+    """A single raw chat message, either still in the hot buffer or cooled into chat_messages."""
+
+    id: str
+    chat_id: str
+    character_id: str
+    role: Literal["user", "assistant"]
+    text: str
+    created_at: str
+    sequence_index: int
+
+
 class ConsolidationHistoryEntry(BaseModel):
     action: str
     timestamp: str
@@ -30,6 +42,7 @@ class MemoryMetadata(BaseModel):
     summary_generated_at: str | None = None
     summary_source_memory_ids: list[str] = Field(default_factory=list)
     summarized_memory_count: int | None = None
+    source_message_ids: list[str] = Field(default_factory=list)
     consolidation_note: str | None = None
     related_memory_id: str | None = None
     review_status: str | None = None
