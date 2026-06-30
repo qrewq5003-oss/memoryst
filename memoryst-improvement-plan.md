@@ -75,6 +75,15 @@
   HTTP-вызов к Google embeddings API выполняется прямо в event loop и блокирует весь сервер
   на время обработки файла (потенциально много сообщений подряд). Это не гипотетический
   риск, а конкретный горячий путь — приоритизировать фикс здесь.
+- **[РЕАЛИЗОВАНО 2026-07-01]** Выбран узкий фикс вместо `httpx.AsyncClient`: `ui_backfill_file`
+  переведён из `async def` в обычный `def` (чтение `UploadFile` через `file.file.read()`
+  вместо `await file.read()`). Теперь это единственный async-роут в кодовой базе исчез, и
+  FastAPI уносит `ui_backfill_file` в тот же threadpool, что и все остальные роуты — синхронный
+  `httpx.post` в `vector_store.py` больше не может коснуться event loop. Полный перевод
+  `_call_embed`/`embed_text`/`embed_batch`/`add_memory`/`query_similar`/`delete_memory` на
+  `httpx.AsyncClient` потребовал бы async-конверсии всех вызывающих путей в
+  `store_service.py`/`retrieve_service.py` и во всех роутах — несоразмерно большой риск ради
+  того же результата, раз все остальные роуты и так корректно изолированы threadpool'ом.
 
 ---
 
