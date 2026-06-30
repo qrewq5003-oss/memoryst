@@ -210,6 +210,22 @@ class RetrieveMemoryRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=20)
     include_archived: bool = False
     debug: bool = False
+    # Manual raw-history trigger (Stage 5): caller already has a consolidated
+    # memory's metadata.source_message_ids (e.g. from a previous retrieve
+    # response) and explicitly wants the original raw messages behind it.
+    manual_source_message_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
+class RawFallbackResult(BaseModel):
+    """Raw chat_messages surfaced as a fallback/supplement to consolidated memory.
+
+    Kept separate from `items` so callers never confuse raw, unconsolidated
+    history with vetted memory.
+    """
+
+    trigger: Literal["automatic", "manual"]
+    query: str | None = None
+    messages: list[ChatMessageItem] = Field(default_factory=list)
 
 
 class RetrieveMemoryResponse(BaseModel):
@@ -217,3 +233,4 @@ class RetrieveMemoryResponse(BaseModel):
     memory_block: str
     total_candidates: int
     debug: RetrieveDebugPayload | None = None
+    raw_fallback: list[RawFallbackResult] = Field(default_factory=list)

@@ -90,7 +90,10 @@ def retrieve_memory_endpoint(request: RetrieveMemoryRequest) -> RetrieveMemoryRe
     Retrieve relevant memories for the current context.
 
     Scores memories by keyword/entity overlap, importance, and recency.
-    Returns top-k results with formatted memory block.
+    Returns top-k results with formatted memory block. When the best
+    consolidated score is low, or when `manual_source_message_ids` is set,
+    the response also carries `raw_fallback` results sourced directly from
+    chat_messages (kept separate from `items`).
     """
     return retrieve_memories(request)
 

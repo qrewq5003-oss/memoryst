@@ -27,6 +27,11 @@ weights:
   support_multiplier_strong: 1.0
   support_multiplier_medium: 0.6
   support_multiplier_weak: 0.25
+  # Stage 5: automatic raw-history fallback fires when the best consolidated
+  # score in the response is below this. raw_fallback_max_results caps the
+  # FTS5 hits returned per fallback (both automatic and manual).
+  raw_fallback_confidence_threshold: 0.35
+  raw_fallback_max_results: 5
 
 # Narrow support-only policy for Russian relationship/general-state phrasing:
 # - gated by `relationship_query_like`

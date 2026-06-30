@@ -32,6 +32,8 @@ REQUIRED_WEIGHT_KEYS = [
     "support_multiplier_strong",
     "support_multiplier_medium",
     "support_multiplier_weak",
+    "raw_fallback_confidence_threshold",
+    "raw_fallback_max_results",
 ]
 
 
@@ -79,6 +81,8 @@ SUPPORT_MEDIUM_THRESHOLD: float = _weights["support_medium_threshold"]
 SUPPORT_MULTIPLIER_STRONG: float = _weights["support_multiplier_strong"]
 SUPPORT_MULTIPLIER_MEDIUM: float = _weights["support_multiplier_medium"]
 SUPPORT_MULTIPLIER_WEAK: float = _weights["support_multiplier_weak"]
+RAW_FALLBACK_CONFIDENCE_THRESHOLD: float = _weights["raw_fallback_confidence_threshold"]
+RAW_FALLBACK_MAX_RESULTS: int = int(_weights["raw_fallback_max_results"])
 
 RELATIONSHIP_SUPPORT_BONUS_BY_LAYER: dict[str, float] = _raw["relationship_support_bonus_by_layer"]
 LAYER_SELECTION_CAPS: dict[str, int] = _raw["layer_selection_caps"]

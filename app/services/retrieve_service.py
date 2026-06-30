@@ -1,10 +1,13 @@
 import re
+import sqlite3
 from datetime import datetime, timezone
 from functools import cmp_to_key
 
+from app.repositories.chat_message_repo import get_chat_message_by_id, search_chat_messages_fts
 from app.repositories.memory_repo import increment_access_count, list_retrieval_candidates
 from app.schemas import (
     MemoryItem,
+    RawFallbackResult,
     RetrieveCandidateDebug,
     RetrieveDebugPayload,
     RetrieveMemoryRequest,
@@ -27,6 +30,8 @@ from app.services.retrieval_config import (
     MIN_RETRIEVAL_SCORE,
     NEAR_DUPLICATE_TOKEN_OVERLAP,
     PINNED_BONUS,
+    RAW_FALLBACK_CONFIDENCE_THRESHOLD,
+    RAW_FALLBACK_MAX_RESULTS,
     RECENCY_WEIGHT,
     RELATIONSHIP_CUE_WEIGHT,
     RELATIONSHIP_SUPPORT_BONUS_BY_LAYER,
@@ -294,6 +299,74 @@ def _try_select_entry(
     return True
 
 
+def _build_fts_match_query(keywords: list[str]) -> str:
+    """Build a recall-oriented FTS5 MATCH query (OR of quoted prefix terms) from keywords.
+
+    Quoting each term keeps it a literal token even if a keyword happens to
+    collide with FTS5 syntax (e.g. "near", "or"). The trailing `*` does a
+    prefix match, since our keywords are stemmed (e.g. "дракон") but
+    chat_messages text is not, so an exact match would miss "драконов".
+    """
+    unique_keywords = list(dict.fromkeys(keyword for keyword in keywords if keyword))
+    return " OR ".join(f'"{keyword}"*' for keyword in unique_keywords)
+
+
+def _collect_raw_fallback(
+    request: RetrieveMemoryRequest,
+    *,
+    input_keywords: list[str],
+    auto_fallback_triggered: bool,
+) -> list[RawFallbackResult]:
+    """
+    Stage 5 raw-history fallback, surfaced separately from consolidated memory.
+
+    - Automatic trigger: best consolidated score is below
+      RAW_FALLBACK_CONFIDENCE_THRESHOLD, so FTS5-search chat_messages for the
+      query keywords to give the caller something concrete to fall back on.
+    - Manual trigger: caller already knows specific raw message ids (typically
+      a memory's metadata.source_message_ids from an earlier response) and
+      wants their original text.
+
+    DB errors (e.g. chat_messages not migrated yet on this deployment) are
+    swallowed - raw history is a supplementary fallback, not load-bearing, and
+    should never take down consolidated-memory retrieval.
+    """
+    results: list[RawFallbackResult] = []
+
+    if auto_fallback_triggered:
+        fts_query = _build_fts_match_query(input_keywords)
+        if fts_query:
+            try:
+                raw_messages = search_chat_messages_fts(
+                    request.chat_id,
+                    request.character_id,
+                    fts_query,
+                    limit=RAW_FALLBACK_MAX_RESULTS,
+                )
+            except sqlite3.Error:
+                raw_messages = []
+            if raw_messages:
+                results.append(RawFallbackResult(trigger="automatic", query=fts_query, messages=raw_messages))
+
+    if request.manual_source_message_ids:
+        manual_messages = []
+        try:
+            for message_id in dict.fromkeys(request.manual_source_message_ids):
+                message = get_chat_message_by_id(message_id)
+                if (
+                    message is not None
+                    and message.chat_id == request.chat_id
+                    and message.character_id == request.character_id
+                ):
+                    manual_messages.append(message)
+        except sqlite3.Error:
+            manual_messages = []
+        if manual_messages:
+            results.append(RawFallbackResult(trigger="manual", messages=manual_messages))
+
+    return results
+
+
 def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     """
     Retrieve relevant memories for the current context.
@@ -498,10 +571,18 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     # Format memory block
     memory_block = format_memory_block(top_items)
 
+    best_score = max((score_by_id.get(item.id, 0.0) for item in top_items), default=0.0)
+    raw_fallback = _collect_raw_fallback(
+        request,
+        input_keywords=input_keywords,
+        auto_fallback_triggered=best_score < RAW_FALLBACK_CONFIDENCE_THRESHOLD,
+    )
+
     return RetrieveMemoryResponse(
         items=top_items,
         memory_block=memory_block,
         total_candidates=total_candidates,
+        raw_fallback=raw_fallback,
         debug=(
             RetrieveDebugPayload(
                 query_keywords=query_keywords,
