@@ -3,6 +3,12 @@ from dataclasses import dataclass
 from app.repositories.memory_repo import create_memory, list_memories, update_memory
 from app.schemas import CreateMemoryRequest, MemoryItem, MemoryMetadata, UpdateMemoryRequest
 from app.services import text_features
+from app.services.conflict_resolver import (
+    FactConflict,
+    apply_conflict_resolutions,
+    detect_fact_conflicts,
+    format_conflict_resolution_notes,
+)
 from app.services.llm_client import chat_completion, is_llm_enabled
 from app.services.summary_prompts import SYSTEM_PROMPT, build_user_prompt
 from app.services.text_utils import get_utc_now
@@ -102,9 +108,17 @@ def build_rolling_summary_text(memories: list[MemoryItem]) -> str:
     if not memories:
         return ""
 
-    recent_events = _pick_unique_segments(list(reversed(memories)), hints=(), max_count=SUMMARY_MAX_SEGMENTS)
-    relationship_updates = _pick_unique_segments(list(reversed(memories)), RELATIONSHIP_HINTS, max_count=1)
-    ongoing_goals = _pick_unique_segments(list(reversed(memories)), GOAL_HINTS + STATE_HINTS, max_count=2)
+    conflicts = detect_fact_conflicts(memories)
+    superseded_ids = {memory.id for conflict in conflicts for memory in conflict.superseded}
+    active_memories = (
+        [memory for memory in memories if getattr(memory, "id", None) not in superseded_ids]
+        if superseded_ids
+        else memories
+    )
+
+    recent_events = _pick_unique_segments(list(reversed(active_memories)), hints=(), max_count=SUMMARY_MAX_SEGMENTS)
+    relationship_updates = _pick_unique_segments(list(reversed(active_memories)), RELATIONSHIP_HINTS, max_count=1)
+    ongoing_goals = _pick_unique_segments(list(reversed(active_memories)), GOAL_HINTS + STATE_HINTS, max_count=2)
 
     lines = [f"Краткая сводка последних эпизодов ({len(memories)}):"]
     if recent_events:
@@ -113,11 +127,16 @@ def build_rolling_summary_text(memories: list[MemoryItem]) -> str:
         lines.append("Изменения в отношениях: " + "; ".join(relationship_updates) + ".")
     if ongoing_goals:
         lines.append("Текущие цели и состояние: " + "; ".join(ongoing_goals) + ".")
+    if conflicts:
+        updates = "; ".join(
+            f"{conflict.entity} — теперь {_truncate_sentence(conflict.current.content)}" for conflict in conflicts
+        )
+        lines.append("Обновлённые факты: " + updates + ".")
 
     return " ".join(lines)
 
 
-def build_llm_summary_text(memories: list[MemoryItem]) -> str | None:
+def build_llm_summary_text(memories: list[MemoryItem], conflict_notes: str = "") -> str | None:
     """
     Build a structured summary using an LLM call.
 
@@ -133,7 +152,7 @@ def build_llm_summary_text(memories: list[MemoryItem]) -> str | None:
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": build_user_prompt(memories_text)},
+        {"role": "user", "content": build_user_prompt(memories_text, conflict_notes)},
     ]
 
     try:
@@ -145,6 +164,10 @@ def build_llm_summary_text(memories: list[MemoryItem]) -> str | None:
 def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> MemoryMetadata:
     entity_candidates = text_features.extract_entities(summary_text)
     keyword_candidates = text_features.extract_keywords(summary_text)
+    # Aggregated transitively: a source memory that is itself a summary already carries
+    # the union of *its* sources here, so this union climbs the whole summary -> memories
+    # -> raw chat_messages chain without needing to walk it explicitly.
+    raw_message_ids: list[str] = []
 
     for memory in memories:
         for entity in memory.metadata.entities:
@@ -153,6 +176,9 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
         for keyword in memory.metadata.keywords:
             if keyword not in keyword_candidates:
                 keyword_candidates.append(keyword)
+        for message_id in memory.metadata.source_message_ids:
+            if message_id not in raw_message_ids:
+                raw_message_ids.append(message_id)
 
     return MemoryMetadata(
         entities=entity_candidates[:10],
@@ -162,6 +188,7 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
         summary_generated_at=get_utc_now(),
         summary_source_memory_ids=[memory.id for memory in memories],
         summarized_memory_count=len(memories),
+        source_message_ids=raw_message_ids,
     )
 
 
@@ -236,7 +263,14 @@ def generate_rolling_summary(
             refresh_threshold_used=min_new_memories_for_refresh,
         )
 
-    summary_text = build_llm_summary_text(selected_memories) or build_rolling_summary_text(selected_memories)
+    conflicts = detect_fact_conflicts(selected_memories)
+    if conflicts:
+        apply_conflict_resolutions(conflicts)
+    conflict_notes = format_conflict_resolution_notes(conflicts)
+
+    summary_text = build_llm_summary_text(selected_memories, conflict_notes) or build_rolling_summary_text(
+        selected_memories
+    )
     summary_metadata = _build_summary_metadata(selected_memories, summary_text)
 
     if existing_summary is None:
@@ -353,10 +387,20 @@ def generate_tiered_consolidation(
             new_input_count=0, refresh_threshold_used=tier_config["min_inputs"],
         )
 
+    conflicts = detect_fact_conflicts(source_memories)
+    if conflicts:
+        apply_conflict_resolutions(conflicts)
+    conflict_notes = format_conflict_resolution_notes(conflicts)
+
     # Build summary text
     if is_llm_enabled():
         memories_text = "\n".join(f"- [{m.type}] {m.content}" for m in source_memories)
         prompt = CONSOLIDATION_PROMPT.format(tier=tier, memories_text=memories_text)
+        if conflict_notes:
+            prompt += (
+                "\n\nResolved fact updates (authoritative - describe the change, "
+                "do not restate both versions as separate facts):\n\n" + conflict_notes
+            )
         messages = [
             {"role": "system", "content": "You are a memory consolidation system."},
             {"role": "user", "content": prompt},

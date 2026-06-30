@@ -18,6 +18,12 @@ Rules:
 - If a section has no relevant info, write "No significant changes.\""""
 
 
-def build_user_prompt(memories_text: str) -> str:
+def build_user_prompt(memories_text: str, conflict_notes: str = "") -> str:
     """Build the user message with memory excerpts for the LLM."""
-    return f"Recent episodic memories to analyze:\n\n{memories_text}"
+    prompt = f"Recent episodic memories to analyze:\n\n{memories_text}"
+    if conflict_notes:
+        prompt += (
+            "\n\nResolved fact updates (authoritative - describe the change, "
+            "do not restate both versions as separate facts):\n\n" + conflict_notes
+        )
+    return prompt
