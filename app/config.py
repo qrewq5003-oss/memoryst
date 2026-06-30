@@ -38,3 +38,20 @@ class Config:
 
 
 config = Config()
+
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def validate_security(cfg: Config = config) -> None:
+    """Fail fast rather than silently serving with auth disabled on a public bind.
+
+    APP_HOST defaults to 0.0.0.0, so an empty API_KEY (also the default) would
+    otherwise leave every memory read/write endpoint open to anyone who can
+    reach the host.
+    """
+    if cfg.APP_HOST not in LOOPBACK_HOSTS and not cfg.API_KEY:
+        raise RuntimeError(
+            f"Refusing to start: APP_HOST={cfg.APP_HOST!r} is not loopback and "
+            "API_KEY is empty. Set API_KEY in .env, or set APP_HOST=127.0.0.1 "
+            "for local-only use."
+        )
