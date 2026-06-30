@@ -123,6 +123,14 @@ def _chroma_add(memory_id: str, embedding: list[float], metadata: dict) -> None:
     _chroma_get_collection().upsert(ids=[memory_id], embeddings=[embedding], metadatas=[metadata])
 
 
+def _build_chroma_where(where: dict) -> dict:
+    """Chroma's `where` only accepts one operator at the top level — multiple
+    equality filters must be combined explicitly via `$and`."""
+    if len(where) <= 1:
+        return where
+    return {"$and": [{key: value} for key, value in where.items()]}
+
+
 def _chroma_query(embedding: list[float], n_results: int, where: dict | None) -> list[dict]:
     col = _chroma_get_collection()
     count = col.count()
@@ -130,7 +138,7 @@ def _chroma_query(embedding: list[float], n_results: int, where: dict | None) ->
         return []
     kwargs: dict = {"query_embeddings": [embedding], "n_results": min(n_results, count)}
     if where:
-        kwargs["where"] = where
+        kwargs["where"] = _build_chroma_where(where)
     results = col.query(**kwargs)
     items = []
     for i in range(len(results["ids"][0])):
