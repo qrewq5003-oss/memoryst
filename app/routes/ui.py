@@ -578,7 +578,7 @@ async def ui_backfill_file(
     file: UploadFile = File(...),
 ) -> RedirectResponse:
     """Backfill memories from an uploaded .jsonl file."""
-    from app.services.extractor import extract_for_backfill
+    from app.services.extractor import extract_memories
     from app.repositories.memory_repo import find_memory_by_normalized_content
     from app.services.text_utils import normalize_content
     from app.services.store_service import passes_memory_quality_gate
@@ -641,7 +641,7 @@ async def ui_backfill_file(
     duplicates = 0
 
     if messages:
-        candidates = extract_for_backfill(chat_id=chat_id, character_id=character_id, messages=messages)
+        candidates = extract_memories(chat_id=chat_id, character_id=character_id, messages=messages, mode="backfill")
         for candidate in candidates:
             if not passes_memory_quality_gate(candidate):
                 skipped += 1

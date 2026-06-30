@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
@@ -299,26 +300,41 @@ def extract_memories(
     chat_id: str,
     character_id: str,
     messages: list[MessageInput],
+    mode: Literal["live", "backfill"] = "live",
 ) -> list[CreateMemoryRequest]:
     """
     Extract memory candidates from messages using rule-based heuristics.
 
-    Returns at most 3 memory items.
+    mode="live" (default): real-time chat extraction. Filters out raw question
+        prompts from the user (narrow anti-artifact filter, see below), skips
+        messages with no detected type, returns at most 3 items.
+    mode="backfill": bulk extraction from chat history. Only assistant messages,
+        skips OOC, defaults to "event" type when no marker matches, returns all
+        matching items (no cap).
     """
     candidates = []
 
     for msg in messages:
+        if mode == "backfill" and msg.role != "assistant":
+            continue
+
         text = msg.text
 
         if not _is_meaningful(text):
             continue
 
-        # Narrow anti-artifact filter only:
-        # - applies only to `role="user"`
-        # - blocks raw question prompts from being stored as memories
-        # - currently allowed only for relationship and local-scene prompt families
-        # - is not a semantic classifier or generic prompt-understanding layer
-        if (
+        if mode == "backfill":
+            stripped = text.strip()
+            if stripped.startswith("OOC:") or stripped.startswith("OOC(") or stripped.startswith("(OOC"):
+                continue
+            if stripped.startswith("ooc:") or stripped.startswith("ooc("):
+                continue
+        elif (
+            # Narrow anti-artifact filter only:
+            # - applies only to `role="user"`
+            # - blocks raw question prompts from being stored as memories
+            # - currently allowed only for relationship and local-scene prompt families
+            # - is not a semantic classifier or generic prompt-understanding layer
             msg.role == "user"
             and text_features.is_question_like_text(text)
             and (
@@ -333,76 +349,15 @@ def extract_memories(
         ):
             continue
 
-        allow_durable_relationship = True
-
-        memory_type = _detect_type(
-            text,
-            allow_durable_relationship=allow_durable_relationship,
-        )
+        memory_type = _detect_type(text)
         if memory_type is None:
-            continue
+            if mode != "backfill":
+                continue
+            memory_type = "event"
 
         content = truncate_content(text)
         entities = text_features.extract_entities(text)
         keywords = text_features.extract_keywords(text)
-
-        candidates.append(
-            CreateMemoryRequest(
-                chat_id=chat_id,
-                character_id=character_id,
-                type=memory_type,
-                content=content,
-                source="auto",
-                layer=_get_layer(
-                    memory_type,
-                    text,
-                    allow_durable_relationship=allow_durable_relationship,
-                ),
-                importance=_get_importance(memory_type),
-                pinned=False,
-                archived=False,
-                metadata=MemoryMetadata(entities=entities, keywords=keywords),
-            )
-        )
-
-    return candidates[:3]
-
-
-def extract_for_backfill(
-    chat_id: str,
-    character_id: str,
-    messages: list[MessageInput],
-) -> list[CreateMemoryRequest]:
-    """
-    Extract memory candidates for backfill — stores all meaningful assistant messages.
-
-    Skips: user messages, OOC messages, system messages, too-short messages.
-    """
-    candidates = []
-
-    for msg in messages:
-        # Only store assistant messages (character responses)
-        if msg.role != "assistant":
-            continue
-
-        text = msg.text
-
-        if not _is_meaningful(text):
-            continue
-
-        # Skip OOC (out of character) messages
-        stripped = text.strip()
-        if stripped.startswith("OOC:") or stripped.startswith("OOC(") or stripped.startswith("(OOC"):
-            continue
-        if stripped.startswith("ooc:") or stripped.startswith("ooc("):
-            continue
-
-        content = truncate_content(text)
-        entities = text_features.extract_entities(text)
-        keywords = text_features.extract_keywords(text)
-
-        # Detect type if possible, otherwise default to event
-        memory_type = _detect_type(text) or "event"
 
         candidates.append(
             CreateMemoryRequest(
@@ -419,4 +374,4 @@ def extract_for_backfill(
             )
         )
 
-    return candidates
+    return candidates[:3] if mode == "live" else candidates
