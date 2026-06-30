@@ -14,6 +14,7 @@ What emotions did characters hide? What atmosphere dominates the scene? What uns
 Rules:
 - Write in the same language as the input (Russian or English)
 - Be concise — max 150 words total
+- ВАЖНО / IMPORTANT: your entire reply, all three sections combined, MUST be under 1200 characters total (not words — characters, including spaces and headers). This is a hard limit. Count as you write, and stop before you reach it even if a section feels unfinished. A reply over 1200 characters will be rejected.
 - Focus on what changed, not what stayed the same
 - If a section has no relevant info, write "No significant changes.\""""
 

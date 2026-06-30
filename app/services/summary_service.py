@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from app.repositories.memory_repo import create_memory, list_memories, update_memory
@@ -341,7 +342,37 @@ Write a consolidated summary that captures:
 4. What changed over time
 
 Write in the SAME LANGUAGE as the input.
-Be concise but comprehensive. Max 200 words."""
+Be concise but comprehensive. Max 200 words.
+ВАЖНО / IMPORTANT: your entire reply MUST be under 1800 characters total (not words — characters). This is a hard limit. Count as you write and stop before you reach it. A reply over 1800 characters will be rejected."""
+
+
+# Mirrors CreateMemoryRequest.content's max_length in app/schemas.py. The
+# consolidation prompt instructs the LLM to stay far under this, but models
+# sometimes ignore length instructions - this is the hard safety net so
+# /memory/consolidate never crashes with a pydantic ValidationError.
+CONSOLIDATION_CONTENT_MAX_LENGTH = 5000
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?][\"'\)\]]?(?=\s|$)")
+
+
+def _truncate_to_content_limit(text: str, max_length: int = CONSOLIDATION_CONTENT_MAX_LENGTH) -> str:
+    """
+    Cut LLM-generated summary text down to max_length, preferring a sentence
+    boundary at or before the cutoff. Falls back to the last word/line
+    boundary when no sentence end is found, so a cut never lands mid-word.
+    """
+    if len(text) <= max_length:
+        return text
+
+    window = text[:max_length]
+    sentence_ends = [m.end() for m in _SENTENCE_BOUNDARY_RE.finditer(window)]
+    if sentence_ends:
+        return window[: sentence_ends[-1]].rstrip()
+
+    last_boundary = max(window.rfind(" "), window.rfind("\n"))
+    if last_boundary > 0:
+        return window[:last_boundary].rstrip()
+
+    return window.rstrip()
 
 
 def generate_tiered_consolidation(
@@ -411,6 +442,8 @@ def generate_tiered_consolidation(
             summary_text = build_rolling_summary_text(source_memories)
     else:
         summary_text = build_rolling_summary_text(source_memories)
+
+    summary_text = _truncate_to_content_limit(summary_text)
 
     summary_metadata = _build_summary_metadata(source_memories, summary_text)
     summary_metadata = summary_metadata.model_copy(update={
