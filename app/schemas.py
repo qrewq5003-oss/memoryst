@@ -42,6 +42,7 @@ class MemoryMetadata(BaseModel):
     summary_generated_at: str | None = None
     summary_source_memory_ids: list[str] = Field(default_factory=list)
     summarized_memory_count: int | None = None
+    source_message_ids: list[str] = Field(default_factory=list)
     consolidation_note: str | None = None
     related_memory_id: str | None = None
     review_status: str | None = None

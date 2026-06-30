@@ -31,10 +31,16 @@ def chat_completion(
     model: str | None = None,
     max_tokens: int = 500,
     temperature: float = 0.3,
+    response_format: dict | None = None,
 ) -> str:
     """
     Call an OpenAI-compatible chat completion API.
     Optional model override — defaults to config.LLM_MODEL.
+
+    response_format, when given, is passed through verbatim (e.g.
+    {"type": "json_schema", "json_schema": {...}}) so callers can ask
+    OpenAI-compatible providers for structured output instead of parsing
+    free-form text.
     """
     url = f"{config.LLM_API_BASE.rstrip('/')}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
@@ -47,6 +53,8 @@ def chat_completion(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if response_format is not None:
+        payload["response_format"] = response_format
 
     response = httpx.post(url, json=payload, headers=headers, timeout=config.LLM_TIMEOUT)
     response.raise_for_status()

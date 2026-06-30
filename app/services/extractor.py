@@ -296,6 +296,27 @@ def _is_meaningful(text: str) -> bool:
     return True
 
 
+# Public wrappers around the regex-marker internals above, for callers that need
+# the markers as a cheap signal (e.g. scene_extractor's LLM pre-filter) without
+# duplicating the marker lists or running the full rule-based pipeline.
+
+def has_regex_signal(text: str) -> bool:
+    """Whether any regex marker (event/relationship/preference/profile) fires on this text."""
+    return _detect_type(text) is not None
+
+
+def is_meaningful_text(text: str) -> bool:
+    return _is_meaningful(text)
+
+
+def get_importance_for_type(memory_type: MemoryType) -> float:
+    return _get_importance(memory_type)
+
+
+def get_layer_for_type(memory_type: MemoryType, text: str) -> str:
+    return _get_layer(memory_type, text)
+
+
 def extract_memories(
     chat_id: str,
     character_id: str,

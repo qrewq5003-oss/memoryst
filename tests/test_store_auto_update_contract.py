@@ -9,6 +9,7 @@ sys.modules.setdefault("pymorphy3", SimpleNamespace(MorphAnalyzer=lambda: None))
 
 from app.config import config
 from app.db import init_schema
+from app.services import chat_buffer_service
 from app.repositories.memory_repo import (
     create_memory,
     get_memory_by_id,
@@ -52,6 +53,8 @@ class StoreAutoUpdateContractTests(unittest.TestCase):
         config.DATABASE_PATH = str(Path(self.temp_dir.name) / "test.db")
         self.addCleanup(self._restore_db_path)
         init_schema()
+        chat_buffer_service.reset_all_buffers()
+        self.addCleanup(chat_buffer_service.reset_all_buffers)
 
     def _restore_db_path(self) -> None:
         config.DATABASE_PATH = self.original_db_path
@@ -62,7 +65,7 @@ class StoreAutoUpdateContractTests(unittest.TestCase):
             character_id=candidate.character_id,
             messages=[MessageInput(role="user", text="irrelevant")],
         )
-        with patch("app.services.store_service.extract_memories", return_value=[candidate]):
+        with patch("app.services.store_service.extract_scene_memories", return_value=[candidate]):
             return store_memories(request)
 
     def test_exact_duplicate_of_auto_memory_updates(self) -> None:
