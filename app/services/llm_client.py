@@ -93,6 +93,19 @@ def is_llm_enabled() -> bool:
     return bool(settings["api_base"])
 
 
+def _api_root(api_base: str) -> str:
+    """Normalize a configured api_base so callers can set it either as the
+    bare host+path root (e.g. "https://api.openai.com") or with a trailing
+    "/v1" (e.g. "https://nano-gpt.com/api/v1", as NanoGPT's own docs write
+    it) - every call site here appends its own "/v1/..." suffix, so both
+    forms must resolve to the same final URL instead of "/v1/v1/...".
+    """
+    root = api_base.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[: -len("/v1")]
+    return root
+
+
 def _list_models_via_get(url: str, headers: dict, fallback_model: str) -> list[str]:
     try:
         resp = httpx.get(url, headers=headers, timeout=10)
@@ -117,13 +130,13 @@ def list_models() -> list[str]:
         return [settings["model"]]
 
     if provider == "anthropic":
-        url = f"{settings['api_base'].rstrip('/')}/v1/models"
+        url = f"{_api_root(settings['api_base'])}/v1/models"
         headers = {
             "x-api-key": settings["api_key"],
             "anthropic-version": ANTHROPIC_API_VERSION,
         }
     else:
-        url = f"{settings['api_base'].rstrip('/')}/v1/models"
+        url = f"{_api_root(settings['api_base'])}/v1/models"
         headers = {}
         if settings["api_key"]:
             headers["Authorization"] = f"Bearer {settings['api_key']}"
@@ -180,7 +193,7 @@ def _chat_completion_openai_compatible(
     temperature: float,
     response_format: dict | None,
 ) -> str:
-    url = f"{settings['api_base'].rstrip('/')}/v1/chat/completions"
+    url = f"{_api_root(settings['api_base'])}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
     if settings["api_key"]:
         headers["Authorization"] = f"Bearer {settings['api_key']}"
@@ -225,7 +238,7 @@ def _chat_completion_anthropic(
         if m.get("role") in ("user", "assistant")
     ]
 
-    url = f"{settings['api_base'].rstrip('/')}/v1/messages"
+    url = f"{_api_root(settings['api_base'])}/v1/messages"
     headers = {
         "x-api-key": settings["api_key"],
         "anthropic-version": ANTHROPIC_API_VERSION,
