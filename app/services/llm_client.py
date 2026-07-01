@@ -1,4 +1,5 @@
-import logging
+import sys
+import traceback
 
 import httpx
 
@@ -87,12 +88,20 @@ def _provider_settings(provider: str) -> dict:
 
 
 def is_llm_enabled() -> bool:
-    """Check if the active LLM provider is configured."""
+    """Check if the active LLM provider is configured.
+
+    Requires both api_base and api_key for OpenAI-compatible providers
+    (nanogpt, openai) - an empty key used to pass this check as long as
+    api_base was set. That's a real gap: NanoGPT's own /v1/models endpoint
+    doesn't require auth, so list_models() would keep working fine with a
+    missing/wrong key while chat_completion() (which does need it) fails
+    later with a 401 - "enabled" no longer meant "actually usable".
+    """
     provider = get_active_provider()
     settings = _provider_settings(provider)
     if provider == "anthropic":
         return bool(settings["api_key"])
-    return bool(settings["api_base"])
+    return bool(settings["api_base"]) and bool(settings["api_key"])
 
 
 def _api_root(api_base: str) -> str:
@@ -114,8 +123,17 @@ def _list_models_via_get(url: str, headers: dict, fallback_model: str) -> list[s
         resp.raise_for_status()
         data = resp.json()
         return [m["id"] for m in data.get("data", [])]
-    except Exception as e:
-        logging.exception("list_models failed for url=%s: %s", url, e)
+    except Exception:
+        # Explicit print to stderr, not the logging module: this must show up
+        # no matter how uvicorn (or anything else importing this module) has
+        # configured logging - a print can't be silently dropped by a logger
+        # level/handler/propagate setting the way logging.exception() can be.
+        print(
+            f"[llm_client] list_models request FAILED, url={url!r}, "
+            f"falling back to {fallback_model!r}:\n{traceback.format_exc()}",
+            file=sys.stderr,
+            flush=True,
+        )
         return [fallback_model]
 
 
@@ -130,6 +148,17 @@ def list_models() -> list[str]:
     settings = _provider_settings(provider)
 
     if not is_llm_enabled():
+        # This branch used to return silently - the one place the previous
+        # bug report ("fallback instead of the real catalog, no traceback
+        # anywhere") could come from without an exception ever being raised.
+        print(
+            f"[llm_client] list_models SKIPPED /v1/models request, provider={provider!r} "
+            f"is not fully configured (api_base={'set' if settings['api_base'] else 'EMPTY'}, "
+            f"api_key={'set' if settings['api_key'] else 'EMPTY'}) - "
+            f"returning fallback model {settings['model']!r}",
+            file=sys.stderr,
+            flush=True,
+        )
         return [settings["model"]]
 
     if provider == "anthropic":

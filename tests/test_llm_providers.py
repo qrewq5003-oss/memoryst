@@ -75,6 +75,15 @@ class NanoGptProviderTests(ProviderConfigTestCase):
         config.LLM_API_BASE = ""
         self.assertFalse(llm_client.is_llm_enabled())
 
+    def test_is_llm_enabled_false_without_api_key_even_with_api_base_set(self) -> None:
+        """Regression: an empty api_key used to pass is_llm_enabled() as long
+        as api_base was set. NanoGPT's own /v1/models doesn't require auth,
+        so this let list_models() keep "working" with a missing/wrong key
+        while chat_completion() (which does need it) would fail later with a
+        401 - the provider looked "enabled" while actually being half-broken."""
+        config.LLM_API_KEY = ""
+        self.assertFalse(llm_client.is_llm_enabled())
+
     def test_list_models_falls_back_to_default_when_provider_disabled(self) -> None:
         """Regression: an unconfigured provider (no LLM_API_BASE) used to make
         list_models() return [] outright - the disabled-guard short-circuited
@@ -87,6 +96,41 @@ class NanoGptProviderTests(ProviderConfigTestCase):
 
         mock_get.assert_not_called()
         self.assertEqual(models, ["nano-default-model"])
+
+    def test_list_models_prints_diagnostic_when_provider_disabled(self) -> None:
+        """The disabled-provider branch used to return silently - the one
+        path that could produce "fallback with zero trace of why" without
+        ever raising an exception. It must now say exactly which of
+        api_base/api_key is missing."""
+        config.LLM_API_KEY = ""
+        import io
+        from contextlib import redirect_stderr
+
+        captured = io.StringIO()
+        with redirect_stderr(captured):
+            llm_client.list_models()
+
+        output = captured.getvalue()
+        self.assertIn("SKIPPED", output)
+        self.assertIn("api_key=EMPTY", output)
+        self.assertIn("api_base=set", output)
+
+    def test_list_models_prints_traceback_on_request_failure(self) -> None:
+        """The except-branch must print the real traceback via stderr
+        directly, not rely on the logging module (which can be silenced by
+        whatever configures it - e.g. uvicorn's logging setup - independent
+        of this function's own behavior)."""
+        import io
+        from contextlib import redirect_stderr
+
+        captured = io.StringIO()
+        with patch("httpx.get", side_effect=ConnectionError("boom")), redirect_stderr(captured):
+            llm_client.list_models()
+
+        output = captured.getvalue()
+        self.assertIn("list_models request FAILED", output)
+        self.assertIn("ConnectionError", output)
+        self.assertIn("boom", output)
 
     def test_list_models_hits_openai_compatible_endpoint(self) -> None:
         response = _mock_response({"data": [{"id": "model-a"}, {"id": "model-b"}]})
@@ -143,6 +187,10 @@ class OpenAiProviderTests(ProviderConfigTestCase):
 
     def test_is_llm_enabled_true_when_api_base_set(self) -> None:
         self.assertTrue(llm_client.is_llm_enabled())
+
+    def test_is_llm_enabled_false_without_api_key_even_with_api_base_set(self) -> None:
+        config.OPENAI_API_KEY = ""
+        self.assertFalse(llm_client.is_llm_enabled())
 
     def test_chat_completion_uses_openai_base_and_key(self) -> None:
         response = _mock_response(
