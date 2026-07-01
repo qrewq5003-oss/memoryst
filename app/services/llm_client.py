@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 
 from app.config import config
@@ -112,7 +114,8 @@ def _list_models_via_get(url: str, headers: dict, fallback_model: str) -> list[s
         resp.raise_for_status()
         data = resp.json()
         return [m["id"] for m in data.get("data", [])]
-    except Exception:
+    except Exception as e:
+        logging.exception("list_models failed for url=%s: %s", url, e)
         return [fallback_model]
 
 
