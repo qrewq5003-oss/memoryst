@@ -90,6 +90,17 @@ CHAT_MESSAGES_FTS_TRIGGERS_SQL = (
 )
 
 
+# Small persistent key-value store for process-spanning app settings (e.g. the
+# active LLM provider) that shouldn't live in .env because they're changed at
+# runtime, not at deploy time.
+APP_SETTINGS_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+"""
+
+
 def get_connection() -> sqlite3.Connection:
     """Get database connection."""
     db_path = Path(config.DATABASE_PATH)
@@ -106,6 +117,10 @@ def _create_memories_table(cursor: sqlite3.Cursor) -> None:
 def _create_memories_indexes(cursor: sqlite3.Cursor) -> None:
     for statement in MEMORIES_INDEX_SQL:
         cursor.execute(statement)
+
+
+def _create_app_settings_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(APP_SETTINGS_TABLE_SQL)
 
 
 def _create_chat_messages_table(cursor: sqlite3.Cursor) -> None:
@@ -165,6 +180,7 @@ def init_schema() -> None:
         _create_memories_table(cursor)
         _create_memories_indexes(cursor)
         _create_chat_messages_table(cursor)
+        _create_app_settings_table(cursor)
 
         conn.commit()
 

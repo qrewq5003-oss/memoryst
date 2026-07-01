@@ -70,27 +70,78 @@ document.getElementById('clip-form').addEventListener('submit', async (e) => {
     }
 });
 
-// Load available models
-(async () => {
+// Load providers + models for the active provider, and populate every model select.
+async function loadModels() {
     try {
         const resp = await fetch('/memory/models');
-        if (resp.ok) {
-            const data = await resp.json();
-            const models = data.models || [];
-            const def = data.default;
-            ['scene-model', 'consolidate-model'].forEach(id => {
-                const select = document.getElementById(id);
-                if (!select) return;
-                models.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m;
-                    opt.textContent = m === def ? `${m} (default)` : m;
-                    select.appendChild(opt);
-                });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const providers = data.providers || [];
+        const activeProvider = data.active_provider;
+        const models = data.models || [];
+        const def = data.default;
+
+        const providerSelect = document.getElementById('llm-provider-select');
+        if (providerSelect) {
+            providerSelect.innerHTML = '';
+            providers.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                opt.selected = p === activeProvider;
+                providerSelect.appendChild(opt);
             });
         }
+
+        ['llm-model-select', 'scene-model', 'consolidate-model'].forEach(id => {
+            const select = document.getElementById(id);
+            if (!select) return;
+            const placeholder = id === 'llm-model-select' ? null : '';
+            select.innerHTML = '';
+            if (placeholder !== null) {
+                const opt = document.createElement('option');
+                opt.value = placeholder;
+                opt.textContent = 'default';
+                select.appendChild(opt);
+            }
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m === def ? `${m} (default)` : m;
+                select.appendChild(opt);
+            });
+        });
     } catch (e) {}
-})();
+}
+
+loadModels();
+
+// Provider switch handler
+document.getElementById('llm-provider-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const provider = document.getElementById('llm-provider-select').value;
+    const result = document.getElementById('llm-provider-result');
+
+    result.textContent = `Switching to ${provider}...`;
+
+    try {
+        const resp = await fetch('/memory/provider', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider }),
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            result.textContent = `Active provider: ${data.active_provider}`;
+            await loadModels();
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            result.textContent = `Error: ${data.detail || resp.status}`;
+        }
+    } catch (e) {
+        result.textContent = `Error: ${e.message}`;
+    }
+});
 
 // Scene extraction handler
 document.getElementById('scene-extract-form').addEventListener('submit', async (e) => {

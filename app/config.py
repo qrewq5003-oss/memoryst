@@ -30,6 +30,16 @@ class Config:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "zai-org/glm-4.7")
     LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
 
+    ACTIVE_LLM_PROVIDER: str = os.getenv("ACTIVE_LLM_PROVIDER", "nanogpt")
+
+    OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com")
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    ANTHROPIC_API_BASE: str = os.getenv("ANTHROPIC_API_BASE", "https://api.anthropic.com")
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-opus-4-8")
+
     GOOGLE_API_KEYS: list[str] = [
         k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()
     ]

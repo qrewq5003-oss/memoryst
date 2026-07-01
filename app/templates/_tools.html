@@ -1,3 +1,18 @@
+<section class="create-form">
+    <h2>LLM Provider</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Choose which LLM backend the extraction/consolidation tools call. Switching is in-process and resets to the .env default on restart.</p>
+    <form id="llm-provider-form">
+        <div class="form-row">
+            <label>Provider: <select id="llm-provider-select"></select></label>
+            <label>Model (active): <select id="llm-model-select" disabled></select></label>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+            <button type="submit">Switch Provider</button>
+            <span id="llm-provider-result" style="font-size:0.9em;"></span>
+        </div>
+    </form>
+</section>
+
 <section class="debug-tools">
     <h2>Store Pipeline</h2>
     <form method="POST" action="/ui/store">

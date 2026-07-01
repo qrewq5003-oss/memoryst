@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import require_api_key
+from app.config import config
 from app.repositories.memory_repo import (
     create_memory,
     delete_memory,
@@ -468,6 +469,40 @@ def delete_chat_endpoint(chat_id: str, character_id: str = Query(None)) -> Delet
 
 @router.get("/models")
 def list_models_endpoint() -> dict:
-    """List available LLM models."""
-    from app.services.llm_client import list_models
-    return {"models": list_models(), "default": config.LLM_MODEL}
+    """List LLM providers, the active one, and its available models."""
+    from app.services.llm_client import PROVIDERS, get_active_provider, list_models
+
+    active_provider = get_active_provider()
+    default_model = {
+        "nanogpt": config.LLM_MODEL,
+        "openai": config.OPENAI_MODEL,
+        "anthropic": config.ANTHROPIC_MODEL,
+    }[active_provider]
+
+    return {
+        "providers": list(PROVIDERS),
+        "active_provider": active_provider,
+        "models": list_models(),
+        "default": default_model,
+    }
+
+
+class SetActiveProviderRequest(BaseModel):
+    provider: str
+
+
+class SetActiveProviderResponse(BaseModel):
+    active_provider: str
+
+
+@router.post("/provider", response_model=SetActiveProviderResponse)
+def set_active_provider_endpoint(request: SetActiveProviderRequest) -> SetActiveProviderResponse:
+    """Switch the active LLM provider at runtime (in-process only, resets on restart)."""
+    from app.services.llm_client import set_active_provider
+
+    try:
+        set_active_provider(request.provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return SetActiveProviderResponse(active_provider=request.provider)
