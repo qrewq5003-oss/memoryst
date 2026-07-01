@@ -25,7 +25,7 @@ export const SETTINGS_UI_FIELDS = [
                 label: 'Memory Service URL',
                 help: 'Base URL for the backend API.',
                 type: 'text',
-                placeholder: 'http://localhost:8000',
+                placeholder: 'http://localhost:8001',
             },
             {
                 key: 'apiKey',

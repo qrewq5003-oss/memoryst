@@ -57,6 +57,7 @@ export function normalizeExtensionSettings(rawSettings = {}) {
     const connection = {
         ...DEFAULT_CONNECTION_SETTINGS,
         ...(rawSettings.connection || {}),
+        memoryServiceUrl: (rawSettings.connection || {}).memoryServiceUrl || DEFAULT_CONNECTION_SETTINGS.memoryServiceUrl,
     };
     const retrieval = {
         ...DEFAULT_RETRIEVAL_SETTINGS,
@@ -78,7 +79,7 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...promptBudget,
         ...audit,
         enabled: rawSettings.enabled ?? connection.enabled,
-        memoryServiceUrl: rawSettings.memoryServiceUrl ?? connection.memoryServiceUrl,
+        memoryServiceUrl: rawSettings.memoryServiceUrl || connection.memoryServiceUrl,
         apiKey: rawSettings.apiKey ?? connection.apiKey,
         retrieveLimit: rawSettings.retrieveLimit ?? retrieval.retrieveLimit,
         recentMessagesCount: rawSettings.recentMessagesCount ?? retrieval.recentMessagesCount,
