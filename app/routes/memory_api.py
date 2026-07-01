@@ -99,51 +99,6 @@ def retrieve_memory_endpoint(request: RetrieveMemoryRequest) -> RetrieveMemoryRe
     return retrieve_memories(request)
 
 
-@router.get("/{id}", response_model=MemoryItem)
-def get_memory_endpoint(id: str) -> MemoryItem:
-    """Get a memory record by ID."""
-    memory = get_memory_by_id(id)
-    if memory is None:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return memory
-
-
-@router.patch("/{id}", response_model=UpdateMemoryResponse)
-def update_memory_endpoint(id: str, request: UpdateMemoryRequest) -> UpdateMemoryResponse:
-    """Update a memory record."""
-    memory = update_memory(id, request)
-    if memory is None:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return UpdateMemoryResponse(item=memory)
-
-
-@router.post("/{id}/pin", response_model=PinMemoryResponse)
-def pin_memory_endpoint(id: str, request: PinMemoryRequest) -> PinMemoryResponse:
-    """Set the pinned status of a memory."""
-    result = set_pinned(id, request.pinned)
-    if not result:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return PinMemoryResponse(id=id, pinned=request.pinned)
-
-
-@router.post("/{id}/archive", response_model=ArchiveMemoryResponse)
-def archive_memory_endpoint(id: str, request: ArchiveMemoryRequest) -> ArchiveMemoryResponse:
-    """Set the archived status of a memory."""
-    result = set_archived(id, request.archived)
-    if not result:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return ArchiveMemoryResponse(id=id, archived=request.archived)
-
-
-@router.delete("/{id}", response_model=DeleteMemoryResponse)
-def delete_memory_endpoint(id: str) -> DeleteMemoryResponse:
-    """Delete a memory record."""
-    result = delete_memory(id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Memory not found")
-    return DeleteMemoryResponse(id=id, deleted=True)
-
-
 class AddKeyRequest(BaseModel):
     key: str
 
@@ -497,7 +452,7 @@ class SetActiveProviderResponse(BaseModel):
 
 @router.post("/provider", response_model=SetActiveProviderResponse)
 def set_active_provider_endpoint(request: SetActiveProviderRequest) -> SetActiveProviderResponse:
-    """Switch the active LLM provider at runtime (in-process only, resets on restart)."""
+    """Switch the active LLM provider at runtime (persisted, survives a restart)."""
     from app.services.llm_client import set_active_provider
 
     try:
@@ -506,3 +461,55 @@ def set_active_provider_endpoint(request: SetActiveProviderRequest) -> SetActive
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return SetActiveProviderResponse(active_provider=request.provider)
+
+
+# NOTE: the /{id} routes below must stay declared after every other route in
+# this router. FastAPI/Starlette matches routes in declaration order, so a
+# parameterized single-segment path like "/{id}" would otherwise swallow
+# same-method requests to static single-segment paths (e.g. GET /keys,
+# GET /models, DELETE /keys all matched "/{id}" with id="keys"/"models"
+# before these existed here, returning "Memory not found" instead of the
+# intended handler).
+@router.get("/{id}", response_model=MemoryItem)
+def get_memory_endpoint(id: str) -> MemoryItem:
+    """Get a memory record by ID."""
+    memory = get_memory_by_id(id)
+    if memory is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return memory
+
+
+@router.patch("/{id}", response_model=UpdateMemoryResponse)
+def update_memory_endpoint(id: str, request: UpdateMemoryRequest) -> UpdateMemoryResponse:
+    """Update a memory record."""
+    memory = update_memory(id, request)
+    if memory is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return UpdateMemoryResponse(item=memory)
+
+
+@router.post("/{id}/pin", response_model=PinMemoryResponse)
+def pin_memory_endpoint(id: str, request: PinMemoryRequest) -> PinMemoryResponse:
+    """Set the pinned status of a memory."""
+    result = set_pinned(id, request.pinned)
+    if not result:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return PinMemoryResponse(id=id, pinned=request.pinned)
+
+
+@router.post("/{id}/archive", response_model=ArchiveMemoryResponse)
+def archive_memory_endpoint(id: str, request: ArchiveMemoryRequest) -> ArchiveMemoryResponse:
+    """Set the archived status of a memory."""
+    result = set_archived(id, request.archived)
+    if not result:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return ArchiveMemoryResponse(id=id, archived=request.archived)
+
+
+@router.delete("/{id}", response_model=DeleteMemoryResponse)
+def delete_memory_endpoint(id: str) -> DeleteMemoryResponse:
+    """Delete a memory record."""
+    result = delete_memory(id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return DeleteMemoryResponse(id=id, deleted=True)
