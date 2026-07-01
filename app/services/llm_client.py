@@ -104,12 +104,17 @@ def _list_models_via_get(url: str, headers: dict, fallback_model: str) -> list[s
 
 
 def list_models() -> list[str]:
-    """List available models from the active LLM provider's API."""
-    if not is_llm_enabled():
-        return []
+    """List available models from the active LLM provider's API.
 
+    Always returns at least the active provider's configured default model -
+    whether the provider isn't configured at all (no api_base/api_key) or the
+    /v1/models request fails - so UI model selectors are never left empty.
+    """
     provider = get_active_provider()
     settings = _provider_settings(provider)
+
+    if not is_llm_enabled():
+        return [settings["model"]]
 
     if provider == "anthropic":
         url = f"{settings['api_base'].rstrip('/')}/v1/models"

@@ -75,6 +75,19 @@ class NanoGptProviderTests(ProviderConfigTestCase):
         config.LLM_API_BASE = ""
         self.assertFalse(llm_client.is_llm_enabled())
 
+    def test_list_models_falls_back_to_default_when_provider_disabled(self) -> None:
+        """Regression: an unconfigured provider (no LLM_API_BASE) used to make
+        list_models() return [] outright - the disabled-guard short-circuited
+        before the /v1/models request (and its except-branch fallback) ever
+        ran, leaving the UI model selector empty. It must return the
+        configured default model instead, same as a failed request would."""
+        config.LLM_API_BASE = ""
+        with patch("httpx.get") as mock_get:
+            models = llm_client.list_models()
+
+        mock_get.assert_not_called()
+        self.assertEqual(models, ["nano-default-model"])
+
     def test_list_models_hits_openai_compatible_endpoint(self) -> None:
         response = _mock_response({"data": [{"id": "model-a"}, {"id": "model-b"}]})
         with patch("httpx.get", return_value=response) as mock_get:
@@ -169,6 +182,14 @@ class AnthropicProviderTests(ProviderConfigTestCase):
         self.assertTrue(llm_client.is_llm_enabled())
         config.ANTHROPIC_API_KEY = ""
         self.assertFalse(llm_client.is_llm_enabled())
+
+    def test_list_models_falls_back_to_default_when_provider_disabled(self) -> None:
+        config.ANTHROPIC_API_KEY = ""
+        with patch("httpx.get") as mock_get:
+            models = llm_client.list_models()
+
+        mock_get.assert_not_called()
+        self.assertEqual(models, ["claude-opus-4-8"])
 
     def test_list_models_uses_x_api_key_header(self) -> None:
         response = _mock_response({"data": [{"id": "claude-opus-4-8"}, {"id": "claude-haiku-4-5"}]})
