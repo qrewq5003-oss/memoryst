@@ -138,7 +138,7 @@ The runtime still uses simple flat fields internally, but persisted settings are
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `maxPromptMemories` | `4` | Maximum memory entries injected into the prompt |
-| `maxPromptChars` | `520` | Maximum injected memory block size in characters |
+| `maxPromptChars` | `1500` | Maximum injected memory block size in characters |
 | `maxSummaryItems` | `1` | Maximum rolling summary items kept |
 | `maxStableItems` | `2` | Maximum stable/profile/relationship items kept |
 | `maxEpisodicItems` | `1` | Maximum episodic items kept |
@@ -160,7 +160,7 @@ Recommended baseline:
 - `retrieveLimit: 5`
 - `recentMessagesCount: 8`
 - `maxPromptMemories: 4`
-- `maxPromptChars: 520`
+- `maxPromptChars: 1500`
 - `maxSummaryItems: 1`
 - `maxStableItems: 2`
 - `maxEpisodicItems: 1`

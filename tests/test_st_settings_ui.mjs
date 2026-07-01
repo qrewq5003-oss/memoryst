@@ -157,7 +157,7 @@ test('baseline button uses recommended long-chat settings', () => {
     assert.equal(applied.length, 1);
     assert.deepEqual(applied[0], applyRecommendedBaselineSettings(DEFAULT_SETTINGS));
     assert.equal(applied[0].retrieveLimit, 5);
-    assert.equal(applied[0].maxPromptChars, 520);
+    assert.equal(applied[0].maxPromptChars, 1500);
 });
 
 test('mountSettingsUi does not crash when settings host is missing', () => {
