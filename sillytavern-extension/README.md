@@ -123,7 +123,7 @@ The runtime still uses simple flat fields internally, but persisted settings are
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `enabled` | `false` | Enable or disable the extension |
-| `memoryServiceUrl` | `http://localhost:8000` | Memory Service endpoint |
+| `memoryServiceUrl` | `http://localhost:8001` | Memory Service endpoint |
 | `apiKey` | `''` | API key sent as `X-API-Key` |
 
 ### Retrieval
@@ -265,7 +265,7 @@ This extension uses the following SillyTavern APIs:
 ## Troubleshooting
 
 1. **Extension not working:**
-   - Check Memory Service is running: `curl http://localhost:8000/health`
+   - Check Memory Service is running: `curl http://localhost:8001/health`
    - Verify URL in settings
    - Check browser console for errors
 

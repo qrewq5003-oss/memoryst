@@ -19,7 +19,7 @@ Environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `APP_HOST` | `0.0.0.0` | Host to bind the server |
-| `APP_PORT` | `8000` | Port to bind the server |
+| `APP_PORT` | `8001` | Port to bind the server |
 | `DATABASE_PATH` | `data/memory.db` | Path to SQLite database |
 | `API_KEY` | `` | API key for authentication |
 | `DEBUG` | `false` | Enable debug mode (auto-reload) |
@@ -31,7 +31,7 @@ Environment variables:
 python -m app.main
 
 # Or with uvicorn directly
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 # With custom configuration
 APP_HOST=127.0.0.1 APP_PORT=9000 DATABASE_PATH=/path/to/db.sqlite python -m app.main
@@ -40,7 +40,7 @@ APP_HOST=127.0.0.1 APP_PORT=9000 DATABASE_PATH=/path/to/db.sqlite python -m app.
 ## Health Check
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 Response:
@@ -51,7 +51,7 @@ Response:
 
 ## Web UI
 
-Access the built-in web UI at `http://localhost:8000/ui` for:
+Access the built-in web UI at `http://localhost:8001/ui` for:
 - Browsing memories grouped by `chat_id + character_id` in a chat sidebar
 - Defaulting to one selected chat scope instead of mixing all chats together
 - Switching to an `All Chats` view when you need the global list
