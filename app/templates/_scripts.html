@@ -1,4 +1,21 @@
 <script>
+// Selection checkbox counter
+function getSelectedConsolidationIds() {
+    return Array.from(document.querySelectorAll('.consolidate-checkbox:checked'))
+        .map(el => el.dataset.memoryId);
+}
+
+function updateConsolidateSelectedCount() {
+    const countEl = document.getElementById('consolidate-selected-count');
+    if (countEl) countEl.textContent = String(getSelectedConsolidationIds().length);
+}
+
+document.addEventListener('change', (e) => {
+    if (e.target.matches('.consolidate-checkbox')) updateConsolidateSelectedCount();
+});
+
+updateConsolidateSelectedCount();
+
 // Consolidation handler
 document.getElementById('consolidate-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -6,16 +23,18 @@ document.getElementById('consolidate-form').addEventListener('submit', async (e)
     const charId = document.getElementById('consolidate-char-id').value;
     const tier = document.getElementById('consolidate-tier').value;
     const model = document.getElementById('consolidate-model').value || null;
+    const sourceIds = getSelectedConsolidationIds();
     const result = document.getElementById('consolidate-result');
     const preview = document.getElementById('consolidate-preview');
 
     if (!chatId) { result.textContent = 'Select a chat first.'; return; }
+    if (sourceIds.length === 0) { result.textContent = 'Select at least one memory to consolidate.'; return; }
 
     result.textContent = `Consolidating (${tier})...`;
     preview.style.display = 'none';
 
     try {
-        const body = { chat_id: chatId, character_id: charId, tier };
+        const body = { chat_id: chatId, character_id: charId, tier, source_ids: sourceIds };
         if (model) body.model = model;
 
         const resp = await fetch('/memory/consolidate', {
