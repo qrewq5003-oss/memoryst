@@ -43,9 +43,6 @@
                                 <span class="badge badge-layer">{{ item["layer"] }}</span>
                                 <span class="badge badge-freshness badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace('_', ' ') }}</span>
                                 <span class="badge badge-activity badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace('_', ' ') }}</span>
-                                {% if item["is_consolidation_candidate"] %}
-                                <span class="badge badge-consolidation">Consolidation Candidate</span>
-                                {% endif %}
                                 {% if item["pinned"] %}
                                 <span class="badge badge-pinned">Pinned</span>
                                 {% endif %}
@@ -53,6 +50,10 @@
                                 <span class="badge badge-archived">Archived</span>
                                 {% endif %}
                             </div>
+                            <label class="consolidation-select {% if item["is_consolidation_candidate"] %}consolidation-select-candidate{% endif %}">
+                                <input type="checkbox" class="consolidate-checkbox" data-memory-id="{{ item["id"] }}" {% if item["is_consolidation_candidate"] %}checked{% endif %}>
+                                {% if item["is_consolidation_candidate"] %}Consolidation Candidate{% else %}Select for consolidation{% endif %}
+                            </label>
                             <div class="memory-meta-line">
                                 Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }}{% if item["updated_days"] is not none %} ({{ item["updated_days"] }}d ago){% endif %} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
                             </div>

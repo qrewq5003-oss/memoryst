@@ -559,9 +559,18 @@ summary {
     color: #1d4ed8;
 }
 
-.badge-consolidation {
-    background: #fee2e2;
+.consolidation-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.consolidation-select-candidate {
     color: #991b1b;
+    font-weight: 600;
 }
 
 .memory-meta-line {
