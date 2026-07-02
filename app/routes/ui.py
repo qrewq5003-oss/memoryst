@@ -80,6 +80,7 @@ def _render_memories_page(
     sort: str = "updated_desc",
     archived: str | None = None,
     pinned: str | None = None,
+    show_consolidated: str | None = None,
     limit: int = 50,
     offset: int = 0,
     store_result=None,
@@ -118,6 +119,9 @@ def _render_memories_page(
     else:
         pinned_bool = None
 
+    show_consolidated_bool = show_consolidated == "true"
+    hide_consolidated = not show_consolidated_bool
+
     group_summaries = list_chat_group_summaries(
         memory_type=type,
         source=source,
@@ -143,6 +147,7 @@ def _render_memories_page(
             layer=layer,
             archived=archived_bool,
             pinned=pinned_bool,
+            hide_consolidated=hide_consolidated,
             search=search,
             freshness=freshness,
             activity=activity,
@@ -159,6 +164,7 @@ def _render_memories_page(
             layer=layer,
             archived=archived_bool,
             pinned=pinned_bool,
+            hide_consolidated=hide_consolidated,
             search=search,
             freshness=freshness,
             activity=activity,
@@ -233,6 +239,7 @@ def _render_memories_page(
             "sort": sort,
             "archived": archived,
             "pinned": pinned,
+            "show_consolidated": show_consolidated,
             "limit": limit,
             "offset": offset,
         }
@@ -259,6 +266,7 @@ def _render_memories_page(
             "sort": sort,
             "archived": archived,
             "pinned": pinned,
+            "show_consolidated": show_consolidated,
             "limit": limit,
         }
     )
@@ -279,6 +287,7 @@ def _render_memories_page(
                 "sort": sort,
                 "archived": archived,
                 "pinned": pinned,
+                "show_consolidated": show_consolidated,
                 "limit": limit,
             }
         )
@@ -320,6 +329,7 @@ def _render_memories_page(
         "sort": sort,
         "archived": archived,
         "pinned": pinned,
+        "show_consolidated": show_consolidated,
         "limit": limit,
         "offset": offset,
         "query_string": build_query_string(
@@ -337,6 +347,7 @@ def _render_memories_page(
                 "sort": sort,
                 "archived": archived,
                 "pinned": pinned,
+                "show_consolidated": show_consolidated,
                 "limit": limit,
             }
         ),
@@ -402,6 +413,7 @@ def ui_memories_page(
     sort: str = "updated_desc",
     archived: str | None = None,
     pinned: str | None = None,
+    show_consolidated: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> Any:
@@ -423,6 +435,7 @@ def ui_memories_page(
         sort=sort,
         archived=archived,
         pinned=pinned,
+        show_consolidated=show_consolidated,
         limit=limit,
         offset=offset,
     )

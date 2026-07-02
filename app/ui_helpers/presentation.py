@@ -96,6 +96,7 @@ def redirect_query_to_render_args(redirect_query: str) -> dict[str, Any]:
         "sort",
         "archived",
         "pinned",
+        "show_consolidated",
     }
     int_keys = {"limit", "offset"}
 

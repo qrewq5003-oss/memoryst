@@ -51,6 +51,12 @@
                             <option value="false" {% if filters["archived"] == 'false' %}selected{% endif %}>No</option>
                         </select>
                     </label>
+                    <label>Consolidated:
+                        <select name="show_consolidated">
+                            <option value="">Hide</option>
+                            <option value="true" {% if filters["show_consolidated"] == 'true' %}selected{% endif %}>Show</option>
+                        </select>
+                    </label>
                     <label>Freshness:
                         <select name="freshness">
                             <option value="">All</option>

@@ -303,6 +303,7 @@ def list_ui_filtered_memories(
     layer: str | None = None,
     archived: bool | None = None,
     pinned: bool | None = None,
+    hide_consolidated: bool = False,
     search: str | None = None,
     freshness: str | None = None,
     activity: str | None = None,
@@ -338,6 +339,18 @@ def list_ui_filtered_memories(
     if pinned is not None:
         where_clauses.append("pinned = ?")
         params.append(int(pinned))
+    if hide_consolidated:
+        # review_status lives in metadata_json, not a dedicated column - unlike
+        # archived, these records must stay normal retrieval candidates (see
+        # list_retrieval_candidates), so this filter is UI-only. Covers both
+        # terminal "folded away" statuses: CONSOLIDATED_REVIEW_STATUS
+        # (summary_service.py) and SUPERSEDED_REVIEW_STATUS (conflict_resolver.py)
+        # - literals duplicated here rather than imported to avoid a
+        # repository -> service layering inversion.
+        where_clauses.append(
+            "json_extract(metadata_json, '$.review_status') IS NOT 'consolidated'"
+            " AND json_extract(metadata_json, '$.review_status') IS NOT 'superseded'"
+        )
 
     if search:
         query = " ".join(search.lower().split())[:200]
@@ -495,6 +508,32 @@ def set_archived(memory_id: str, archived: bool) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+
+
+def set_review_status(memory_ids: list[str], review_status: str) -> int:
+    """
+    Bulk-set metadata.review_status for the given memory ids.
+
+    Deliberately skips updated_at: bumping it would make a just-consolidated
+    source memory look freshly touched to retrieval's recency scoring, when it
+    should keep aging normally like any other record.
+    """
+    if not memory_ids:
+        return 0
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" for _ in memory_ids)
+        cursor.execute(
+            f"""
+            UPDATE memories
+            SET metadata_json = json_set(metadata_json, '$.review_status', ?)
+            WHERE id IN ({placeholders})
+            """,
+            [review_status, *memory_ids],
+        )
+        conn.commit()
+        return cursor.rowcount
 
 
 def find_memory_by_normalized_content(

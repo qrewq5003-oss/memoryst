@@ -1,11 +1,12 @@
 import re
 from dataclasses import dataclass
 
-from app.repositories.memory_repo import create_memory, list_memories, update_memory
+from app.repositories.memory_repo import create_memory, get_memory_by_id, list_memories, set_review_status, update_memory
 from app.schemas import CreateMemoryRequest, MemoryItem, MemoryMetadata, UpdateMemoryRequest
 from app.services import text_features
 from app.services.conflict_resolver import (
     FactConflict,
+    SUPERSEDED_REVIEW_STATUS,
     apply_conflict_resolutions,
     detect_fact_conflicts,
     format_conflict_resolution_notes,
@@ -13,6 +14,8 @@ from app.services.conflict_resolver import (
 from app.services.llm_client import chat_completion, is_llm_enabled
 from app.services.summary_prompts import SYSTEM_PROMPT, build_user_prompt
 from app.services.text_utils import get_utc_now
+
+CONSOLIDATED_REVIEW_STATUS = "consolidated"
 
 ROLLING_SUMMARY_KIND = "rolling_v1"
 DEFAULT_SUMMARY_WINDOW = 8
@@ -464,6 +467,18 @@ def generate_tiered_consolidation(
             metadata=summary_metadata,
         )
     )
+
+    # A source that this same batch's conflict resolution just marked "superseded"
+    # (see apply_conflict_resolutions above) keeps that more specific status - it
+    # carries which fact replaced it, which the generic "consolidated" label
+    # would erase. Overwriting it would also break apply_conflict_resolutions'
+    # own idempotency check on a later pass, producing duplicate history entries.
+    consolidation_target_ids = [
+        m.id
+        for m in (get_memory_by_id(m.id) for m in source_memories)
+        if m is not None and m.metadata.review_status != SUPERSEDED_REVIEW_STATUS
+    ]
+    set_review_status(consolidation_target_ids, CONSOLIDATED_REVIEW_STATUS)
 
     return RollingSummaryResult(
         action="created",
