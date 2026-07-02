@@ -6,3 +6,5 @@ data/memory.db
 data/chromadb/
 data/google_keys.json
 .env
+.env.save
+.claude/
