@@ -3,7 +3,9 @@ venv/
 __pycache__/
 *.pyc
 data/memory.db
+data/backups/
 data/chromadb/
+data/*.log
 data/google_keys.json
 .env
 .env.save

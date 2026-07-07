@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,13 +11,23 @@ from app.config import config, validate_security
 from app.db import init_schema
 from app.routes.memory_api import router as memory_router
 from app.routes.ui import router as ui_router
+from app.services.backup_service import run_backup
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Validate security config and initialize database schema on startup."""
+    """Validate security config, initialize database schema, and snapshot a
+    backup on startup."""
     validate_security()
     init_schema()
+    try:
+        run_backup()
+    except Exception:
+        # A backup failure (e.g. disk full) must not block the server from
+        # starting - the live db is unaffected either way.
+        logger.exception("Startup database backup failed")
     yield
 
 

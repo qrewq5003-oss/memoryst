@@ -21,6 +21,8 @@ Environment variables:
 | `APP_HOST` | `0.0.0.0` | Host to bind the server |
 | `APP_PORT` | `8001` | Port to bind the server |
 | `DATABASE_PATH` | `data/memory.db` | Path to SQLite database |
+| `BACKUP_DIR` | `data/backups` | Directory for timestamped database backups |
+| `BACKUP_KEEP` | `14` | Number of backups to retain (oldest are deleted first) |
 | `API_KEY` | `` | API key for authentication |
 | `DEBUG` | `false` | Enable debug mode (auto-reload) |
 
@@ -62,6 +64,57 @@ Access the built-in web UI at `http://localhost:8001/ui` for:
 - Pin/unpin and archive/unarchive operations
 
 The chat folders are a UI grouping layer over the existing scoped storage. They do not create physical folders or separate databases per chat.
+
+## Database Backups
+
+The whole memory store is a single SQLite file (`data/memory.db`), so losing
+the device means losing all memories unless a backup exists.
+
+A timestamped, consistent snapshot (via SQLite's online backup API, safe to
+take while the server is running) is written to `data/backups/` automatically
+every time the server starts, keeping the `BACKUP_KEEP` most recent copies.
+
+To also get a backup on days the server never restarts, run it from cron
+(Termux: `pkg install cronie`, then `crontab -e`):
+
+```bash
+0 4 * * * cd ~/memoryst && .venv/bin/python scripts/backup_db.py >> data/backup.log 2>&1
+```
+
+**Known Android limitation:** `crond` does not start automatically on boot in
+Termux - a device reboot silently kills the cron daemon, and no crontab entry
+fires again until something runs `crond` manually. Standard cron tooling has
+no fix for this (it assumes an init system, which Android's Termux sandbox
+doesn't give it).
+
+`scripts/termux-boot.sh` now starts `crond` itself (guarded with
+`pgrep -x crond || crond`, so re-running the hook never spawns a second
+daemon) right after it starts the memoryst server, so both come back up
+together on every reboot - **but only if the separate Termux:Boot app is
+installed** (F-Droid or Google Play; it is not the same thing as the
+`termux-boot` *package* installed via `pkg install termux-boot`, which is
+also required). Without the Termux:Boot **app** installed and opened once to
+grant its permissions, Android never invokes anything under
+`~/.termux/boot/` - the hook script can be perfectly correct and still never
+run. If you skipped that step, cron and the server will both stay dead after
+every reboot until you start them by hand:
+
+```bash
+cd ~/memoryst && .venv/bin/python -m app.main &   # server
+crond                                              # cron daemon
+```
+
+Or run it manually any time:
+
+```bash
+python scripts/backup_db.py
+```
+
+Backups currently live on the same device/disk as the live database, so they
+protect against accidental deletion or a bad consolidation run, but not
+against device loss, theft, or destruction. Syncing `data/backups/` to
+somewhere off-device (cloud storage, another machine) is a good next step,
+not yet implemented.
 
 ## Rolling Summary CLI
 

@@ -22,6 +22,8 @@ class Config:
     APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
     APP_PORT: int = _parse_port(os.getenv("APP_PORT", "8001"))
     DATABASE_PATH: str = os.getenv("DATABASE_PATH", "data/memory.db")
+    BACKUP_DIR: str = os.getenv("BACKUP_DIR", "data/backups")
+    BACKUP_KEEP: int = int(os.getenv("BACKUP_KEEP", "14"))
     API_KEY: str = os.getenv("API_KEY", "")
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
