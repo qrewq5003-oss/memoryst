@@ -141,7 +141,46 @@ function getFieldValue(settings, field) {
     return value ?? '';
 }
 
-export function buildSettingsUiMarkup(settings = {}) {
+/**
+ * Build the version-compatibility warning banner. Returns an empty string when
+ * there is nothing to warn about (no check yet, or `warn` is false), so it can
+ * be inlined unconditionally into the panel markup.
+ *
+ * @param {object|null} compatibility - result of compareVersions(), or null
+ */
+export function buildCompatibilityBannerMarkup(compatibility = null) {
+    if (!compatibility || !compatibility.warn) {
+        return '';
+    }
+
+    const details = [];
+    if (typeof compatibility.extensionProtocol === 'number') {
+        details.push(`extension protocol v${compatibility.extensionProtocol}`);
+    }
+    if (typeof compatibility.backendProtocol === 'number') {
+        details.push(`backend protocol v${compatibility.backendProtocol}`);
+    }
+    if (compatibility.backendServiceVersion) {
+        details.push(`backend ${compatibility.backendServiceVersion}`);
+    }
+    if (compatibility.backendGitCommit) {
+        details.push(`commit ${compatibility.backendGitCommit}`);
+    }
+
+    const detailLine = details.length
+        ? `<small class="memory-service-compat-detail">${escapeHtml(details.join(' · '))}</small>`
+        : '';
+
+    return `
+        <div class="memory-service-compat-banner" role="alert" data-compat-status="${escapeHtml(compatibility.status)}">
+            <strong>⚠ Memory Service version mismatch</strong>
+            <span>${escapeHtml(compatibility.message)}</span>
+            ${detailLine}
+        </div>
+    `;
+}
+
+export function buildSettingsUiMarkup(settings = {}, compatibility = null) {
     const sections = SETTINGS_UI_FIELDS.map(section => {
         const fields = section.fields.map(field => {
             const value = getFieldValue(settings, field);
@@ -248,9 +287,27 @@ export function buildSettingsUiMarkup(settings = {}) {
                         grid-template-columns: 1fr;
                     }
                 }
+                .memory-service-compat-banner {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    margin-top: 12px;
+                    padding: 10px 12px;
+                    border: 1px solid #e0a800;
+                    border-left-width: 4px;
+                    border-radius: 8px;
+                    background: rgba(224, 168, 0, 0.12);
+                    color: var(--SmartThemeBodyColor, inherit);
+                }
+                .memory-service-compat-detail {
+                    opacity: 0.75;
+                    font-family: monospace;
+                    font-size: 0.85em;
+                }
             </style>
             <h3>Memory Service</h3>
             <p class="memory-service-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
+            ${buildCompatibilityBannerMarkup(compatibility)}
             <div class="memory-service-settings-baseline">
                 <button type="button" id="memory-service-apply-baseline">Apply Recommended Baseline</button>
                 <span class="memory-service-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
@@ -321,6 +378,7 @@ export function renderSettingsUi({
     onSettingsChanged,
     onApplyRecommendedBaseline,
     getChatContext,
+    compatibility = null,
 }) {
     const host = findSettingsUiHost(document);
     if (!host || typeof host.querySelector !== 'function') {
@@ -334,7 +392,7 @@ export function renderSettingsUi({
         host.appendChild(panel);
     }
 
-    panel.innerHTML = buildSettingsUiMarkup(settings);
+    panel.innerHTML = buildSettingsUiMarkup(settings, compatibility);
 
     for (const section of SETTINGS_UI_FIELDS) {
         for (const field of section.fields) {
@@ -516,6 +574,7 @@ export function mountSettingsUi({
     onSettingsChanged,
     onApplyRecommendedBaseline,
     getChatContext,
+    compatibility = null,
     retries = 10,
     retryDelayMs = 500,
     scheduleRetry = null,
@@ -526,6 +585,7 @@ export function mountSettingsUi({
         onSettingsChanged,
         onApplyRecommendedBaseline,
         getChatContext,
+        compatibility,
     });
 
     if (rendered || retries <= 0) {
@@ -544,6 +604,7 @@ export function mountSettingsUi({
                 onSettingsChanged,
                 onApplyRecommendedBaseline,
                 getChatContext,
+                compatibility,
                 retries: retries - 1,
                 retryDelayMs,
                 scheduleRetry,

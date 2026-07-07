@@ -38,6 +38,10 @@ import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
 } from './lore-anchors.mjs';
+import {
+    MEMORY_PROTOCOL_VERSION,
+    compareVersions,
+} from './version.mjs';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -58,6 +62,7 @@ let pendingTurnKey = null;
 let currentMemoryPromptBlock = '';
 let currentRetrieveBudget = null;
 let currentLoreAnchorInfo = null;
+let currentCompatibility = null;
 
 function setMemoryPrompt(memoryBlock) {
     currentMemoryPromptBlock = memoryBlock || '';
@@ -120,12 +125,17 @@ function refreshSettingsUi() {
     mountSettingsUi({
         document: globalThis.document,
         settings,
+        compatibility: currentCompatibility,
         onSettingsChanged: (fieldKey, nextValue) => {
             settings = {
                 ...settings,
                 [fieldKey]: nextValue,
             };
             saveSettings();
+            // Connection edits can change which backend we talk to; re-check.
+            if (fieldKey === 'memoryServiceUrl' || fieldKey === 'apiKey' || fieldKey === 'enabled') {
+                checkBackendCompatibility();
+            }
         },
         onApplyRecommendedBaseline: nextSettings => {
             settings = nextSettings;
@@ -137,6 +147,66 @@ function refreshSettingsUi() {
             return { chatId: ctx.chatId, characterId: ctx.characterId };
         },
     });
+}
+
+/**
+ * Handshake with the backend to detect an incompatible/stale pairing.
+ *
+ * Non-blocking and best-effort: the result only drives a warning banner and
+ * console message; retrieve/store keep working regardless. The guarded failure
+ * mode is a stale extension copy (broken symlink into SillyTavern's public/)
+ * silently talking to an updated backend.
+ */
+async function checkBackendCompatibility() {
+    if (!settings.enabled || !settings.memoryServiceUrl) {
+        return;
+    }
+
+    let backendInfo = null;
+    let reachable = true;
+
+    try {
+        const headers = {};
+        if (settings.apiKey) {
+            headers['X-API-Key'] = settings.apiKey;
+        }
+
+        const response = await fetch(`${settings.memoryServiceUrl}/memory/version`, {
+            method: 'GET',
+            headers,
+        });
+
+        if (response.ok) {
+            backendInfo = await response.json();
+        } else if (response.status === 404) {
+            // Backend predates the /memory/version endpoint -> treat as outdated
+            // (backendInfo stays null so compareVersions reports backend_outdated).
+            backendInfo = null;
+        } else {
+            reachable = false;
+        }
+    } catch (error) {
+        reachable = false;
+        console.warn('[Memory Service] Version check request failed:', error?.message || error);
+    }
+
+    currentCompatibility = compareVersions({
+        extensionProtocol: MEMORY_PROTOCOL_VERSION,
+        backendInfo,
+        reachable,
+    });
+
+    if (currentCompatibility.warn) {
+        console.warn('[Memory Service]', currentCompatibility.message);
+    } else if (currentCompatibility.status === 'ok') {
+        console.log(
+            '[Memory Service] Backend compatible (protocol v%s, %s)',
+            currentCompatibility.backendProtocol,
+            currentCompatibility.backendGitCommit || currentCompatibility.backendServiceVersion || 'unknown build',
+        );
+    }
+
+    refreshSettingsUi();
 }
 
 /**
@@ -571,6 +641,9 @@ function init() {
     eventSource.on(event_types.WORLD_INFO_ACTIVATED || 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
     exposeAuditHelpers();
     refreshSettingsUi();
+    // Fire-and-forget: warns in the UI/console if the backend is an
+    // incompatible or stale pairing, without blocking initialization.
+    checkBackendCompatibility();
 
     console.log('[Memory Service] Extension initialized');
     console.log('[Memory Service] Current-turn pattern: retrieve happens before generation, store after render');

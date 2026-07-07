@@ -12,6 +12,7 @@ from app.db import init_schema
 from app.routes.memory_api import router as memory_router
 from app.routes.ui import router as ui_router
 from app.services.backup_service import run_backup
+from app.version import SERVICE_VERSION, get_version_info
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Memory Service",
     description="External memory service for SillyTavern",
-    version="0.1.0",
+    version=SERVICE_VERSION,
     lifespan=lifespan,
 )
 
@@ -51,6 +52,18 @@ app.add_middleware(
 async def health_check() -> dict:
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# Declared on the app (not the /memory router) so it is intentionally
+# unauthenticated - like /health, it is a diagnostic handshake carrying no
+# sensitive data, and the extension must be able to detect a version mismatch
+# even when the API key is misconfigured (a stale extension is itself a likely
+# cause of misconfiguration). Registering it here, before include_router below,
+# also keeps it from being swallowed by the /memory/{id} catch-all route.
+@app.get("/memory/version")
+async def memory_version() -> dict:
+    """Report backend version/compatibility info for the extension handshake."""
+    return get_version_info()
 
 
 app.include_router(memory_router)
