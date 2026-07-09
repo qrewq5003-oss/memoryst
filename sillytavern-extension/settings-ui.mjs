@@ -57,19 +57,6 @@ export const SETTINGS_UI_FIELDS = [
         ],
     },
     {
-        group: 'Scene Extraction',
-        description: 'Which model the automatic /memory/store pipeline calls for LLM scene extraction - independent of the LLM Provider panel\'s active model (that one is shared with consolidation and manual tools).',
-        fields: [
-            {
-                key: 'sceneExtractionModel',
-                label: 'Scene Extraction Model',
-                help: 'Model id passed to /memory/store. Prefer a non-reasoning model - reasoning models can spend their token budget on hidden reasoning before emitting the extraction JSON, causing empty/failed calls that silently fall back to a cruder regex extractor. Leave blank to use the LLM Provider panel\'s active model.',
-                type: 'text',
-                placeholder: 'deepseek/deepseek-v4-pro',
-            },
-        ],
-    },
-    {
         group: 'Prompt Injection Budget',
         description: 'How much memory survives into the current-turn prompt.',
         fields: [
@@ -152,6 +139,81 @@ function getFieldValue(settings, field) {
         return Boolean(value);
     }
     return value ?? '';
+}
+
+/**
+ * Build <option> markup for the Scene Extraction Model <select>, the same way
+ * the backend's own web UI populates consolidate-model/scene-model selects
+ * from GET /memory/models (see _scripts.html's loadModels()). Pure/no DOM so
+ * it's directly unit-testable without a fetch or document.
+ *
+ * Always keeps `selectedValue` selectable even if it isn't in `models` (e.g.
+ * the catalog fetch failed, or the model was retired from the backend's
+ * list) - otherwise pressing Confirm without touching the dropdown could
+ * silently overwrite a working saved value with the blank default.
+ */
+export function buildModelOptionsMarkup(models = [], selectedValue = '') {
+    const options = [{ value: '', label: '(use LLM Provider panel default)' }];
+    const seen = new Set();
+
+    if (selectedValue) {
+        options.push({ value: selectedValue, label: `${selectedValue} (current)` });
+        seen.add(selectedValue);
+    }
+
+    for (const model of models) {
+        if (seen.has(model)) continue;
+        seen.add(model);
+        options.push({ value: model, label: model });
+    }
+
+    return options
+        .map(opt => `<option value="${escapeHtml(opt.value)}"${opt.value === selectedValue ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`)
+        .join('');
+}
+
+/**
+ * Fetch GET {memoryServiceUrl}/memory/models and populate `select` with the
+ * full catalog, keeping `selectedValue` selected. Mirrors the backend web
+ * UI's loadModels() but scoped to a single select, called eagerly when the
+ * settings panel mounts (see renderSettingsUi) - not gated behind a button
+ * click, since the model list should be ready by the time the user opens the
+ * dropdown.
+ *
+ * fetchImpl is injectable for tests; defaults to the global fetch so runtime
+ * callers don't need to pass it.
+ */
+export async function loadSceneExtractionModelOptions({
+    select,
+    resultEl = null,
+    memoryServiceUrl,
+    apiKey,
+    selectedValue = '',
+    fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
+}) {
+    if (!select || typeof fetchImpl !== 'function' || !memoryServiceUrl) {
+        return false;
+    }
+
+    try {
+        const headers = {};
+        if (apiKey) headers['X-API-Key'] = apiKey;
+
+        const resp = await fetchImpl(`${memoryServiceUrl}/memory/models`, { headers });
+        if (!resp.ok) {
+            if (resultEl) resultEl.textContent = `Could not load model list: ${resp.status}`;
+            return false;
+        }
+
+        const data = await resp.json();
+        const models = Array.isArray(data.models) ? data.models : [];
+        select.innerHTML = buildModelOptionsMarkup(models, selectedValue);
+        if (resultEl) resultEl.textContent = `Loaded ${models.length} models.`;
+        return true;
+    } catch (e) {
+        if (resultEl) resultEl.textContent = `Could not load model list: ${e.message}`;
+        return false;
+    }
 }
 
 /**
@@ -327,6 +389,23 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null) {
             </div>
             <div class="memory-service-settings-grid">${sections}</div>
             <section class="memory-service-settings-group">
+                <h4>Scene Extraction</h4>
+                <p class="memory-service-settings-group-copy">Which model the automatic /memory/store pipeline calls for LLM scene extraction - independent of the LLM Provider panel's active model (that one is shared with consolidation and manual tools). Prefer a non-reasoning model: reasoning models can spend their token budget on hidden reasoning before emitting the extraction JSON, causing empty/failed calls that silently fall back to a cruder regex extractor.</p>
+                <label class="memory-service-setting-row">
+                    <span class="memory-service-setting-copy">
+                        <span class="memory-service-setting-label">Scene Extraction Model</span>
+                        <small class="memory-service-setting-help">Loaded from the backend's /memory/models catalog. Pick a model, then press Confirm to save it - selecting from the list alone does not save.</small>
+                    </span>
+                    <span class="memory-service-setting-control">
+                        <select id="memory-service-scene-extraction-model">${buildModelOptionsMarkup([], settings.sceneExtractionModel)}</select>
+                    </span>
+                </label>
+                <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <button type="button" id="memory-service-scene-extraction-save">Confirm</button>
+                    <span id="memory-service-scene-extraction-result" style="font-size:0.9em;"></span>
+                </div>
+            </section>
+            <section class="memory-service-settings-group">
                 <h4>Backfill</h4>
                 <p class="memory-service-settings-group-copy">Import existing chat history into memory.</p>
                 <div style="margin-top:8px;">
@@ -392,6 +471,7 @@ export function renderSettingsUi({
     onApplyRecommendedBaseline,
     getChatContext,
     compatibility = null,
+    fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
 }) {
     const host = findSettingsUiHost(document);
     if (!host || typeof host.querySelector !== 'function') {
@@ -426,6 +506,40 @@ export function renderSettingsUi({
     if (baselineButton && typeof baselineButton.addEventListener === 'function') {
         baselineButton.addEventListener('click', () => {
             onApplyRecommendedBaseline(applyRecommendedBaselineSettings(settings));
+        });
+    }
+
+    // Scene Extraction Model: a <select> populated from the backend's live
+    // /memory/models catalog (like the backend web UI's consolidate-model/
+    // scene-model selects), with an explicit Confirm button rather than
+    // save-on-select - deliberately NOT part of the generic SETTINGS_UI_FIELDS
+    // loop above, since it needs an async catalog fetch and its own save
+    // gesture. Confirm reuses the exact same onSettingsChanged callback every
+    // other field already uses (a flat `{...settings, [key]: value}` merge in
+    // index.js, not a re-normalize) - so this can't reintroduce the earlier
+    // bug where re-running normalizeExtensionSettings on an already-flat
+    // runtime settings object silently reset memoryServiceUrl to its default.
+    const sceneModelSelect = panel.querySelector('#memory-service-scene-extraction-model');
+    const sceneModelSaveBtn = panel.querySelector('#memory-service-scene-extraction-save');
+    const sceneModelResult = panel.querySelector('#memory-service-scene-extraction-result');
+
+    if (sceneModelSaveBtn && sceneModelSelect && typeof sceneModelSaveBtn.addEventListener === 'function') {
+        sceneModelSaveBtn.addEventListener('click', () => {
+            onSettingsChanged('sceneExtractionModel', sceneModelSelect.value);
+            if (sceneModelResult) {
+                sceneModelResult.textContent = `Saved: ${sceneModelSelect.value || '(provider default)'}`;
+            }
+        });
+    }
+
+    if (sceneModelSelect) {
+        loadSceneExtractionModelOptions({
+            select: sceneModelSelect,
+            resultEl: sceneModelResult,
+            memoryServiceUrl: settings.memoryServiceUrl,
+            apiKey: settings.apiKey,
+            selectedValue: settings.sceneExtractionModel,
+            fetchImpl,
         });
     }
 
@@ -591,6 +705,7 @@ export function mountSettingsUi({
     retries = 10,
     retryDelayMs = 500,
     scheduleRetry = null,
+    fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
 }) {
     const rendered = renderSettingsUi({
         document,
@@ -599,6 +714,7 @@ export function mountSettingsUi({
         onApplyRecommendedBaseline,
         getChatContext,
         compatibility,
+        fetchImpl,
     });
 
     if (rendered || retries <= 0) {
@@ -621,6 +737,7 @@ export function mountSettingsUi({
                 retries: retries - 1,
                 retryDelayMs,
                 scheduleRetry,
+                fetchImpl,
             });
         }, retryDelayMs);
     }
