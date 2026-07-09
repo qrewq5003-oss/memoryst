@@ -23,8 +23,26 @@ Environment variables:
 | `DATABASE_PATH` | `data/memory.db` | Path to SQLite database |
 | `BACKUP_DIR` | `data/backups` | Directory for timestamped database backups |
 | `BACKUP_KEEP` | `14` | Number of backups to retain (oldest are deleted first) |
-| `API_KEY` | `` | API key for authentication |
+| `API_KEY` | `` | API key for the `/memory` API (empty = auth disabled). Sent as the `X-API-Key` header. |
 | `DEBUG` | `false` | Enable debug mode (auto-reload) |
+
+## Security
+
+Authentication is **opt-in**: leave `API_KEY` empty for the local-only default
+(no header required, behaves as before). When `API_KEY` is set, every `/memory`
+API endpoint requires a matching `X-API-Key` header. `/health` and
+`/memory/version` stay unauthenticated on purpose (diagnostic handshake).
+
+The server refuses to start if `APP_HOST` is non-loopback (e.g. `0.0.0.0`) while
+`API_KEY` is empty — this closes the silent "public bind, no auth" hole.
+
+> ⚠️ **Before exposing this service on a LAN, know the current limit:** `API_KEY`
+> protects only the `/memory` API. The web UI router (`/ui` and its form-based
+> create/edit/delete/pin/archive actions) is **not** behind the key, and the
+> browser Tools tab calls `/memory/*` via `fetch()` without the header — so with
+> `API_KEY` set those Tools actions return 401. For localhost use this is fine.
+> **If you enable `API_KEY` for non-localhost access, first protect the UI router
+> (`app/routes/ui.py`) — do not rely on `API_KEY` alone for LAN exposure.**
 
 ## Running
 
