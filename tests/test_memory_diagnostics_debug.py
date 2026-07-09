@@ -91,13 +91,16 @@ class MemoryDiagnosticsDebugTests(unittest.TestCase):
         )
         with patch(
             "app.services.store_service.extract_scene_memories",
-            return_value=[
-                _store_candidate(
-                    "Alice planned the Rome museum trip for Friday.",
-                    keywords=["alice", "rome", "museum"],
-                    entities=["Alice"],
-                )
-            ],
+            return_value=(
+                [
+                    _store_candidate(
+                        "Alice planned the Rome museum trip for Friday.",
+                        keywords=["alice", "rome", "museum"],
+                        entities=["Alice"],
+                    )
+                ],
+                "llm",
+            ),
         ):
             response = store_memories(request)
 
@@ -121,15 +124,18 @@ class MemoryDiagnosticsDebugTests(unittest.TestCase):
         )
         with patch(
             "app.services.store_service.extract_scene_memories",
-            return_value=[
-                _store_candidate("Okay"),
-                _store_candidate(" Alice likes tea! ", keywords=["alice", "tea"], entities=["Alice"]),
-                _store_candidate(
-                    "Alice planned the Rome museum trip for Friday.",
-                    keywords=["alice", "rome", "museum"],
-                    entities=["Alice"],
-                ),
-            ],
+            return_value=(
+                [
+                    _store_candidate("Okay"),
+                    _store_candidate(" Alice likes tea! ", keywords=["alice", "tea"], entities=["Alice"]),
+                    _store_candidate(
+                        "Alice planned the Rome museum trip for Friday.",
+                        keywords=["alice", "rome", "museum"],
+                        entities=["Alice"],
+                    ),
+                ],
+                "llm",
+            ),
         ):
             response = store_memories(request)
 

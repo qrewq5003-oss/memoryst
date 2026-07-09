@@ -5,6 +5,7 @@ import {
     applyRecommendedBaselineSettings,
     DEFAULT_AUDIT_SETTINGS,
     DEFAULT_CONNECTION_SETTINGS,
+    DEFAULT_EXTRACTION_SETTINGS,
     DEFAULT_PROMPT_BUDGET_SETTINGS,
     DEFAULT_RETRIEVAL_SETTINGS,
     DEFAULT_SETTINGS,
@@ -17,12 +18,27 @@ test('default extension settings stay coherent across grouped and flat views', (
     assert.equal(DEFAULT_SETTINGS.enabled, DEFAULT_CONNECTION_SETTINGS.enabled);
     assert.equal(DEFAULT_SETTINGS.retrieveLimit, DEFAULT_RETRIEVAL_SETTINGS.retrieveLimit);
     assert.equal(DEFAULT_SETTINGS.recentMessagesCount, DEFAULT_RETRIEVAL_SETTINGS.recentMessagesCount);
+    assert.equal(DEFAULT_SETTINGS.sceneExtractionModel, DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel);
     assert.equal(DEFAULT_SETTINGS.maxPromptChars, DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptChars);
     assert.equal(DEFAULT_SETTINGS.auditMaxRecords, DEFAULT_AUDIT_SETTINGS.auditMaxRecords);
 
     assert.equal(LONG_CHAT_RECOMMENDED_BASELINE.retrieveLimit, DEFAULT_RETRIEVAL_SETTINGS.retrieveLimit);
     assert.equal(LONG_CHAT_RECOMMENDED_BASELINE.maxPromptMemories, DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptMemories);
     assert.equal(LONG_CHAT_RECOMMENDED_BASELINE.maxPromptChars, DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptChars);
+});
+
+test('normalizeExtensionSettings supports scene extraction model override in grouped and flat shapes', () => {
+    const flat = normalizeExtensionSettings({ sceneExtractionModel: 'openai/gpt-4o-mini' });
+    assert.equal(flat.sceneExtractionModel, 'openai/gpt-4o-mini');
+
+    const grouped = normalizeExtensionSettings({ extraction: { sceneExtractionModel: 'openai/gpt-4o-mini' } });
+    assert.equal(grouped.sceneExtractionModel, 'openai/gpt-4o-mini');
+
+    const serialized = serializeExtensionSettings(grouped);
+    assert.equal(serialized.extraction.sceneExtractionModel, 'openai/gpt-4o-mini');
+
+    const usesDefault = normalizeExtensionSettings({});
+    assert.equal(usesDefault.sceneExtractionModel, DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel);
 });
 
 test('normalizeExtensionSettings supports legacy flat settings shape', () => {

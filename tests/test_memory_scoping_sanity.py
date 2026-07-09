@@ -137,7 +137,7 @@ class MemoryScopingSanityTests(unittest.TestCase):
             metadata=MemoryMetadata(keywords=["алиса", "грозa"], entities=["Алиса"]),
         )
 
-        with patch("app.services.store_service.extract_scene_memories", return_value=[candidate]):
+        with patch("app.services.store_service.extract_scene_memories", return_value=([candidate], "llm")):
             response = store_memories(
                 StoreMemoryRequest(
                     chat_id="chat-b",

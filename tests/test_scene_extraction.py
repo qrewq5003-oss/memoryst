@@ -36,10 +36,11 @@ class ScenePreFilterTests(unittest.TestCase):
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
             "app.services.llm_extractor.extract_scene_facts"
         ) as facts_mock:
-            candidates = extract_scene_memories("chat-1", "char-1", messages)
+            candidates, method = extract_scene_memories("chat-1", "char-1", messages)
 
         facts_mock.assert_not_called()
         self.assertEqual(candidates, [])
+        self.assertEqual(method, "regex_fallback")
 
     def test_marker_hit_triggers_llm_call(self) -> None:
         messages = [_msg("Алиса работает врачом в Риме.", message_id="m0")]
@@ -53,10 +54,11 @@ class ScenePreFilterTests(unittest.TestCase):
 
     def test_empty_message_list_returns_empty_without_calling_llm(self) -> None:
         with patch("app.services.llm_extractor.extract_scene_facts") as facts_mock:
-            candidates = extract_scene_memories("chat-1", "char-1", [])
+            candidates, method = extract_scene_memories("chat-1", "char-1", [])
 
         facts_mock.assert_not_called()
         self.assertEqual(candidates, [])
+        self.assertIsNone(method)
 
 
 class SceneLLMExtractionTests(unittest.TestCase):
@@ -81,8 +83,9 @@ class SceneLLMExtractionTests(unittest.TestCase):
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
             "app.services.llm_extractor.extract_scene_facts", return_value=fake_facts
         ):
-            candidates = extract_scene_memories("chat-1", "char-1", messages)
+            candidates, method = extract_scene_memories("chat-1", "char-1", messages)
 
+        self.assertEqual(method, "llm")
         self.assertEqual(len(candidates), 1)
         candidate = candidates[0]
         self.assertEqual(candidate.type, "profile")
@@ -106,8 +109,9 @@ class SceneLLMExtractionTests(unittest.TestCase):
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
             "app.services.llm_extractor.extract_scene_facts", return_value=fake_facts
         ):
-            candidates = extract_scene_memories("chat-1", "char-1", messages)
+            candidates, method = extract_scene_memories("chat-1", "char-1", messages)
 
+        self.assertEqual(method, "llm")
         self.assertEqual(candidates, [])
 
     def test_missing_layer_from_llm_falls_back_to_heuristic_layer(self) -> None:
@@ -126,8 +130,9 @@ class SceneLLMExtractionTests(unittest.TestCase):
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
             "app.services.llm_extractor.extract_scene_facts", return_value=fake_facts
         ):
-            candidates = extract_scene_memories("chat-1", "char-1", messages)
+            candidates, method = extract_scene_memories("chat-1", "char-1", messages)
 
+        self.assertEqual(method, "llm")
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].layer, "stable")
 
@@ -141,9 +146,10 @@ class SceneFallbackTests(unittest.TestCase):
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=False), patch(
             "app.services.llm_extractor.extract_scene_facts"
         ) as facts_mock:
-            candidates = extract_scene_memories("chat-1", "char-1", messages)
+            candidates, method = extract_scene_memories("chat-1", "char-1", messages)
 
         facts_mock.assert_not_called()
+        self.assertEqual(method, "regex_fallback")
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].type, "profile")
         # Rule-based fallback has no source_message_ids - only the LLM path attaches them.
@@ -155,8 +161,9 @@ class SceneFallbackTests(unittest.TestCase):
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
             "app.services.llm_extractor.extract_scene_facts", return_value=None
         ):
-            candidates = extract_scene_memories("chat-1", "char-1", messages)
+            candidates, method = extract_scene_memories("chat-1", "char-1", messages)
 
+        self.assertEqual(method, "regex_fallback")
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].type, "profile")
 
@@ -291,9 +298,9 @@ class StoreEndpointWiringTests(unittest.TestCase):
     def test_store_assigns_stable_ids_and_extraction_sees_buffered_messages(self) -> None:
         captured_messages = {}
 
-        def fake_extract(chat_id, character_id, messages):
+        def fake_extract(chat_id, character_id, messages, model=None):
             captured_messages["messages"] = messages
-            return []
+            return [], None
 
         with patch("app.services.store_service.extract_scene_memories", side_effect=fake_extract):
             store_memories(
@@ -317,9 +324,9 @@ class StoreEndpointWiringTests(unittest.TestCase):
     def test_store_filters_ooc_before_extraction(self) -> None:
         captured_messages = {}
 
-        def fake_extract(chat_id, character_id, messages):
+        def fake_extract(chat_id, character_id, messages, model=None):
             captured_messages["messages"] = messages
-            return []
+            return [], None
 
         with patch("app.services.store_service.extract_scene_memories", side_effect=fake_extract):
             store_memories(
@@ -361,10 +368,49 @@ class StoreEndpointWiringTests(unittest.TestCase):
             )
 
         self.assertEqual(response.stored, 1)
+        self.assertEqual(response.extraction_method, "llm")
         stored_item = list_memories(chat_id="chat-1", character_id="char-1").items[0]
         self.assertEqual(len(stored_item.metadata.source_message_ids), 1)
         buffered_id = chat_buffer_service.get_hot_buffer("chat-1", "char-1")[0].id
         self.assertEqual(stored_item.metadata.source_message_ids, [buffered_id])
+
+    def test_store_response_reports_regex_fallback_when_llm_call_fails(self) -> None:
+        with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
+            "app.services.llm_extractor.extract_scene_facts", return_value=None
+        ):
+            response = store_memories(
+                StoreMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    messages=[MessageInput(role="assistant", text="Алиса работает врачом в Риме.")],
+                )
+            )
+
+        # A failed/disabled LLM call must not look identical to a real "nothing to
+        # remember" success on the wire - see CLAUDE.md's scene-extraction-llm-failing
+        # investigation, where this was previously indistinguishable from the outside.
+        self.assertEqual(response.extraction_method, "regex_fallback")
+
+    def test_store_request_model_override_reaches_extract_scene_facts(self) -> None:
+        captured = {}
+
+        def fake_facts(messages, *, model=None):
+            captured["model"] = model
+            return []
+
+        with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
+            "app.services.llm_extractor.extract_scene_facts", side_effect=fake_facts
+        ):
+            store_memories(
+                StoreMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    messages=[MessageInput(role="assistant", text="Алиса работает врачом в Риме.")],
+                    model="deepseek-chat",
+                )
+            )
+
+        self.assertEqual(captured["model"], "deepseek-chat")
 
 
 if __name__ == "__main__":

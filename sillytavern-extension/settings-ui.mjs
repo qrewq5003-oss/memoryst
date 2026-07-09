@@ -57,6 +57,19 @@ export const SETTINGS_UI_FIELDS = [
         ],
     },
     {
+        group: 'Scene Extraction',
+        description: 'Which model the automatic /memory/store pipeline calls for LLM scene extraction - independent of the LLM Provider panel\'s active model (that one is shared with consolidation and manual tools).',
+        fields: [
+            {
+                key: 'sceneExtractionModel',
+                label: 'Scene Extraction Model',
+                help: 'Model id passed to /memory/store. Prefer a non-reasoning model - reasoning models can spend their token budget on hidden reasoning before emitting the extraction JSON, causing empty/failed calls that silently fall back to a cruder regex extractor. Leave blank to use the LLM Provider panel\'s active model.',
+                type: 'text',
+                placeholder: 'deepseek-chat',
+            },
+        ],
+    },
+    {
         group: 'Prompt Injection Budget',
         description: 'How much memory survives into the current-turn prompt.',
         fields: [

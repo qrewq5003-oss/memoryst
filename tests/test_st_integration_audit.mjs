@@ -26,6 +26,7 @@ test('store audit section captures message previews and result summary', () => {
             skipped: 1,
             items: [{ id: 'm1' }],
             debug: { candidates: [] },
+            extraction_method: 'llm',
         },
         previewChars: 20,
     });
@@ -34,7 +35,17 @@ test('store audit section captures message previews and result summary', () => {
     assert.equal(section.stored, 1);
     assert.equal(section.skipped, 1);
     assert.equal(section.debug_present, true);
+    assert.equal(section.extraction_method, 'llm');
     assert.match(section.messages[0].text_preview, /Алиса долго объясня/);
+});
+
+test('store audit section defaults extraction_method to null when the backend omits it', () => {
+    const section = buildStoreAuditSection({
+        messages: [],
+        result: { stored: 0, updated: 0, skipped: 0, items: [] },
+    });
+
+    assert.equal(section.extraction_method, null);
 });
 
 test('retrieve and prompt audit sections capture memory block insertion details', () => {

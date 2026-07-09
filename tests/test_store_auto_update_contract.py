@@ -65,7 +65,7 @@ class StoreAutoUpdateContractTests(unittest.TestCase):
             character_id=candidate.character_id,
             messages=[MessageInput(role="user", text="irrelevant")],
         )
-        with patch("app.services.store_service.extract_scene_memories", return_value=[candidate]):
+        with patch("app.services.store_service.extract_scene_memories", return_value=([candidate], "llm")):
             return store_memories(request)
 
     def test_exact_duplicate_of_auto_memory_updates(self) -> None:

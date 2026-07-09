@@ -19,6 +19,18 @@ export const DEFAULT_RETRIEVAL_SETTINGS = {
     recentMessagesCount: 8,
 };
 
+// Defaults to a non-reasoning model, independent of whatever the "LLM Provider"
+// panel's active model is (that one is shared with consolidation/manual tools,
+// which may want a stronger reasoning model). Reasoning models (e.g. the
+// backend's own zai-org/glm-4.7 default) were found to spend their token budget
+// on hidden reasoning before ever emitting the scene-extraction JSON, producing
+// empty/failed calls that silently fell back to the cruder regex extractor - see
+// CLAUDE.md's scene-extraction-llm-failing investigation. An empty string here
+// means "use whatever model the active LLM Provider is configured with" instead.
+export const DEFAULT_EXTRACTION_SETTINGS = {
+    sceneExtractionModel: 'deepseek-chat',
+};
+
 export const DEFAULT_PROMPT_BUDGET_SETTINGS = {
     maxPromptMemories: DEFAULT_MAX_PROMPT_MEMORIES,
     maxPromptChars: DEFAULT_MAX_PROMPT_CHARS,
@@ -41,6 +53,7 @@ export const LONG_CHAT_RECOMMENDED_BASELINE = {
 export const DEFAULT_SETTINGS_GROUPS = {
     connection: { ...DEFAULT_CONNECTION_SETTINGS },
     retrieval: { ...DEFAULT_RETRIEVAL_SETTINGS },
+    extraction: { ...DEFAULT_EXTRACTION_SETTINGS },
     promptBudget: { ...DEFAULT_PROMPT_BUDGET_SETTINGS },
     audit: { ...DEFAULT_AUDIT_SETTINGS },
 };
@@ -48,6 +61,7 @@ export const DEFAULT_SETTINGS_GROUPS = {
 export const DEFAULT_SETTINGS = {
     ...DEFAULT_CONNECTION_SETTINGS,
     ...DEFAULT_RETRIEVAL_SETTINGS,
+    ...DEFAULT_EXTRACTION_SETTINGS,
     ...DEFAULT_PROMPT_BUDGET_SETTINGS,
     ...DEFAULT_AUDIT_SETTINGS,
     recentAudits: [],
@@ -63,6 +77,10 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...DEFAULT_RETRIEVAL_SETTINGS,
         ...(rawSettings.retrieval || {}),
     };
+    const extraction = {
+        ...DEFAULT_EXTRACTION_SETTINGS,
+        ...(rawSettings.extraction || {}),
+    };
     const promptBudget = {
         ...DEFAULT_PROMPT_BUDGET_SETTINGS,
         ...(rawSettings.promptBudget || {}),
@@ -76,6 +94,7 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...DEFAULT_SETTINGS,
         ...connection,
         ...retrieval,
+        ...extraction,
         ...promptBudget,
         ...audit,
         enabled: rawSettings.enabled ?? connection.enabled,
@@ -86,6 +105,7 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         apiKey: rawSettings.apiKey ?? connection.apiKey,
         retrieveLimit: rawSettings.retrieveLimit ?? retrieval.retrieveLimit,
         recentMessagesCount: rawSettings.recentMessagesCount ?? retrieval.recentMessagesCount,
+        sceneExtractionModel: rawSettings.sceneExtractionModel ?? extraction.sceneExtractionModel,
         maxPromptMemories: rawSettings.maxPromptMemories ?? promptBudget.maxPromptMemories,
         maxPromptChars: rawSettings.maxPromptChars ?? promptBudget.maxPromptChars,
         maxSummaryItems: rawSettings.maxSummaryItems ?? promptBudget.maxSummaryItems,
@@ -116,6 +136,9 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
         retrieval: {
             retrieveLimit: settings.retrieveLimit ?? DEFAULT_RETRIEVAL_SETTINGS.retrieveLimit,
             recentMessagesCount: settings.recentMessagesCount ?? DEFAULT_RETRIEVAL_SETTINGS.recentMessagesCount,
+        },
+        extraction: {
+            sceneExtractionModel: settings.sceneExtractionModel ?? DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel,
         },
         promptBudget: {
             maxPromptMemories: settings.maxPromptMemories ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptMemories,

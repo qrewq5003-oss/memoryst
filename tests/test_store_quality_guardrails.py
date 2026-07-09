@@ -54,7 +54,7 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
             character_id="char-1",
             messages=[MessageInput(role="user", text="irrelevant")],
         )
-        with patch("app.services.store_service.extract_scene_memories", return_value=candidates):
+        with patch("app.services.store_service.extract_scene_memories", return_value=(candidates, "llm")):
             return store_memories(request)
 
     def test_low_value_candidate_is_skipped(self) -> None:

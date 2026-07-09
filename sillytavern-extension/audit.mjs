@@ -238,6 +238,7 @@ export function buildStoreAuditSection({
         updated: result?.updated ?? 0,
         skipped: result?.skipped ?? 0,
         stored_item_count: result?.items?.length ?? 0,
+        extraction_method: result?.extraction_method ?? null,
         debug_present: Boolean(result?.debug),
         error: error ? String(error) : null,
     };

@@ -295,20 +295,25 @@ async function storeMemories() {
             headers['X-API-Key'] = settings.apiKey;
         }
 
+        const body = {
+            chat_id: chatContext.chatId,
+            character_id: chatContext.characterId,
+            messages: messages,
+            debug: settings.auditEnabled,
+        };
+        if (settings.sceneExtractionModel) {
+            body.model = settings.sceneExtractionModel;
+        }
+
         const response = await fetch(`${settings.memoryServiceUrl}/memory/store`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({
-                chat_id: chatContext.chatId,
-                character_id: chatContext.characterId,
-                messages: messages,
-                debug: settings.auditEnabled,
-            }),
+            body: JSON.stringify(body),
         });
 
         if (response.ok) {
             const result = await response.json();
-            console.log('[Memory Service] Stored:', result.stored, 'Skipped:', result.skipped);
+            console.log('[Memory Service] Stored:', result.stored, 'Skipped:', result.skipped, 'Extraction method:', result.extraction_method);
             return {
                 called: true,
                 messages,

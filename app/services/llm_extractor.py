@@ -1,4 +1,6 @@
 import json
+import sys
+import traceback
 
 from app.schemas import ChatMessageItem
 from app.services.llm_client import chat_completion, is_llm_enabled
@@ -191,16 +193,38 @@ def extract_scene_facts(
         response = chat_completion(
             llm_messages,
             model=model,
-            max_tokens=1500,
+            # Reasoning models (e.g. the zai-org/glm-4.7 default) spend part of this
+            # budget on hidden reasoning tokens before ever emitting the schema'd
+            # JSON - 1500 was observed (see CLAUDE.md investigation) to leave no room
+            # for actual content, producing an empty message.content that then fails
+            # json.loads() on every call. Raised to give reasoning headroom.
+            max_tokens=6000,
             temperature=0.2,
             response_format={"type": "json_schema", "json_schema": SCENE_FACTS_SCHEMA},
         )
         parsed = json.loads(response)
     except Exception:
+        # TEMP DEBUG (see CLAUDE.md investigation): this except used to swallow
+        # everything silently, so a failed/malformed LLM call was indistinguishable
+        # from "the model decided nothing was worth remembering". Print to stderr
+        # (not logging - see llm_client.py's _list_models_via_get for why) so it
+        # shows up no matter how uvicorn configures logging.
+        print(
+            f"[llm_extractor] extract_scene_facts LLM call/parse FAILED, "
+            f"model_requested={model!r}, messages={len(messages)}:\n{traceback.format_exc()}",
+            file=sys.stderr,
+            flush=True,
+        )
         return None
 
     facts = parsed.get("facts")
     if not isinstance(facts, list):
+        print(
+            f"[llm_extractor] extract_scene_facts got malformed response "
+            f"(no 'facts' list): {parsed!r}",
+            file=sys.stderr,
+            flush=True,
+        )
         return None
 
     results = []

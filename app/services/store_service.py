@@ -1,3 +1,5 @@
+import sys
+
 from app.repositories.memory_repo import (
     create_memory,
     find_memory_by_normalized_content,
@@ -120,11 +122,22 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         request.chat_id, request.character_id, request.messages
     )
 
+    # TEMP DEBUG (see CLAUDE.md investigation): confirms what the caller actually
+    # sent, independent of whatever extract_scene_facts logs on failure - lets us
+    # tell "extension didn't send model" apart from "model was sent but still failed".
+    print(
+        f"[store_service] chat={request.chat_id} char={request.character_id}: "
+        f"request.model={request.model!r}",
+        file=sys.stderr,
+        flush=True,
+    )
+
     # Extract candidates from the whole scene at once
-    candidates = extract_scene_memories(
+    candidates, extraction_method = extract_scene_memories(
         chat_id=request.chat_id,
         character_id=request.character_id,
         messages=buffered_messages,
+        model=request.model,
     )
 
     stored_items: list[MemoryItem] = []
@@ -290,10 +303,19 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                         )
                     )
 
+    print(
+        f"[store_service] chat={request.chat_id} char={request.character_id}: "
+        f"extraction_method={extraction_method} {len(candidates)} candidates -> "
+        f"stored={stored_count} updated={updated_count} skipped={skipped_count}",
+        file=sys.stderr,
+        flush=True,
+    )
+
     return StoreMemoryResponse(
         stored=stored_count,
         updated=updated_count,
         skipped=skipped_count,
         items=stored_items,
         debug=StoreDebugPayload(candidates=debug_candidates) if request.debug else None,
+        extraction_method=extraction_method,
     )

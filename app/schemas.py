@@ -150,6 +150,10 @@ class StoreMemoryRequest(BaseModel):
     character_id: str = Field(..., min_length=1, max_length=200)
     messages: list[MessageInput]
     debug: bool = False
+    # Overrides the active provider's default model for scene extraction only
+    # (see sillytavern-extension's "Scene Extraction Model" setting). None keeps
+    # prior behavior: the active provider's configured default model is used.
+    model: str | None = None
 
 
 class StoreMemoryResponse(BaseModel):
@@ -158,6 +162,11 @@ class StoreMemoryResponse(BaseModel):
     skipped: int
     items: list[MemoryItem]
     debug: StoreDebugPayload | None = None
+    # "llm": scene_extractor's LLM call ran and parsed (even if it legitimately
+    # found nothing). "regex_fallback": the LLM was skipped/disabled or the call
+    # failed and the cruder rule-based extractor ran instead. None: no messages
+    # to extract from at all. See scene_extractor.extract_scene_memories.
+    extraction_method: Literal["llm", "regex_fallback"] | None = None
 
 
 class RetrieveCandidateDebug(BaseModel):
