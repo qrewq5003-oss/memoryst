@@ -1,20 +1,73 @@
 <script>
-// Selection checkbox counter
+// Consolidation selection persists in localStorage (keyed by chat/character) rather
+// than living only in checkbox DOM state - the candidate pool can span more memories
+// than one page shows, and a page-only Set would silently drop anything selected on
+// a page the user has since navigated away from.
+function consolidateStorageKey() {
+    const chatId = document.getElementById('consolidate-chat-id').value;
+    const charId = document.getElementById('consolidate-char-id').value;
+    return `consolidate-selected::${chatId}::${charId}`;
+}
+
+function loadConsolidateSelection() {
+    try {
+        const raw = localStorage.getItem(consolidateStorageKey());
+        return new Set(raw ? JSON.parse(raw) : []);
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveConsolidateSelection(set) {
+    try {
+        localStorage.setItem(consolidateStorageKey(), JSON.stringify(Array.from(set)));
+    } catch (e) {}
+}
+
 function getSelectedConsolidationIds() {
-    return Array.from(document.querySelectorAll('.consolidate-checkbox:checked'))
-        .map(el => el.dataset.memoryId);
+    return Array.from(loadConsolidateSelection());
 }
 
 function updateConsolidateSelectedCount() {
     const countEl = document.getElementById('consolidate-selected-count');
-    if (countEl) countEl.textContent = String(getSelectedConsolidationIds().length);
+    if (countEl) countEl.textContent = String(loadConsolidateSelection().size);
+}
+
+// Reflect the persisted selection onto whichever checkboxes happen to be
+// rendered on this page (memories not on this page stay selected, just
+// without a visible checkbox to show it).
+function syncConsolidateCheckboxes() {
+    const set = loadConsolidateSelection();
+    document.querySelectorAll('.consolidate-checkbox').forEach(cb => {
+        cb.checked = set.has(cb.dataset.memoryId);
+    });
+    updateConsolidateSelectedCount();
 }
 
 document.addEventListener('change', (e) => {
-    if (e.target.matches('.consolidate-checkbox')) updateConsolidateSelectedCount();
+    if (!e.target.matches('.consolidate-checkbox')) return;
+    const set = loadConsolidateSelection();
+    if (e.target.checked) set.add(e.target.dataset.memoryId);
+    else set.delete(e.target.dataset.memoryId);
+    saveConsolidateSelection(set);
+    updateConsolidateSelectedCount();
 });
 
-updateConsolidateSelectedCount();
+document.getElementById('consolidate-select-all').addEventListener('click', () => {
+    let ids = [];
+    try { ids = JSON.parse(document.getElementById('consolidate-all-candidates').textContent); } catch (e) {}
+    const set = loadConsolidateSelection();
+    ids.forEach(id => set.add(id));
+    saveConsolidateSelection(set);
+    syncConsolidateCheckboxes();
+});
+
+document.getElementById('consolidate-clear-selection').addEventListener('click', () => {
+    saveConsolidateSelection(new Set());
+    syncConsolidateCheckboxes();
+});
+
+syncConsolidateCheckboxes();
 
 // Consolidation handler
 document.getElementById('consolidate-form').addEventListener('submit', async (e) => {
@@ -50,6 +103,8 @@ document.getElementById('consolidate-form').addEventListener('submit', async (e)
                 document.getElementById('consolidate-preview-title').textContent = `${tier.toUpperCase()} Summary`;
                 document.getElementById('consolidate-preview-content').textContent = data.summary_text || '';
                 preview.style.display = 'block';
+                saveConsolidateSelection(new Set());
+                syncConsolidateCheckboxes();
             } else {
                 result.textContent = `${data.action} (${data.summarized_count} sources)`;
             }

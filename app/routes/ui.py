@@ -24,8 +24,10 @@ from app.schemas import (
     StoreMemoryRequest,
     UpdateMemoryRequest,
 )
+from app.services.conflict_resolver import SUPERSEDED_REVIEW_STATUS
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
+from app.services.summary_service import CONSOLIDATED_REVIEW_STATUS
 from app.ui_helpers.classifiers import build_memory_card
 from app.ui_helpers.consolidation import (
     append_consolidation_history,
@@ -203,6 +205,20 @@ def _render_memories_page(
 
     candidate_map, consolidation_summary = build_consolidation_data(consolidation_items)
 
+    # Full pool of memories eligible as consolidation sources, independent of the
+    # page-size-limited `memories` list above - the consolidate-checkbox picker
+    # in the UI must be able to select an older memory that isn't on the current
+    # page, otherwise it silently gets excluded from source_ids with no sign
+    # anything was missed (see: episodic memories from earlier in a long chat
+    # never being selectable once the chat exceeds one page of results).
+    consolidation_all_candidate_ids = [
+        item.id
+        for item in consolidation_items
+        if not item.archived
+        and item.metadata.review_status not in (CONSOLIDATED_REVIEW_STATUS, SUPERSEDED_REVIEW_STATUS)
+    ]
+    consolidation_pool_truncated = len(consolidation_items) >= UI_SEARCH_SCAN_LIMIT
+
     # Apply consolidation filter in Python if needed (overrides SQL pagination)
     if consolidation and consolidation_items:
         consolidation_ids = set()
@@ -370,6 +386,8 @@ def _render_memories_page(
             "all_chats_selected": view_mode == "all",
             "has_chat_groups": bool(chat_groups),
             "consolidation_summary": consolidation_summary,
+            "consolidation_all_candidate_ids": consolidation_all_candidate_ids,
+            "consolidation_pool_truncated": consolidation_pool_truncated,
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,

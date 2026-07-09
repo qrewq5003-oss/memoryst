@@ -284,6 +284,13 @@
 <section class="create-form">
     <h2>Consolidation</h2>
     <p style="margin-bottom:8px;opacity:0.8;">Combine memories into higher-level summaries: Episodic → Arc → Chapter → Book.</p>
+    {% if consolidation_pool_truncated %}
+    <div class="result-summary" style="border-color:#a35a00;background:#3a2a1a;">
+        <strong>Warning:</strong> this chat has at least {{ consolidation_all_candidate_ids|length }} consolidation-eligible
+        memories, hitting the scan cap - some older memories may not be selectable even via "Select all".
+    </div>
+    {% endif %}
+    <script type="application/json" id="consolidate-all-candidates">{{ consolidation_all_candidate_ids | tojson }}</script>
     <form id="consolidate-form">
         <input type="hidden" id="consolidate-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
         <input type="hidden" id="consolidate-char-id" value="{{ filters['selected_character_id'] or '' }}">
@@ -297,8 +304,10 @@
             </label>
             <label>Model: <select id="consolidate-model" style="max-width:200px;"><option value="">default</option></select></label>
         </div>
-        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <button type="submit" id="consolidate-submit">Консолидировать выбранное (<span id="consolidate-selected-count">0</span>)</button>
+            <button type="button" id="consolidate-select-all">Select all not-yet-consolidated ({{ consolidation_all_candidate_ids|length }})</button>
+            <button type="button" id="consolidate-clear-selection">Clear selection</button>
             <span id="consolidate-result" style="font-size:0.9em;"></span>
         </div>
     </form>
