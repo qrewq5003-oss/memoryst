@@ -15,13 +15,20 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install "pytest>=8.0"
 
-      - name: Run tests
+      - name: Run Python tests
         run: python -m pytest -q
 
       - name: Run retrieval eval (gate)
         run: python scripts/run_retrieval_eval.py
+
+      - name: Run JS tests
+        run: node --test tests/*.mjs
