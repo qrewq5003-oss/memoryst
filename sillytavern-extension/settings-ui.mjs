@@ -65,7 +65,7 @@ export const SETTINGS_UI_FIELDS = [
                 label: 'Scene Extraction Model',
                 help: 'Model id passed to /memory/store. Prefer a non-reasoning model - reasoning models can spend their token budget on hidden reasoning before emitting the extraction JSON, causing empty/failed calls that silently fall back to a cruder regex extractor. Leave blank to use the LLM Provider panel\'s active model.',
                 type: 'text',
-                placeholder: 'deepseek-chat',
+                placeholder: 'deepseek/deepseek-v4-pro',
             },
         ],
     },

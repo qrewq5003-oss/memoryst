@@ -27,8 +27,12 @@ export const DEFAULT_RETRIEVAL_SETTINGS = {
 // empty/failed calls that silently fell back to the cruder regex extractor - see
 // CLAUDE.md's scene-extraction-llm-failing investigation. An empty string here
 // means "use whatever model the active LLM Provider is configured with" instead.
+// deepseek/deepseek-v4-pro was verified live against the backend's NanoGPT
+// catalog (3/3 clean scene-extraction calls, reasoning_tokens=0 in the API
+// response, no reasoning_content field) before being set as the default - see
+// CLAUDE.md's scene-extraction-llm-failing investigation for the verification.
 export const DEFAULT_EXTRACTION_SETTINGS = {
-    sceneExtractionModel: 'deepseek-chat',
+    sceneExtractionModel: 'deepseek/deepseek-v4-pro',
 };
 
 export const DEFAULT_PROMPT_BUDGET_SETTINGS = {
