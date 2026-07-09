@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    applyRecommendedBaselineSettings,
     DEFAULT_AUDIT_SETTINGS,
     DEFAULT_CONNECTION_SETTINGS,
     DEFAULT_PROMPT_BUDGET_SETTINGS,
@@ -78,4 +79,59 @@ test('normalizeExtensionSettings supports grouped settings shape and serializati
     assert.equal(serialized.promptBudget.maxPromptChars, 600);
     assert.equal(serialized.audit.auditEnabled, true);
     assert.ok(!Object.hasOwn(serialized, 'retrieveLimit'));
+});
+
+test('normalizeExtensionSettings ignores a stale legacy flat memoryServiceUrl in favor of connection.memoryServiceUrl', () => {
+    const connectionWins = normalizeExtensionSettings({
+        memoryServiceUrl: 'http://192.168.1.11:8000',
+        connection: {
+            memoryServiceUrl: 'http://127.0.0.1:8001',
+        },
+    });
+    assert.equal(connectionWins.memoryServiceUrl, 'http://127.0.0.1:8001');
+
+    // Even when connection.memoryServiceUrl is blank, the legacy flat value must
+    // NOT be used as a fallback - it falls through to the hardcoded default instead.
+    const emptyConnectionFallsBackToDefault = normalizeExtensionSettings({
+        memoryServiceUrl: 'http://192.168.1.11:8000',
+        connection: {
+            memoryServiceUrl: '',
+        },
+    });
+    assert.equal(emptyConnectionFallsBackToDefault.memoryServiceUrl, DEFAULT_CONNECTION_SETTINGS.memoryServiceUrl);
+
+    const noConnectionAtAll = normalizeExtensionSettings({
+        memoryServiceUrl: 'http://192.168.1.11:8000',
+    });
+    assert.equal(noConnectionAtAll.memoryServiceUrl, DEFAULT_CONNECTION_SETTINGS.memoryServiceUrl);
+});
+
+test('serializeExtensionSettings never re-emits the legacy flat memoryServiceUrl', () => {
+    const normalized = normalizeExtensionSettings({
+        memoryServiceUrl: 'http://192.168.1.11:8000',
+        connection: {
+            enabled: true,
+            memoryServiceUrl: 'http://127.0.0.1:8001',
+        },
+    });
+
+    const serialized = serializeExtensionSettings(normalized);
+
+    assert.equal(serialized.connection.memoryServiceUrl, 'http://127.0.0.1:8001');
+    assert.ok(!Object.hasOwn(serialized, 'memoryServiceUrl'));
+    assert.equal(JSON.stringify(serialized).includes('192.168.1.11'), false);
+});
+
+test('applyRecommendedBaselineSettings preserves an already-normalized memoryServiceUrl instead of resetting it', () => {
+    const normalized = normalizeExtensionSettings({
+        connection: {
+            enabled: true,
+            memoryServiceUrl: 'http://127.0.0.1:8001',
+        },
+    });
+
+    const withBaseline = applyRecommendedBaselineSettings(normalized);
+
+    assert.equal(withBaseline.memoryServiceUrl, 'http://127.0.0.1:8001');
+    assert.equal(withBaseline.retrieveLimit, LONG_CHAT_RECOMMENDED_BASELINE.retrieveLimit);
 });

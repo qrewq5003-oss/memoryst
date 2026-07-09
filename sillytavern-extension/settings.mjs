@@ -79,7 +79,10 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...promptBudget,
         ...audit,
         enabled: rawSettings.enabled ?? connection.enabled,
-        memoryServiceUrl: rawSettings.memoryServiceUrl || connection.memoryServiceUrl,
+        // Legacy flat memoryServiceUrl (pre-`connection.*` schema) is intentionally
+        // ignored here even if still present on disk - connection.* is the only
+        // source of truth, so a stale flat value can never silently win again.
+        memoryServiceUrl: connection.memoryServiceUrl,
         apiKey: rawSettings.apiKey ?? connection.apiKey,
         retrieveLimit: rawSettings.retrieveLimit ?? retrieval.retrieveLimit,
         recentMessagesCount: rawSettings.recentMessagesCount ?? retrieval.recentMessagesCount,
@@ -95,38 +98,49 @@ export function normalizeExtensionSettings(rawSettings = {}) {
     };
 }
 
+// Builds the on-disk shape directly from the flat runtime `settings` object
+// rather than round-tripping through normalizeExtensionSettings(): that second
+// normalize pass would see no `.connection` sub-object on a flat runtime
+// settings value and fall back to defaults, silently discarding whatever the
+// user just set. Reading the flat fields directly here also guarantees the
+// legacy top-level memoryServiceUrl (and siblings) never gets written back
+// out - each save fully replaces extension_settings['memory-service'], so a
+// stale flat key from an old settings.json can't survive past the next save.
 export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
-    const normalized = normalizeExtensionSettings(settings);
     return {
         connection: {
-            enabled: normalized.enabled,
-            memoryServiceUrl: normalized.memoryServiceUrl,
-            apiKey: normalized.apiKey,
+            enabled: settings.enabled ?? DEFAULT_CONNECTION_SETTINGS.enabled,
+            memoryServiceUrl: settings.memoryServiceUrl || DEFAULT_CONNECTION_SETTINGS.memoryServiceUrl,
+            apiKey: settings.apiKey ?? DEFAULT_CONNECTION_SETTINGS.apiKey,
         },
         retrieval: {
-            retrieveLimit: normalized.retrieveLimit,
-            recentMessagesCount: normalized.recentMessagesCount,
+            retrieveLimit: settings.retrieveLimit ?? DEFAULT_RETRIEVAL_SETTINGS.retrieveLimit,
+            recentMessagesCount: settings.recentMessagesCount ?? DEFAULT_RETRIEVAL_SETTINGS.recentMessagesCount,
         },
         promptBudget: {
-            maxPromptMemories: normalized.maxPromptMemories,
-            maxPromptChars: normalized.maxPromptChars,
-            maxSummaryItems: normalized.maxSummaryItems,
-            maxStableItems: normalized.maxStableItems,
-            maxEpisodicItems: normalized.maxEpisodicItems,
+            maxPromptMemories: settings.maxPromptMemories ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptMemories,
+            maxPromptChars: settings.maxPromptChars ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptChars,
+            maxSummaryItems: settings.maxSummaryItems ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxSummaryItems,
+            maxStableItems: settings.maxStableItems ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxStableItems,
+            maxEpisodicItems: settings.maxEpisodicItems ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxEpisodicItems,
         },
         audit: {
-            auditEnabled: normalized.auditEnabled,
-            auditMaxRecords: normalized.auditMaxRecords,
-            auditPreviewChars: normalized.auditPreviewChars,
+            auditEnabled: settings.auditEnabled ?? DEFAULT_AUDIT_SETTINGS.auditEnabled,
+            auditMaxRecords: settings.auditMaxRecords ?? DEFAULT_AUDIT_SETTINGS.auditMaxRecords,
+            auditPreviewChars: settings.auditPreviewChars ?? DEFAULT_AUDIT_SETTINGS.auditPreviewChars,
         },
-        recentAudits: normalized.recentAudits,
+        recentAudits: Array.isArray(settings.recentAudits) ? settings.recentAudits : [],
     };
 }
 
 export function applyRecommendedBaselineSettings(settings = DEFAULT_SETTINGS) {
-    const normalized = normalizeExtensionSettings(settings);
+    // Callers always pass the already-normalized flat runtime settings object
+    // (it has no `.connection` sub-object), so re-normalizing here would read
+    // `rawSettings.connection` as empty and silently reset connection.* to
+    // defaults - discarding the user's configured memoryServiceUrl/apiKey.
+    // Just layer the baseline retrieval/promptBudget overrides on top instead.
     return {
-        ...normalized,
+        ...settings,
         ...LONG_CHAT_RECOMMENDED_BASELINE,
     };
 }
