@@ -1,4 +1,37 @@
 <section class="create-form">
+    <h2>Trackers</h2>
+    <p style="margin-bottom:8px;opacity:0.8;">Timeline, Relationship, NPC Who's Who and Character POV Notes — each is one document that gets rewritten in place, not accumulated.</p>
+    <input type="hidden" id="tracker-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
+    <input type="hidden" id="tracker-char-id" value="{{ filters['selected_character_id'] or '' }}">
+    {% if trackers_display is none %}
+    <p style="opacity:0.7;">Select a single chat to view and update its trackers.</p>
+    {% else %}
+    <div class="form-row">
+        <label>Model: <select id="tracker-model" style="max-width:200px;"><option value="">default</option></select></label>
+    </div>
+    <div class="tracker-grid">
+        {% for t in trackers_display %}
+        <article class="tracker-card">
+            <div class="tracker-card-header">
+                <strong>{{ t.label }}</strong>
+                <button type="button" class="tracker-update-btn" data-tracker-type="{{ t.tracker_type }}">Обновить</button>
+            </div>
+            <div class="tracker-meta" id="tracker-meta-{{ t.tracker_type }}">
+                {% if t.item %}
+                обновлено: {{ t.item.updated_at }} | сообщений с обновления: {{ t.item.messages_since_update }}
+                {% else %}
+                ещё не сгенерирован
+                {% endif %}
+            </div>
+            <div class="tracker-status" id="tracker-status-{{ t.tracker_type }}"></div>
+            <pre class="memory-block tracker-content" id="tracker-content-{{ t.tracker_type }}">{{ t.item.content if t.item else '' }}</pre>
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
+<section class="create-form">
     <h2>Consolidation</h2>
     <p style="margin-bottom:8px;opacity:0.8;">Combine memories into higher-level summaries: Episodic → Arc → Chapter → Book.</p>
     {% if consolidation_pool_truncated %}

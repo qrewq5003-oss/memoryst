@@ -283,6 +283,7 @@ def update_tracker(
             tracker_type=tracker_type,
             content=existing.content if existing else "",
             entries_count=len(existing.metadata.tracker_entries or []) if existing else 0,
+            error_detail="No LLM provider is configured (missing api_base/api_key). Set one up in LLM Provider below, then retry.",
         )
 
     # full_rebuild throws the old document away rather than feeding it back in - that is
@@ -345,6 +346,11 @@ def update_tracker(
             tracker_type=tracker_type,
             content=existing.content if existing else "",
             entries_count=len(existing.metadata.tracker_entries or []) if existing else 0,
+            error_detail=(
+                f"LLM call failed after {config.TRACKER_LLM_RETRIES + 1} attempt(s) "
+                f"(timeout={config.TRACKER_LLM_TIMEOUT}s/attempt). The previous tracker "
+                "content was kept unchanged. Check server logs for the underlying error."
+            ),
         )
 
     tracker = get_tracker(chat_id, character_id, tracker_type)

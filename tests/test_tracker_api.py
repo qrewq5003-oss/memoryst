@@ -151,6 +151,26 @@ class TrackerUpdateEndpointTests(TrackerApiTestCase):
 
         self.assertEqual(response["action"], "skipped_llm_unavailable")
         self.assertEqual(response["content"], "")
+        self.assertTrue(response["error_detail"])
+
+    def test_llm_failure_reports_error_detail_for_the_ui_to_display(self) -> None:
+        self._cool("первое")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("502 from provider")
+
+        with patch.multiple(
+            "app.services.tracker_service",
+            is_llm_enabled=lambda: True,
+            chat_completion=boom,
+        ):
+            response = self.client.post(
+                "/memory/tracker/update",
+                json={"chat_id": CHAT_ID, "character_id": CHARACTER_ID, "tracker_type": "timeline"},
+            ).json()
+
+        self.assertEqual(response["action"], "skipped_llm_failed")
+        self.assertTrue(response["error_detail"])
 
     def test_an_unknown_tracker_type_is_rejected_by_validation(self) -> None:
         response = self.client.post(

@@ -28,6 +28,7 @@ from app.services.conflict_resolver import SUPERSEDED_REVIEW_STATUS
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
 from app.services.summary_service import CONSOLIDATED_REVIEW_STATUS
+from app.services.tracker_service import TRACKER_TYPES, list_tracker_items
 from app.ui_helpers.classifiers import build_memory_card
 from app.ui_helpers.consolidation import (
     append_consolidation_history,
@@ -51,6 +52,13 @@ templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["ui"])
 
 UI_SEARCH_SCAN_LIMIT = 2000
+
+TRACKER_LABELS = {
+    "timeline": "Timeline",
+    "relationship": "Relationship",
+    "npc_whoswho": "NPC Who's Who",
+    "character_pov_notes": "Character POV Notes",
+}
 
 
 def _parse_messages(value: str) -> list[MessageInput]:
@@ -204,6 +212,23 @@ def _render_memories_page(
         consolidation_items = []
 
     candidate_map, consolidation_summary = build_consolidation_data(consolidation_items)
+
+    # Trackers only make sense pinned to one chat/character - "All Chats" has no single
+    # scope for a document that gets rewritten in place, so the section stays hidden there.
+    trackers_display = None
+    if view_mode != "all" and active_chat_id and active_character_id:
+        items_by_type = {
+            item.tracker_type: item
+            for item in list_tracker_items(active_chat_id, active_character_id)
+        }
+        trackers_display = [
+            {
+                "tracker_type": tracker_type,
+                "label": TRACKER_LABELS[tracker_type],
+                "item": items_by_type.get(tracker_type),
+            }
+            for tracker_type in TRACKER_TYPES
+        ]
 
     # Full pool of memories eligible as consolidation sources, independent of the
     # page-size-limited `memories` list above - the consolidate-checkbox picker
@@ -388,6 +413,7 @@ def _render_memories_page(
             "consolidation_summary": consolidation_summary,
             "consolidation_all_candidate_ids": consolidation_all_candidate_ids,
             "consolidation_pool_truncated": consolidation_pool_truncated,
+            "trackers_display": trackers_display,
             "filters": filters,
             "store_result": store_result.model_dump() if store_result else None,
             "retrieve_result": retrieve_result.model_dump() if retrieve_result else None,

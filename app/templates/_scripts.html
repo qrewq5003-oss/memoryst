@@ -167,7 +167,7 @@ async function loadModels() {
             });
         }
 
-        ['llm-model-select', 'scene-model', 'consolidate-model'].forEach(id => {
+        ['llm-model-select', 'scene-model', 'consolidate-model', 'tracker-model'].forEach(id => {
             const select = document.getElementById(id);
             if (!select) return;
             const placeholder = id === 'llm-model-select' ? null : '';
@@ -270,5 +270,117 @@ document.getElementById('scene-extract-form').addEventListener('submit', async (
     } catch (e) {
         result.textContent = `Error: ${e.message}`;
     }
+});
+
+// Tracker update handlers. TRACKER_LLM_TIMEOUT is 120s per attempt (with one retry, a
+// single click can legitimately take a few minutes) - the button must go into a visibly
+// "working" state right away and never block the rest of the page while it waits.
+const TRACKER_LABELS = {
+    timeline: 'Timeline',
+    relationship: 'Relationship',
+    npc_whoswho: "NPC Who's Who",
+    character_pov_notes: 'Character POV Notes',
+};
+
+function trackerStatusEl(trackerType) {
+    return document.getElementById(`tracker-status-${trackerType}`);
+}
+
+// Re-pulls one tracker's saved state from GET /memory/trackers so "updated_at" and
+// "messages_since_update" reflect the server after a create/update, without a full
+// page reload. Used after every button click, success or not, so the meta line never
+// goes stale relative to what's actually stored.
+async function refreshTrackerCard(chatId, charId, trackerType) {
+    const meta = document.getElementById(`tracker-meta-${trackerType}`);
+    const content = document.getElementById(`tracker-content-${trackerType}`);
+    if (!meta || !content) return;
+
+    try {
+        const resp = await fetch(`/memory/trackers?chat_id=${encodeURIComponent(chatId)}&character_id=${encodeURIComponent(charId)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const item = (data.items || []).find(i => i.tracker_type === trackerType);
+        if (item) {
+            meta.textContent = `обновлено: ${item.updated_at} | сообщений с обновления: ${item.messages_since_update}`;
+            content.textContent = item.content || '';
+        } else {
+            meta.textContent = 'ещё не сгенерирован';
+            content.textContent = '';
+        }
+    } catch (e) {
+        // Best-effort refresh only - the button's own success/error message already
+        // told the user what happened, so a failed refresh here stays silent.
+    }
+}
+
+document.querySelectorAll('.tracker-update-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const trackerType = btn.dataset.trackerType;
+        const chatId = document.getElementById('tracker-chat-id').value;
+        const charId = document.getElementById('tracker-char-id').value;
+        const modelSelect = document.getElementById('tracker-model');
+        const model = modelSelect && modelSelect.value ? modelSelect.value : null;
+        const status = trackerStatusEl(trackerType);
+
+        if (!chatId || !charId) {
+            if (status) status.textContent = 'Select a chat first.';
+            return;
+        }
+
+        // Enter "working" state immediately, before the request even goes out.
+        const originalLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Обновляется…';
+        if (status) {
+            status.textContent = '';
+            status.className = 'tracker-status';
+        }
+
+        try {
+            const body = { chat_id: chatId, character_id: charId, tracker_type: trackerType };
+            if (model) body.model = model;
+
+            const resp = await fetch('/memory/tracker/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.action === 'skipped_llm_failed' || data.action === 'skipped_llm_unavailable') {
+                    if (status) {
+                        status.textContent = data.error_detail || `${TRACKER_LABELS[trackerType]}: update failed (${data.action}).`;
+                        status.className = 'tracker-status tracker-status-error';
+                    }
+                } else if (data.action === 'skipped_no_new_messages') {
+                    if (status) {
+                        status.textContent = 'No new messages since the last update.';
+                        status.className = 'tracker-status';
+                    }
+                } else {
+                    if (status) {
+                        status.textContent = `${data.action === 'created' ? 'Created' : 'Updated'} (${data.entries_count} entries).`;
+                        status.className = 'tracker-status tracker-status-ok';
+                    }
+                }
+                await refreshTrackerCard(chatId, charId, trackerType);
+            } else {
+                const data = await resp.json().catch(() => ({}));
+                if (status) {
+                    status.textContent = `Error: ${data.detail || resp.status}`;
+                    status.className = 'tracker-status tracker-status-error';
+                }
+            }
+        } catch (e) {
+            if (status) {
+                status.textContent = `Error: ${e.message}`;
+                status.className = 'tracker-status tracker-status-error';
+            }
+        } finally {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+        }
+    });
 });
 </script>

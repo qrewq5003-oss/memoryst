@@ -232,6 +232,11 @@ button:hover, .button:hover {
     background: #0056b3;
 }
 
+button:disabled, .button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .button.secondary {
     background: #6b7280;
 }
@@ -450,6 +455,52 @@ summary {
     border-radius: 6px;
     overflow-x: auto;
     white-space: pre-wrap;
+}
+
+.tracker-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    margin-top: 12px;
+}
+
+.tracker-card {
+    padding: 12px;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+}
+
+.tracker-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.tracker-meta {
+    margin-top: 6px;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.tracker-status {
+    margin-top: 6px;
+    font-size: 0.9em;
+    min-height: 1.2em;
+}
+
+.tracker-status-ok {
+    color: #4ade80;
+}
+
+.tracker-status-error {
+    color: #f87171;
+    font-weight: 600;
+}
+
+.tracker-content {
+    max-height: 240px;
+    overflow-y: auto;
 }
 
 .summary-grid {

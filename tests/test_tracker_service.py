@@ -282,6 +282,9 @@ class LlmUnavailableTests(TrackerServiceTestCase):
 
         self.assertEqual(result.action, "skipped_llm_unavailable")
         self.assertIsNone(get_tracker(CHAT_ID, CHARACTER_ID, "timeline"))
+        # The UI shows this verbatim next to the tracker's "Update" button - it must
+        # never be empty, or a skip looks like a silent no-op.
+        self.assertTrue(result.error_detail)
 
     def test_a_failing_llm_is_distinguishable_from_a_missing_one(self) -> None:
         self._cool("первое")
@@ -298,6 +301,7 @@ class LlmUnavailableTests(TrackerServiceTestCase):
 
         self.assertEqual(result.action, "skipped_llm_failed")
         self.assertIsNone(get_tracker(CHAT_ID, CHARACTER_ID, "timeline"))
+        self.assertTrue(result.error_detail)
 
     def test_a_failed_update_does_not_damage_an_existing_document(self) -> None:
         self._cool("первое")

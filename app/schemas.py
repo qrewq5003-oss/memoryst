@@ -234,6 +234,10 @@ class TrackerUpdateResponse(BaseModel):
     entries_count: int = 0
     messages_consumed: int = 0
     extraction_method: Literal["llm"] | None = None
+    # Human-readable cause, set only for the two skipped_llm_* actions. The UI shows this
+    # verbatim next to the tracker instead of a silent/generic failure - see CLAUDE.md's
+    # note on the scene-extraction investigation where a swallowed reason hid a real bug.
+    error_detail: str | None = None
 
 
 class RetrieveCandidateDebug(BaseModel):
