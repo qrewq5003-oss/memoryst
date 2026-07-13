@@ -32,6 +32,15 @@ RELATIONSHIP_ITEM_MAX_CHARS = 100
 RELATIONSHIP_TEXT_FIELDS = ("affinity_evidence", "status", "trust", "tension")
 RELATIONSHIP_LIST_FIELDS = ("key_facts", "goals", "open_threads")
 
+# The other three trackers have the same failure mode, measured on the same live chat: one
+# timeline entry ran to 600 chars ("Valeria greets Marcus with a slow, lazy kiss, noting he
+# smells like office and coffee. She offers him wine or water and...") - a retelling of the
+# scene rather than a line of chronology, eating a third of the whole injection budget on a
+# single event. Capped, the same budget holds several events instead of one.
+TIMELINE_SUMMARY_MAX_CHARS = 120
+NPC_DESCRIPTION_MAX_CHARS = 120
+POV_NOTE_MAX_CHARS = 100
+
 
 # --------------------------------------------------------------------------- prompts
 
@@ -50,6 +59,9 @@ TIMELINE_PROMPT = f"""Ты ведёшь ХРОНОЛОГИЮ событий ро
   Штамп авторитетнее твоих догадок о том, сколько времени прошло.
 - Если у соседних сообщений об одном и том же моменте штампы противоречат друг другу
   (свайпы), выбери версию, согласующуюся с соседними сообщениями. НЕ создавай две записи.
+- "summary" — НЕ ДЛИННЕЕ {TIMELINE_SUMMARY_MAX_CHARS} СИМВОЛОВ: что произошло, одной
+  строкой. Это лента событий, а не пересказ сцены — реплики, детали обстановки и
+  подробности разговора сюда не пиши. Превышение будет обрезано на полуслове.
 - Не переписывай существующие записи, если новые сообщения их не меняют.
 - Для каждой НОВОЙ записи перечисли в "source_message_indices" номера N тех сообщений,
   из которых она взята. Для записей, которые ты переносишь из текущего документа без
@@ -109,7 +121,8 @@ NPC_PROMPT = f"""Ты ведёшь СПИСОК ВТОРОСТЕПЕННЫХ П�
 - "importance_rank" — значимость для СЮЖЕТА, начиная с 1 (самый значимый).
   Ранги могут меняться при каждом обновлении: NPC, который вышел на первый план,
   поднимается; забытый — опускается. Ранги должны быть уникальными.
-- "description" — кратко: кто это и чем важен. Одно-два предложения.
+- "description" — кто это и чем важен. НЕ ДЛИННЕЕ {NPC_DESCRIPTION_MAX_CHARS} СИМВОЛОВ.
+  Превышение будет обрезано на полуслове.
 - Пиши на языке чата.
 - {GUARDRAIL}"""
 
@@ -122,7 +135,8 @@ POV_NOTES_PROMPT = f"""Ты ведёшь личные заметки персо�
 - Записывай только то, что персонаж действительно узнал о пользователе: через
   наблюдение, расспросы или выводы. Не пиши то, чего персонаж знать не может.
 - Верни полный обновлённый список заметок. Сливай новое с существующими, не дублируй.
-- Компактно. Только важное.
+- КАЖДАЯ заметка — НЕ ДЛИННЕЕ {POV_NOTE_MAX_CHARS} СИМВОЛОВ. Только важное.
+  Превышение будет обрезано на полуслове.
 - Пиши на языке чата.
 - {GUARDRAIL}"""
 
@@ -431,13 +445,17 @@ def normalize_payload(
     """
     if tracker_type == "timeline":
         entries = payload.get("entries") or []
-        return [e for e in entries if isinstance(e, dict) and (e.get("summary") or "").strip()]
+        return [
+            {**e, "summary": _truncate(e["summary"], TIMELINE_SUMMARY_MAX_CHARS)}
+            for e in entries
+            if isinstance(e, dict) and (e.get("summary") or "").strip()
+        ]
 
     if tracker_type == "npc_whoswho":
         npcs = payload.get("npcs") or []
         banned = {name.strip().casefold() for name in (exclude_names or []) if name and name.strip()}
         cleaned = [
-            n
+            {**n, "description": _truncate(n.get("description") or "", NPC_DESCRIPTION_MAX_CHARS)}
             for n in npcs
             if isinstance(n, dict)
             and (n.get("name") or "").strip()
@@ -449,7 +467,11 @@ def normalize_payload(
 
     if tracker_type == "character_pov_notes":
         notes = payload.get("notes") or []
-        return [{"note": n.strip()} for n in notes if isinstance(n, str) and n.strip()]
+        return [
+            {"note": _truncate(n, POV_NOTE_MAX_CHARS)}
+            for n in notes
+            if isinstance(n, str) and n.strip()
+        ]
 
     if tracker_type == "relationship":
         return [_clamp_relationship(payload)] if isinstance(payload, dict) else []

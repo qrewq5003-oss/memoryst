@@ -755,3 +755,66 @@ class RelationshipSizeClampTests(unittest.TestCase):
         }
 
         self.assertEqual(self._clamped(payload), payload)
+
+
+class OtherTrackerSizeClampTests(unittest.TestCase):
+    """
+    Timeline/NPC/POV have the same bloat as relationship did. Measured live: one timeline
+    entry ran to 600 chars of scene retelling and ate a third of the injection budget by
+    itself, so the block held exactly one event.
+    """
+
+    def test_timeline_summary_is_cut_but_the_rest_of_the_entry_survives(self) -> None:
+        from app.services.tracker_prompts import TIMELINE_SUMMARY_MAX_CHARS, normalize_payload
+
+        entries = normalize_payload("timeline", {
+            "entries": [{
+                "date": "Tuesday, March 18, 2025",
+                "time": "7:45 PM",
+                "location": "Milan",
+                "summary": "Она пересказывает весь свой день в мельчайших подробностях. " * 10,
+                "source_message_indices": [4],
+            }],
+        })
+
+        self.assertLessEqual(len(entries[0]["summary"]), TIMELINE_SUMMARY_MAX_CHARS)
+        self.assertTrue(entries[0]["summary"].endswith("…"))
+        # date/time/location/source ids are what the renderer and the sorter run on - the
+        # clamp must not touch them.
+        self.assertEqual(entries[0]["date"], "Tuesday, March 18, 2025")
+        self.assertEqual(entries[0]["time"], "7:45 PM")
+        self.assertEqual(entries[0]["location"], "Milan")
+        self.assertEqual(entries[0]["source_message_indices"], [4])
+
+    def test_npc_description_is_cut_and_the_ranking_still_holds(self) -> None:
+        from app.services.tracker_prompts import NPC_DESCRIPTION_MAX_CHARS, normalize_payload
+
+        npcs = normalize_payload("npc_whoswho", {
+            "npcs": [
+                {"name": "Курьер", "description": "Эпизодический.", "importance_rank": 5},
+                {
+                    "name": "Roma",
+                    "description": "Личный тренер, итальянец с бородой, проводит изнурительные тренировки. " * 5,
+                    "importance_rank": 1,
+                },
+            ],
+        })
+
+        self.assertEqual([n["name"] for n in npcs], ["Roma", "Курьер"], "rank order is kept")
+        self.assertLessEqual(len(npcs[0]["description"]), NPC_DESCRIPTION_MAX_CHARS)
+        self.assertEqual(npcs[0]["importance_rank"], 1)
+        self.assertEqual(npcs[1]["description"], "Эпизодический.", "a short one is untouched")
+
+    def test_pov_notes_are_cut_per_note(self) -> None:
+        from app.services.tracker_prompts import POV_NOTE_MAX_CHARS, normalize_payload
+
+        notes = normalize_payload("character_pov_notes", {
+            "notes": [
+                "Он не врёт.",
+                "Он пришёл домой уставший и рассказывал про работу очень долго и подробно. " * 4,
+            ],
+        })
+
+        self.assertEqual(notes[0]["note"], "Он не врёт.")
+        self.assertLessEqual(len(notes[1]["note"]), POV_NOTE_MAX_CHARS)
+        self.assertTrue(notes[1]["note"].endswith("…"))
