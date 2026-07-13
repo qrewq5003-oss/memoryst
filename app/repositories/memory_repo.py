@@ -121,10 +121,21 @@ def list_memories(
     pinned: bool | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_trackers: bool = False,
 ) -> ListMemoriesResponse:
-    """List memories with optional filters."""
+    """
+    List memories with optional filters.
+
+    Trackers are excluded by default: they live in `memories` for storage reasons but
+    are not memories in the retrieval/consolidation sense, and a caller that treats one
+    as an ordinary row (store_service's soft-match dedup, most of all) would overwrite a
+    whole tracker document with a single extracted fact. Read them via list_trackers().
+    """
     where_clauses = []
     params = []
+
+    if not include_trackers:
+        where_clauses.append("type != 'tracker'")
 
     if chat_id is not None:
         where_clauses.append("chat_id = ?")
@@ -198,6 +209,10 @@ def list_retrieval_candidates(
 
     Retrieval scoring should operate on the full candidate set rather than the
     recency-ordered paginated listing used by the UI/API.
+
+    Trackers are not candidates: they reach the prompt through their own injection path
+    in the extension, so scoring them here would both double-inject them and let a whole
+    tracker document crowd out real memories in the budget.
     """
     params: list[object] = [chat_id, character_id]
     archived_sql = ""
@@ -209,7 +224,7 @@ def list_retrieval_candidates(
         cursor.execute(
             f"""
             SELECT * FROM memories
-            WHERE chat_id = ? AND character_id = ?{archived_sql}
+            WHERE chat_id = ? AND character_id = ? AND type != 'tracker'{archived_sql}
             """,
             params,
         )
@@ -314,8 +329,13 @@ def list_ui_filtered_memories(
     """
     List memories with UI-level filters applied in SQL.
     Handles search (LIKE), freshness/activity (date math), sorting, and pagination.
+
+    Trackers are excluded unconditionally. This backs both the memory cards and the
+    consolidation pool: a tracker is neither an ordinary memory card nor a valid
+    consolidation source (consolidating one would fold a live document into a summary
+    and then mark it superseded). The UI renders trackers from their own section.
     """
-    where_clauses: list[str] = []
+    where_clauses: list[str] = ["type != 'tracker'"]
     params: list[object] = []
 
     if chat_id is not None:
@@ -544,7 +564,8 @@ def find_memory_by_normalized_content(
     """
     Find existing memory by normalized content for deduplication.
 
-    This is a minimal helper for store_service deduplication.
+    This is a minimal helper for store_service deduplication. Trackers are excluded as a
+    backstop: an extracted fact must never dedupe onto a tracker document and rewrite it.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -552,6 +573,7 @@ def find_memory_by_normalized_content(
             """
             SELECT * FROM memories
             WHERE chat_id = ? AND character_id = ? AND normalized_content = ?
+              AND type != 'tracker'
             """,
             (chat_id, character_id, normalized_content),
         )
@@ -581,3 +603,109 @@ def increment_access_count(memory_id: str) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+
+
+def get_tracker(
+    chat_id: str,
+    character_id: str,
+    tracker_type: str,
+) -> MemoryItem | None:
+    """Get the single tracker document of a given type for a chat/character pair."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM memories
+            WHERE chat_id = ? AND character_id = ? AND type = 'tracker'
+              AND json_extract(metadata_json, '$.tracker_type') = ?
+            """,
+            (chat_id, character_id, tracker_type),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return _row_to_memory_item(dict(row))
+
+
+def list_trackers(chat_id: str, character_id: str) -> list[MemoryItem]:
+    """List all tracker documents for a chat/character pair, oldest-updated first."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM memories
+            WHERE chat_id = ? AND character_id = ? AND type = 'tracker'
+            ORDER BY json_extract(metadata_json, '$.tracker_type')
+            """,
+            (chat_id, character_id),
+        )
+        rows = cursor.fetchall()
+        return [_row_to_memory_item(dict(row)) for row in rows]
+
+
+def upsert_tracker(
+    *,
+    chat_id: str,
+    character_id: str,
+    tracker_type: str,
+    content: str,
+    metadata: MemoryMetadata,
+    importance: float = 0.5,
+) -> tuple[MemoryItem, bool]:
+    """
+    Create or rewrite the tracker of this type in place. Returns (item, created).
+
+    Deliberately does not route the update through update_memory(): UpdateMemoryRequest
+    caps content at 5000 chars, which a timeline document outgrows, and a tracker has no
+    business carrying the partial-update semantics of an edited memory. It also never
+    touches the vector store - a tracker must not surface as a semantic match.
+
+    metadata.tracker_type is forced to match the tracker_type argument, so the row can't
+    disagree with the unique index that keys on it.
+    """
+    metadata = metadata.model_copy(update={"tracker_type": tracker_type})
+    now = get_utc_now()
+    existing = get_tracker(chat_id, character_id, tracker_type)
+
+    if existing is None:
+        item = MemoryItem(
+            id=str(uuid.uuid4()),
+            chat_id=chat_id,
+            character_id=character_id,
+            type="tracker",
+            content=content,
+            normalized_content=_normalize_content(content),
+            source="auto",
+            layer="stable",
+            importance=importance,
+            created_at=now,
+            updated_at=now,
+            last_accessed_at=None,
+            access_count=0,
+            pinned=False,
+            archived=False,
+            metadata=metadata,
+        )
+        return insert_memory(item), True
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE memories
+            SET content = ?, normalized_content = ?, metadata_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                content,
+                _normalize_content(content),
+                metadata.model_dump_json(),
+                now,
+                existing.id,
+            ),
+        )
+        conn.commit()
+
+    updated = get_memory_by_id(existing.id)
+    assert updated is not None  # just updated it, inside the same process
+    return updated, False

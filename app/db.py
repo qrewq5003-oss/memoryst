@@ -9,7 +9,7 @@ MEMORIES_TABLE_SQL = """
         id TEXT PRIMARY KEY,
         chat_id TEXT NOT NULL,
         character_id TEXT NOT NULL,
-        type TEXT NOT NULL CHECK (type IN ('profile', 'relationship', 'event', 'summary')),
+        type TEXT NOT NULL CHECK (type IN ('profile', 'relationship', 'event', 'summary', 'tracker')),
         content TEXT NOT NULL,
         normalized_content TEXT NOT NULL,
 
@@ -38,6 +38,12 @@ MEMORIES_INDEX_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_memories_pinned ON memories (pinned)",
     "CREATE INDEX IF NOT EXISTS idx_memories_created_at ON memories (created_at)",
     "CREATE INDEX IF NOT EXISTS idx_memories_updated_at ON memories (updated_at)",
+    # A tracker is a single document per (chat, character, tracker_type) that gets
+    # rewritten in place, not an accumulating log. Enforced by the database rather
+    # than by upsert_tracker alone, so a second writer can't fork a tracker in two.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_tracker_unique "
+    "ON memories (chat_id, character_id, json_extract(metadata_json, '$.tracker_type')) "
+    "WHERE type = 'tracker'",
 )
 
 # Raw chat message storage (Stage 2). Only messages that have "cooled" out of the
@@ -236,6 +242,45 @@ def _run_summary_migration(conn: sqlite3.Connection) -> None:
         raise
 
 
+def _needs_tracker_migration(cursor: sqlite3.Cursor) -> bool:
+    """Check whether the type CHECK constraint includes 'tracker'."""
+    cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'memories'"
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    table_sql = row[0]
+    return "'tracker'" not in table_sql
+
+
+def _run_tracker_migration(conn: sqlite3.Connection) -> None:
+    """Migrate the type CHECK constraint to include 'tracker', wrapped in a savepoint."""
+    cursor = conn.cursor()
+    cursor.execute("SAVEPOINT migrate_tracker")
+    try:
+        cursor.execute("ALTER TABLE memories RENAME TO memories_old")
+        _create_memories_table(cursor)
+        cursor.execute("""
+            INSERT INTO memories (
+                id, chat_id, character_id, type, content, normalized_content,
+                source, layer, importance, created_at, updated_at,
+                last_accessed_at, access_count, pinned, archived, metadata_json
+            )
+            SELECT
+                id, chat_id, character_id, type, content, normalized_content,
+                source, layer, importance, created_at, updated_at,
+                last_accessed_at, access_count, pinned, archived, metadata_json
+            FROM memories_old
+        """)
+        cursor.execute("DROP TABLE memories_old")
+        _create_memories_indexes(cursor)
+        cursor.execute("RELEASE migrate_tracker")
+    except Exception:
+        cursor.execute("ROLLBACK TO migrate_tracker")
+        raise
+
+
 def init_schema() -> None:
     """Initialize database schema with memories table and indexes."""
     conn = get_connection()
@@ -251,6 +296,12 @@ def init_schema() -> None:
 
         if _needs_summary_migration(cursor):
             _run_summary_migration(conn)
+            conn.commit()
+
+        # No-op on a database the summary migration just rebuilt: it recreates the
+        # table from MEMORIES_TABLE_SQL, which already carries 'tracker'.
+        if _needs_tracker_migration(cursor):
+            _run_tracker_migration(conn)
             conn.commit()
 
         if _needs_chat_messages_normalized_text_migration(cursor):

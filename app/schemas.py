@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field
 
 
 # Literal types
-MemoryType = Literal["profile", "relationship", "event", "summary"]
+MemoryType = Literal["profile", "relationship", "event", "summary", "tracker"]
+TrackerType = Literal["timeline", "relationship", "npc_whoswho", "character_pov_notes"]
 MemorySource = Literal["auto", "manual"]
 MemoryLayer = Literal["episodic", "stable"]
 
@@ -47,6 +48,14 @@ class MemoryMetadata(BaseModel):
     related_memory_id: str | None = None
     review_status: str | None = None
     consolidation_history: list[ConsolidationHistoryEntry] = Field(default_factory=list)
+
+    # Trackers (type='tracker'). A tracker is rewritten in place on every update, so
+    # tracker_last_sequence_index is a per-tracker watermark: the sequence_index of the
+    # newest chat message already folded into the document.
+    tracker_type: TrackerType | None = None
+    tracker_generated_at: str | None = None
+    tracker_last_sequence_index: int | None = None
+    tracker_entries: list[dict] | None = None
 
 
 class CreateMemoryRequest(BaseModel):

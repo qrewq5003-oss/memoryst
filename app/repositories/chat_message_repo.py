@@ -121,6 +121,33 @@ def list_chat_messages(
         return [_row_to_chat_message(dict(row)) for row in rows]
 
 
+def list_chat_messages_after(
+    chat_id: str,
+    character_id: str,
+    sequence_index: int,
+    limit: int = 200,
+) -> list[ChatMessageItem]:
+    """
+    Cooled messages newer than a tracker's watermark, oldest first.
+
+    Pass -1 to get the whole history (sequence_index starts at 0), which is what a
+    full_rebuild does.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM chat_messages
+            WHERE chat_id = ? AND character_id = ? AND sequence_index > ?
+            ORDER BY sequence_index ASC
+            LIMIT ?
+            """,
+            (chat_id, character_id, sequence_index, limit),
+        )
+        rows = cursor.fetchall()
+        return [_row_to_chat_message(dict(row)) for row in rows]
+
+
 def get_max_sequence_index(chat_id: str, character_id: str) -> int:
     """
     Highest sequence_index already cooled into chat_messages for this chat/character.
