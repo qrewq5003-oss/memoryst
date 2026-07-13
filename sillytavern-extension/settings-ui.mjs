@@ -98,6 +98,32 @@ export const SETTINGS_UI_FIELDS = [
         ],
     },
     {
+        group: 'Trackers',
+        description: 'Character trackers injected when a lorebook entry for that character fires. They do not compete with retrieved memories for the prompt budget above.',
+        fields: [
+            {
+                key: 'trackerInjectionEnabled',
+                label: 'Inject Trackers',
+                help: 'Add the character\'s stored trackers to the prompt when their lorebook entry activates.',
+                type: 'checkbox',
+            },
+            {
+                key: 'maxTrackerChars',
+                label: 'Max Tracker Chars',
+                help: 'Total size cap for all four trackers of one character, not a cap per tracker.',
+                type: 'number',
+                min: 100,
+            },
+            {
+                key: 'trackerReminderThreshold',
+                label: 'Tracker Reminder Threshold',
+                help: 'Show a reminder toast once a tracker is this many messages behind the chat.',
+                type: 'number',
+                min: 5,
+            },
+        ],
+    },
+    {
         group: 'Audit',
         description: 'Opt-in debugging for retrieve/store and prompt injection behavior.',
         fields: [

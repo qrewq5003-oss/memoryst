@@ -287,6 +287,8 @@ export function buildPromptInsertionAuditSection({
     budget = null,
     loreAnchorBlock = '',
     loreAnchorItemCount = 0,
+    trackerBlock = '',
+    trackerSubjectCount = 0,
 }) {
     return {
         applied: Boolean(applied),
@@ -302,6 +304,11 @@ export function buildPromptInsertionAuditSection({
         lore_anchor_length: (loreAnchorBlock || '').length,
         lore_anchor_item_count: loreAnchorItemCount || 0,
         lore_anchor_preview: previewText(loreAnchorBlock || '', previewChars),
+        tracker_applied: Boolean(trackerBlock),
+        tracker_block_length: (trackerBlock || '').length,
+        // How many characters' trackers made it in - not a char count; see tracker_block_length.
+        tracker_subject_count: trackerSubjectCount || 0,
+        tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,
         injected_episodic_count: budget?.injectedByLayer?.episodic ?? null,

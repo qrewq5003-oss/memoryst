@@ -7,6 +7,10 @@ import {
     DEFAULT_MAX_STABLE_ITEMS,
     DEFAULT_MAX_SUMMARY_ITEMS,
 } from './audit.mjs';
+import {
+    DEFAULT_MAX_TRACKER_CHARS,
+    DEFAULT_TRACKER_REMINDER_THRESHOLD,
+} from './trackers.mjs';
 
 export const DEFAULT_CONNECTION_SETTINGS = {
     enabled: false,
@@ -43,6 +47,18 @@ export const DEFAULT_PROMPT_BUDGET_SETTINGS = {
     maxEpisodicItems: DEFAULT_MAX_EPISODIC_ITEMS,
 };
 
+// maxTrackerChars is a single budget shared by all four of a character's trackers, not
+// one budget each - four independent caps would let a fully-populated chat triple the
+// injected prompt without any single tracker looking oversized. There is deliberately no
+// "max tracker items": the set of tracker types is fixed at four, so only volume matters.
+// lastTrackerToastAt is runtime state, not a knob: it remembers the counter value at
+// which each tracker last nagged, so a reload doesn't restart the nagging.
+export const DEFAULT_TRACKER_SETTINGS = {
+    trackerInjectionEnabled: true,
+    maxTrackerChars: DEFAULT_MAX_TRACKER_CHARS,
+    trackerReminderThreshold: DEFAULT_TRACKER_REMINDER_THRESHOLD,
+};
+
 export const DEFAULT_AUDIT_SETTINGS = {
     auditEnabled: false,
     auditMaxRecords: DEFAULT_AUDIT_MAX_RECORDS,
@@ -59,6 +75,7 @@ export const DEFAULT_SETTINGS_GROUPS = {
     retrieval: { ...DEFAULT_RETRIEVAL_SETTINGS },
     extraction: { ...DEFAULT_EXTRACTION_SETTINGS },
     promptBudget: { ...DEFAULT_PROMPT_BUDGET_SETTINGS },
+    trackers: { ...DEFAULT_TRACKER_SETTINGS },
     audit: { ...DEFAULT_AUDIT_SETTINGS },
 };
 
@@ -67,7 +84,9 @@ export const DEFAULT_SETTINGS = {
     ...DEFAULT_RETRIEVAL_SETTINGS,
     ...DEFAULT_EXTRACTION_SETTINGS,
     ...DEFAULT_PROMPT_BUDGET_SETTINGS,
+    ...DEFAULT_TRACKER_SETTINGS,
     ...DEFAULT_AUDIT_SETTINGS,
+    lastTrackerToastAt: {},
     recentAudits: [],
 };
 
@@ -89,6 +108,10 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...DEFAULT_PROMPT_BUDGET_SETTINGS,
         ...(rawSettings.promptBudget || {}),
     };
+    const trackers = {
+        ...DEFAULT_TRACKER_SETTINGS,
+        ...(rawSettings.trackers || {}),
+    };
     const audit = {
         ...DEFAULT_AUDIT_SETTINGS,
         ...(rawSettings.audit || {}),
@@ -100,6 +123,7 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...retrieval,
         ...extraction,
         ...promptBudget,
+        ...trackers,
         ...audit,
         enabled: rawSettings.enabled ?? connection.enabled,
         // Legacy flat memoryServiceUrl (pre-`connection.*` schema) is intentionally
@@ -115,11 +139,21 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         maxSummaryItems: rawSettings.maxSummaryItems ?? promptBudget.maxSummaryItems,
         maxStableItems: rawSettings.maxStableItems ?? promptBudget.maxStableItems,
         maxEpisodicItems: rawSettings.maxEpisodicItems ?? promptBudget.maxEpisodicItems,
+        trackerInjectionEnabled: rawSettings.trackerInjectionEnabled ?? trackers.trackerInjectionEnabled,
+        maxTrackerChars: rawSettings.maxTrackerChars ?? trackers.maxTrackerChars,
+        trackerReminderThreshold: rawSettings.trackerReminderThreshold ?? trackers.trackerReminderThreshold,
+        lastTrackerToastAt: isPlainObject(rawSettings.lastTrackerToastAt)
+            ? { ...rawSettings.lastTrackerToastAt }
+            : { ...(isPlainObject(trackers.lastTrackerToastAt) ? trackers.lastTrackerToastAt : {}) },
         auditEnabled: rawSettings.auditEnabled ?? audit.auditEnabled,
         auditMaxRecords: rawSettings.auditMaxRecords ?? audit.auditMaxRecords,
         auditPreviewChars: rawSettings.auditPreviewChars ?? audit.auditPreviewChars,
         recentAudits: Array.isArray(rawSettings.recentAudits) ? rawSettings.recentAudits : [],
     };
+}
+
+function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 // Builds the on-disk shape directly from the flat runtime `settings` object
@@ -150,6 +184,12 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
             maxSummaryItems: settings.maxSummaryItems ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxSummaryItems,
             maxStableItems: settings.maxStableItems ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxStableItems,
             maxEpisodicItems: settings.maxEpisodicItems ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxEpisodicItems,
+        },
+        trackers: {
+            trackerInjectionEnabled: settings.trackerInjectionEnabled ?? DEFAULT_TRACKER_SETTINGS.trackerInjectionEnabled,
+            maxTrackerChars: settings.maxTrackerChars ?? DEFAULT_TRACKER_SETTINGS.maxTrackerChars,
+            trackerReminderThreshold: settings.trackerReminderThreshold ?? DEFAULT_TRACKER_SETTINGS.trackerReminderThreshold,
+            lastTrackerToastAt: isPlainObject(settings.lastTrackerToastAt) ? settings.lastTrackerToastAt : {},
         },
         audit: {
             auditEnabled: settings.auditEnabled ?? DEFAULT_AUDIT_SETTINGS.auditEnabled,
