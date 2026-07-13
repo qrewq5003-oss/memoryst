@@ -17,6 +17,7 @@ from app.schemas import (
     UpdateMemoryRequest,
 )
 from app.services import chat_buffer_service
+from app.services import tracker_service
 from app.services.scene_extractor import extract_scene_memories
 from app.services.deduper import (
     can_auto_update,
@@ -318,4 +319,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         items=stored_items,
         debug=StoreDebugPayload(candidates=debug_candidates) if request.debug else None,
         extraction_method=extraction_method,
+        # Piggybacked, not fetched: the extension already calls /memory/store every turn,
+        # so its reminder toast costs no extra request. Empty until a tracker exists.
+        trackers=tracker_service.list_tracker_counters(request.chat_id, request.character_id),
     )

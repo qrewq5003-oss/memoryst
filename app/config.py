@@ -32,6 +32,14 @@ class Config:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "zai-org/glm-4.7")
     LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
 
+    # Trackers rewrite a whole document per call, so a reasoning model measurably runs
+    # 15-35s on one - right at the 30s default, which produced ReadTimeouts that looked
+    # like the model rejecting the schema. Sized with headroom, and retried once, since
+    # the observed failures were transient rather than deterministic.
+    TRACKER_LLM_TIMEOUT: int = int(os.getenv("TRACKER_LLM_TIMEOUT", "120"))
+    TRACKER_LLM_MAX_TOKENS: int = int(os.getenv("TRACKER_LLM_MAX_TOKENS", "10000"))
+    TRACKER_LLM_RETRIES: int = int(os.getenv("TRACKER_LLM_RETRIES", "1"))
+
     ACTIVE_LLM_PROVIDER: str = os.getenv("ACTIVE_LLM_PROVIDER", "nanogpt")
 
     OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com")

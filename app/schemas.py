@@ -176,6 +176,64 @@ class StoreMemoryResponse(BaseModel):
     # failed and the cruder rule-based extractor ran instead. None: no messages
     # to extract from at all. See scene_extractor.extract_scene_memories.
     extraction_method: Literal["llm", "regex_fallback"] | None = None
+    # Per-tracker "messages since last update" counters, so the extension can drive its
+    # reminder toast off the response it already gets every turn instead of polling.
+    # Additive: a client that doesn't know about trackers ignores it.
+    trackers: list["TrackerCounter"] = Field(default_factory=list)
+
+
+# Tracker schemas
+class TrackerCounter(BaseModel):
+    tracker_type: TrackerType
+    messages_since_update: int
+
+
+class TrackerItem(BaseModel):
+    tracker_type: TrackerType
+    memory_id: str
+    content: str
+    entries: list[dict] = Field(default_factory=list)
+    updated_at: str
+    last_sequence_index: int | None = None
+    messages_since_update: int
+
+
+class ListTrackersResponse(BaseModel):
+    items: list[TrackerItem]
+
+
+class TrackerUpdateRequest(BaseModel):
+    chat_id: str = Field(..., min_length=1, max_length=200)
+    character_id: str = Field(..., min_length=1, max_length=200)
+    tracker_type: TrackerType
+    # Same model-override mechanism as /memory/consolidate. No third way to pick a model.
+    model: str | None = None
+    # Reset the watermark and rebuild the document from the start of the chat.
+    full_rebuild: bool = False
+    # Who the two participants are. The backend only knows a numeric SillyTavern
+    # character_id, and a roleplay assistant narrates itself in the third person, so
+    # without these the NPC tracker cannot reliably tell the main character apart from
+    # a genuine NPC. Optional: the prompt falls back to role-based wording.
+    character_name: str | None = Field(default=None, max_length=200)
+    user_name: str | None = Field(default=None, max_length=200)
+
+
+class TrackerUpdateResponse(BaseModel):
+    # "skipped_llm_failed" is deliberately distinct from "skipped_llm_unavailable":
+    # collapsing a broken LLM call into "not configured" is precisely what made the
+    # scene-extraction failure invisible for so long (see CLAUDE.md).
+    action: Literal[
+        "created",
+        "updated",
+        "skipped_no_new_messages",
+        "skipped_llm_unavailable",
+        "skipped_llm_failed",
+    ]
+    tracker_type: TrackerType
+    content: str = ""
+    entries_count: int = 0
+    messages_consumed: int = 0
+    extraction_method: Literal["llm"] | None = None
 
 
 class RetrieveCandidateDebug(BaseModel):

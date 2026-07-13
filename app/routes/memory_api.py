@@ -19,6 +19,7 @@ from app.schemas import (
     CreateMemoryResponse,
     DeleteMemoryResponse,
     ListMemoriesResponse,
+    ListTrackersResponse,
     MemoryItem,
     MessageInput,
     PinMemoryRequest,
@@ -27,11 +28,14 @@ from app.schemas import (
     RetrieveMemoryResponse,
     StoreMemoryRequest,
     StoreMemoryResponse,
+    TrackerUpdateRequest,
+    TrackerUpdateResponse,
     UpdateMemoryRequest,
     UpdateMemoryResponse,
 )
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
+from app.services.tracker_service import list_tracker_items, update_tracker
 from app.services import vector_store
 
 router = APIRouter(
@@ -245,6 +249,32 @@ def consolidate_endpoint(request: ConsolidateRequest) -> ConsolidateResponse:
         summary_memory_id=result.summary_memory_id,
         summary_text=result.summary_text,
         summarized_count=result.summarized_count,
+    )
+
+
+# Declared well before the "/{id}" routes below: GET "/trackers" is a single-segment
+# static path, and GET "/{id}" would otherwise swallow it and look up a memory whose id
+# is literally "trackers". See test_route_ordering.py.
+@router.get("/trackers", response_model=ListTrackersResponse)
+def list_trackers_endpoint(
+    chat_id: str = Query(...),
+    character_id: str = Query(...),
+) -> ListTrackersResponse:
+    """All trackers for a chat/character, each with its own staleness counter."""
+    return ListTrackersResponse(items=list_tracker_items(chat_id, character_id))
+
+
+@router.post("/tracker/update", response_model=TrackerUpdateResponse)
+def update_tracker_endpoint(request: TrackerUpdateRequest) -> TrackerUpdateResponse:
+    """Fold new chat messages into one tracker document, rewriting it in place."""
+    return update_tracker(
+        chat_id=request.chat_id,
+        character_id=request.character_id,
+        tracker_type=request.tracker_type,
+        model=request.model,
+        full_rebuild=request.full_rebuild,
+        character_name=request.character_name,
+        user_name=request.user_name,
     )
 
 

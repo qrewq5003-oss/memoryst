@@ -183,6 +183,7 @@ def chat_completion(
     max_tokens: int = 500,
     temperature: float = 0.3,
     response_format: dict | None = None,
+    timeout: int | None = None,
 ) -> str:
     """
     Call a chat completion API on the active LLM provider.
@@ -192,10 +193,15 @@ def chat_completion(
     ({"type": "json_schema", "json_schema": {"name":..., "schema": {...}}}) and is
     translated as needed for the active provider so callers don't need to know
     which provider is active.
+
+    timeout overrides config.LLM_TIMEOUT for this call. Needed because the default
+    (30s) is sized for short extraction calls, while a reasoning model rewriting a
+    whole tracker document routinely runs 15-35s and was timing out at the boundary.
     """
     provider = get_active_provider()
     settings = _provider_settings(provider)
     resolved_model = model or settings["model"]
+    resolved_timeout = timeout or config.LLM_TIMEOUT
 
     if provider == "anthropic":
         return _chat_completion_anthropic(
@@ -204,6 +210,7 @@ def chat_completion(
             model=resolved_model,
             max_tokens=max_tokens,
             response_format=response_format,
+            timeout=resolved_timeout,
         )
 
     return _chat_completion_openai_compatible(
@@ -213,6 +220,7 @@ def chat_completion(
         max_tokens=max_tokens,
         temperature=temperature,
         response_format=response_format,
+        timeout=resolved_timeout,
     )
 
 
@@ -224,6 +232,7 @@ def _chat_completion_openai_compatible(
     max_tokens: int,
     temperature: float,
     response_format: dict | None,
+    timeout: int,
 ) -> str:
     url = f"{_api_root(settings['api_base'])}/v1/chat/completions"
     headers = {"Content-Type": "application/json"}
@@ -239,7 +248,7 @@ def _chat_completion_openai_compatible(
     if response_format is not None:
         payload["response_format"] = response_format
 
-    response = httpx.post(url, json=payload, headers=headers, timeout=config.LLM_TIMEOUT)
+    response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
 
@@ -262,6 +271,7 @@ def _chat_completion_anthropic(
     model: str,
     max_tokens: int,
     response_format: dict | None,
+    timeout: int,
 ) -> str:
     system_text = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
     conversation = [
@@ -291,7 +301,7 @@ def _chat_completion_anthropic(
     if output_format is not None:
         payload["output_config"] = {"format": output_format}
 
-    response = httpx.post(url, json=payload, headers=headers, timeout=config.LLM_TIMEOUT)
+    response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
     response.raise_for_status()
     data = response.json()
 
