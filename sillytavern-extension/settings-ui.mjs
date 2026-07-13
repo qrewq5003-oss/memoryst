@@ -3,6 +3,9 @@ import {
     applyRecommendedBaselineSettings,
 } from './settings.mjs';
 
+// 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
+export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
+
 export const SETTINGS_UI_HOST_SELECTORS = [
     '#extensions_settings2',
     '#extensions_settings',
@@ -100,6 +103,9 @@ export const SETTINGS_UI_FIELDS = [
     {
         group: 'Trackers',
         description: 'Character trackers injected when a lorebook entry for that character fires. They do not compete with retrieved memories for the prompt budget above.',
+        // Renders the tracker-availability banner right above this group's fields, so a
+        // backend that can't serve trackers says so where the trackers are configured.
+        banner: 'trackers',
         fields: [
             {
                 key: 'trackerInjectionEnabled',
@@ -249,6 +255,31 @@ export async function loadSceneExtractionModelOptions({
  *
  * @param {object|null} compatibility - result of compareVersions(), or null
  */
+/**
+ * The shared warning-banner shape (yellow, left-barred) used for every "the backend and
+ * this extension don't line up" condition. `statusAttr` keeps each banner's own
+ * data-* hook so tests and CSS can tell them apart.
+ */
+export function buildWarningBannerMarkup({
+    title,
+    message,
+    details = [],
+    statusAttr = 'data-compat-status',
+    status = '',
+} = {}) {
+    const detailLine = details.length
+        ? `<small class="memory-service-compat-detail">${escapeHtml(details.join(' · '))}</small>`
+        : '';
+
+    return `
+        <div class="memory-service-compat-banner" role="alert" ${statusAttr}="${escapeHtml(status)}">
+            <strong>⚠ ${escapeHtml(title)}</strong>
+            <span>${escapeHtml(message)}</span>
+            ${detailLine}
+        </div>
+    `;
+}
+
 export function buildCompatibilityBannerMarkup(compatibility = null) {
     if (!compatibility || !compatibility.warn) {
         return '';
@@ -268,20 +299,39 @@ export function buildCompatibilityBannerMarkup(compatibility = null) {
         details.push(`commit ${compatibility.backendGitCommit}`);
     }
 
-    const detailLine = details.length
-        ? `<small class="memory-service-compat-detail">${escapeHtml(details.join(' · '))}</small>`
-        : '';
-
-    return `
-        <div class="memory-service-compat-banner" role="alert" data-compat-status="${escapeHtml(compatibility.status)}">
-            <strong>⚠ Memory Service version mismatch</strong>
-            <span>${escapeHtml(compatibility.message)}</span>
-            ${detailLine}
-        </div>
-    `;
+    return buildWarningBannerMarkup({
+        title: 'Memory Service version mismatch',
+        message: compatibility.message,
+        details,
+        status: compatibility.status,
+    });
 }
 
-export function buildSettingsUiMarkup(settings = {}, compatibility = null) {
+/**
+ * Warns inside the Trackers section when the last GET /memory/trackers failed. A backend
+ * that predates trackers answers 404, and until now that only produced a console.warn -
+ * so the trackers panel looked configured and functional while silently never injecting
+ * anything.
+ *
+ * @param {object|null} trackerStatus - { status, message, detail } from index.js
+ */
+export function buildTrackerStatusBannerMarkup(trackerStatus = null) {
+    if (!trackerStatus || !TRACKER_WARNING_STATUSES.includes(trackerStatus.status)) {
+        return '';
+    }
+
+    return buildWarningBannerMarkup({
+        title: 'Трекеры недоступны',
+        message: trackerStatus.status === 'unsupported'
+            ? 'Бэкенд не поддерживает эту функцию — трекеры не будут попадать в промпт. Обновите memoryst.'
+            : 'Бэкенд не ответил на запрос трекеров — они не будут попадать в промпт.',
+        details: trackerStatus.detail ? [trackerStatus.detail] : [],
+        statusAttr: 'data-tracker-status',
+        status: trackerStatus.status,
+    });
+}
+
+export function buildSettingsUiMarkup(settings = {}, compatibility = null, trackerStatus = null) {
     const sections = SETTINGS_UI_FIELDS.map(section => {
         const fields = section.fields.map(field => {
             const value = getFieldValue(settings, field);
@@ -300,10 +350,15 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null) {
             `;
         }).join('');
 
+        const banner = section.banner === 'trackers'
+            ? buildTrackerStatusBannerMarkup(trackerStatus)
+            : '';
+
         return `
             <section class="memory-service-settings-group">
                 <h4>${escapeHtml(section.group)}</h4>
                 <p class="memory-service-settings-group-copy">${escapeHtml(section.description)}</p>
+                ${banner}
                 ${fields}
             </section>
         `;
@@ -497,6 +552,7 @@ export function renderSettingsUi({
     onApplyRecommendedBaseline,
     getChatContext,
     compatibility = null,
+    trackerStatus = null,
     fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
 }) {
     const host = findSettingsUiHost(document);
@@ -511,7 +567,7 @@ export function renderSettingsUi({
         host.appendChild(panel);
     }
 
-    panel.innerHTML = buildSettingsUiMarkup(settings, compatibility);
+    panel.innerHTML = buildSettingsUiMarkup(settings, compatibility, trackerStatus);
 
     for (const section of SETTINGS_UI_FIELDS) {
         for (const field of section.fields) {
@@ -728,6 +784,7 @@ export function mountSettingsUi({
     onApplyRecommendedBaseline,
     getChatContext,
     compatibility = null,
+    trackerStatus = null,
     retries = 10,
     retryDelayMs = 500,
     scheduleRetry = null,
@@ -740,6 +797,7 @@ export function mountSettingsUi({
         onApplyRecommendedBaseline,
         getChatContext,
         compatibility,
+        trackerStatus,
         fetchImpl,
     });
 
@@ -760,6 +818,7 @@ export function mountSettingsUi({
                 onApplyRecommendedBaseline,
                 getChatContext,
                 compatibility,
+                trackerStatus,
                 retries: retries - 1,
                 retryDelayMs,
                 scheduleRetry,

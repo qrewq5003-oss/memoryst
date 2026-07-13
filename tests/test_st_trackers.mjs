@@ -254,3 +254,34 @@ test('fetchTrackers sends the scope as query params and the api key as a header'
     assert.equal(calls[0].options.headers['X-API-Key'], 'secret');
     assert.deepEqual(items, [{ tracker_type: 'timeline' }]);
 });
+
+test('an unavailable tracker endpoint warns in the settings panel, not only in the console', async () => {
+    const { buildTrackerStatusBannerMarkup, buildSettingsUiMarkup } = await import('../sillytavern-extension/settings-ui.mjs');
+
+    assert.equal(buildTrackerStatusBannerMarkup(null), '', 'no fetch yet: stay silent');
+    assert.equal(buildTrackerStatusBannerMarkup({ status: 'ok' }), '', 'a working backend: stay silent');
+
+    const unsupported = buildTrackerStatusBannerMarkup({ status: 'unsupported', detail: 'trackers_http_404' });
+    assert.match(unsupported, /Трекеры недоступны/);
+    assert.match(unsupported, /не поддерживает эту функцию/);
+    assert.match(unsupported, /data-tracker-status="unsupported"/);
+    assert.match(unsupported, /memory-service-compat-banner/, 'reuses the mismatch banner styling');
+
+    const errored = buildTrackerStatusBannerMarkup({ status: 'error', detail: 'Failed to fetch' });
+    assert.match(errored, /Бэкенд не ответил/);
+    assert.match(errored, /Failed to fetch/);
+
+    // The banner has to land inside the Trackers group, next to the knobs it invalidates.
+    const panel = buildSettingsUiMarkup({}, null, { status: 'unsupported', detail: 'trackers_http_404' });
+    const trackerSection = panel.slice(panel.indexOf('<h4>Trackers</h4>'), panel.indexOf('<h4>Audit</h4>'));
+    assert.match(trackerSection, /data-tracker-status="unsupported"/);
+    assert.match(trackerSection, /data-memory-setting="trackerInjectionEnabled"/);
+});
+
+test('the tracker banner escapes the backend-supplied failure detail', async () => {
+    const { buildTrackerStatusBannerMarkup } = await import('../sillytavern-extension/settings-ui.mjs');
+
+    const banner = buildTrackerStatusBannerMarkup({ status: 'error', detail: '<script>alert(1)</script>' });
+    assert.doesNotMatch(banner, /<script>/);
+    assert.match(banner, /&lt;script&gt;/);
+});

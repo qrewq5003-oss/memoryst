@@ -76,6 +76,10 @@ let currentCompatibility = null;
 let currentTrackers = {};
 let currentTrackerInfo = null;
 const pendingTrackerFetches = new Set();
+// Availability of GET /memory/trackers, surfaced as a banner in the Trackers settings
+// group. A backend that predates trackers answers 404, and a console.warn alone left the
+// panel looking configured while nothing was ever injected.
+let currentTrackerStatus = { status: 'unknown', detail: null };
 
 function setMemoryPrompt(memoryBlock) {
     currentMemoryPromptBlock = memoryBlock || '';
@@ -154,6 +158,7 @@ function refreshSettingsUi() {
         document: globalThis.document,
         settings,
         compatibility: currentCompatibility,
+        trackerStatus: currentTrackerStatus,
         onSettingsChanged: (fieldKey, nextValue) => {
             settings = {
                 ...settings,
@@ -163,6 +168,12 @@ function refreshSettingsUi() {
             // Connection edits can change which backend we talk to; re-check.
             if (fieldKey === 'memoryServiceUrl' || fieldKey === 'apiKey' || fieldKey === 'enabled') {
                 checkBackendCompatibility();
+                refreshTrackersFor(getChatContext()?.characterId || null);
+            }
+            // Turning injection on is the first moment we can find out whether this
+            // backend serves trackers at all - so ask now, not at the next chat change.
+            if (fieldKey === 'trackerInjectionEnabled' && nextValue) {
+                refreshTrackersFor(getChatContext()?.characterId || null);
             }
         },
         onApplyRecommendedBaseline: nextSettings => {
@@ -502,11 +513,27 @@ async function refreshTrackersFor(characterId) {
             chatId: chatContext.chatId,
             characterId,
         });
+        setTrackerStatus({ status: 'ok', detail: null });
     } catch (error) {
-        console.warn('[Memory Service] Tracker fetch failed:', error?.message || error);
+        const detail = error?.message || String(error);
+        setTrackerStatus({
+            status: detail === 'trackers_http_404' ? 'unsupported' : 'error',
+            detail,
+        });
+        console.warn('[Memory Service] Tracker fetch failed:', detail);
     } finally {
         pendingTrackerFetches.delete(fetchKey);
     }
+}
+
+function setTrackerStatus(nextStatus) {
+    if (currentTrackerStatus.status === nextStatus.status && currentTrackerStatus.detail === nextStatus.detail) {
+        return;
+    }
+    currentTrackerStatus = nextStatus;
+    // Only a status change re-renders the panel: refreshTrackersFor runs on every chat
+    // change, and rebuilding the settings DOM each time would fight the user's typing.
+    refreshSettingsUi();
 }
 
 function getCharacterRoster() {
@@ -660,6 +687,7 @@ function exposeAuditHelpers() {
     globalThis.memoryServiceTrackers = {
         getCachedTrackers: () => currentTrackers,
         getCurrentTrackerBlock: () => currentTrackerInfo?.trackerBlock || '',
+        getStatus: () => currentTrackerStatus,
         // Trackers are updated from the backend's own web UI, which the extension has no
         // way to observe - call this to pick up an update without switching chats.
         refresh: () => refreshTrackersFor(getChatContext()?.characterId || null),
@@ -674,9 +702,6 @@ async function onBeforeGeneration() {
         return;
     }
 
-    clearLoreAnchorPrompt();
-    clearTrackerPrompt();
-
     const chatContext = getChatContext();
     const userInput = getLastUserMessage();
     const turnKey = buildTurnKey({
@@ -689,6 +714,14 @@ async function onBeforeGeneration() {
     if (pendingTurnKey === turnKey && pendingInteractionAudit?.retrieve_called) {
         return;
     }
+
+    // Clearing the previous turn's lore-anchor/tracker blocks happens only on the first
+    // pre-generation hook of a turn, i.e. after the turn-key guard above. Three candidate
+    // hooks are registered and several fire per turn; WORLD_INFO_ACTIVATED fires between
+    // them, so clearing before the guard let a later hook wipe the block that the lorebook
+    // handler had just set for this very generation.
+    clearLoreAnchorPrompt();
+    clearTrackerPrompt();
 
     isRetrieveProcessing = true;
 
