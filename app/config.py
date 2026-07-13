@@ -29,7 +29,13 @@ class Config:
 
     LLM_API_BASE: str = os.getenv("LLM_API_BASE", "")
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "zai-org/glm-4.7")
+    # A non-reasoning model on purpose. Reasoning models (the previous default,
+    # zai-org/glm-4.7, among them) spend their token budget on hidden reasoning and return
+    # an empty completion, so every structured-output caller - scene extraction, and now
+    # trackers - saw a JSONDecodeError instead of a payload. Verified live against the
+    # NanoGPT catalog: reasoning_tokens=0, clean JSON. See CLAUDE.md's
+    # scene-extraction-llm-failing investigation.
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek/deepseek-v4-pro")
     LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "30"))
 
     # Trackers rewrite a whole document per call, so a reasoning model measurably runs

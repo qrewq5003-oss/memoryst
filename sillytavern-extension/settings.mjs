@@ -25,8 +25,8 @@ export const DEFAULT_RETRIEVAL_SETTINGS = {
 
 // Defaults to a non-reasoning model, independent of whatever the "LLM Provider"
 // panel's active model is (that one is shared with consolidation/manual tools,
-// which may want a stronger reasoning model). Reasoning models (e.g. the
-// backend's own zai-org/glm-4.7 default) were found to spend their token budget
+// which may want a stronger reasoning model). Reasoning models (e.g. zai-org/glm-4.7,
+// which the backend used to default to) were found to spend their token budget
 // on hidden reasoning before ever emitting the scene-extraction JSON, producing
 // empty/failed calls that silently fell back to the cruder regex extractor - see
 // CLAUDE.md's scene-extraction-llm-failing investigation. An empty string here

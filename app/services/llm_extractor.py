@@ -193,7 +193,7 @@ def extract_scene_facts(
         response = chat_completion(
             llm_messages,
             model=model,
-            # Reasoning models (e.g. the zai-org/glm-4.7 default) spend part of this
+            # Reasoning models (e.g. zai-org/glm-4.7, the former default) spend part of this
             # budget on hidden reasoning tokens before ever emitting the schema'd
             # JSON - 1500 was observed (see CLAUDE.md investigation) to leave no room
             # for actual content, producing an empty message.content that then fails
