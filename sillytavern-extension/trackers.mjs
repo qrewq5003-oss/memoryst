@@ -246,6 +246,18 @@ function formatTrackerSections(sections) {
     return sections.flatMap(section => [`[${TRACKER_LABELS[section.trackerType]}]`, section.content]);
 }
 
+function truncateTrackerContent(content, available) {
+    const normalized = String(content || '').trim();
+    if (available <= 1 || !normalized) {
+        return '';
+    }
+    if (normalized.length <= available) {
+        return normalized;
+    }
+    const cut = normalized.slice(0, Math.max(0, available - 1)).trimEnd();
+    return cut ? `${cut}…` : '';
+}
+
 function formatCharacterBlock(characterName, sections) {
     const heading = characterName
         ? `[Character Tracker: ${characterName}]`
@@ -294,7 +306,7 @@ export function buildCharacterTrackerBlock({
             const target = shrinkable[0];
             target.content = dropOneTrackerUnit(target.trackerType, target.content);
             trimReasons.push(`char_budget_trim:${target.trackerType}`);
-        } else {
+        } else if (sections.length > 1) {
             const victim = dropOrder.find(trackerType =>
                 sections.some(section => section.trackerType === trackerType));
             if (!victim) {
@@ -302,6 +314,23 @@ export function buildCharacterTrackerBlock({
             }
             sections = sections.filter(section => section.trackerType !== victim);
             trimReasons.push(`char_budget_dropped:${victim}`);
+        } else {
+            // The last surviving tracker still overflows with nothing left to drop - its
+            // own non-list lines are simply too long. A relationship doc observed live ran
+            // to 8.4k chars, most of it an essay in affinity_evidence and a paragraph of
+            // status. Cut it to fit rather than drop it: a truncated tracker in the prompt
+            // beats no tracker at all, which is what dropping the only section produced.
+            const only = sections[0];
+            const overhead = formatCharacterBlock(characterName, [{ ...only, content: '' }]).length;
+            const truncated = truncateTrackerContent(only.content, maxChars - overhead);
+
+            if (!truncated) {
+                sections = [];
+                trimReasons.push(`char_budget_dropped:${only.trackerType}`);
+            } else {
+                only.content = truncated;
+                trimReasons.push(`char_budget_truncated:${only.trackerType}`);
+            }
         }
 
         block = sections.length ? formatCharacterBlock(characterName, sections) : '';

@@ -285,3 +285,27 @@ test('the tracker banner escapes the backend-supplied failure detail', async () 
     assert.doesNotMatch(banner, /<script>/);
     assert.match(banner, /&lt;script&gt;/);
 });
+
+test('a single oversized tracker is truncated to fit, never dropped to nothing', () => {
+    // Modelled on a relationship doc observed live: 8.4k chars whose non-list lines alone
+    // (an essay in affinity_evidence, a paragraph of status) blow the budget, so unit
+    // trimming can never get it under. Dropping it left the prompt with no tracker at all.
+    const trackers = [{
+        tracker_type: 'relationship',
+        content: [
+            `Affinity: 99/100 — ${'подробное обоснование '.repeat(40)}`,
+            `Status: ${'развёрнутое описание сцены '.repeat(40)}`,
+            'Key facts:',
+            '- знает про брата',
+        ].join('\n'),
+    }];
+
+    const built = buildCharacterTrackerBlock({ trackers, characterName: 'Валерия', maxChars: 1200 });
+
+    assert.ok(built.block.length > 0, 'the tracker must survive in some form');
+    assert.ok(built.actualChars <= 1200, `block is ${built.actualChars} chars`);
+    assert.match(built.block, /^\[Character Tracker: Валерия\]\n\[Relationship\]\nAffinity: 99\/100/);
+    assert.match(built.block, /…$/, 'the cut is marked');
+    assert.ok(built.trimReasons.includes('char_budget_truncated:relationship'));
+    assert.ok(!built.trimReasons.includes('char_budget_dropped:relationship'));
+});
