@@ -674,3 +674,84 @@ def _entry(date_str: str, time_str: str, indices: list[int], summary: str = "о�
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RelationshipSizeClampTests(unittest.TestCase):
+    """
+    The prompt asks for these limits; this makes them true.
+
+    Measured live on the Valeria chat after three prompt iterations: the model brought
+    affinity_evidence down from 403 to 138 chars once the cap was phrased in characters,
+    but status/trust/tension still landed at 187-252 against a stated cap of 150. A limit
+    the model only mostly honours is not a limit, so it is enforced here.
+    """
+
+    def _clamped(self, payload: dict) -> dict:
+        from app.services.tracker_prompts import normalize_payload
+
+        return normalize_payload("relationship", payload)[0]
+
+    def test_scalar_fields_are_cut_to_the_character_cap(self) -> None:
+        from app.services.tracker_prompts import RELATIONSHIP_TEXT_MAX_CHARS
+
+        payload = {
+            "affinity_score": 99,
+            "affinity_evidence": "Очень подробное обоснование. " * 20,
+            "status": "Развёрнутый пересказ сцены. " * 20,
+            "trust": "Абсолютное доверие, обоснованное длинно. " * 10,
+            "tension": "Напряжение описано абзацем. " * 10,
+            "custom_dimensions": [{"name": "Влечение", "value": 93}],
+            "key_facts": [],
+            "goals": [],
+            "open_threads": [],
+        }
+
+        clamped = self._clamped(payload)
+
+        for field in ("affinity_evidence", "status", "trust", "tension"):
+            self.assertLessEqual(len(clamped[field]), RELATIONSHIP_TEXT_MAX_CHARS, field)
+            self.assertTrue(clamped[field].endswith("…"), f"{field} must mark the cut")
+
+        # Numeric fields are untouched: there is no paragraph to be had in an int.
+        self.assertEqual(clamped["affinity_score"], 99)
+        self.assertEqual(clamped["custom_dimensions"], [{"name": "Влечение", "value": 93}])
+
+    def test_each_list_item_is_cut_to_the_item_cap(self) -> None:
+        from app.services.tracker_prompts import RELATIONSHIP_ITEM_MAX_CHARS
+
+        payload = {
+            "key_facts": ["Короткий факт.", "Очень длинный факт с подробностями. " * 8],
+            "goals": ["Длинная цель, растянутая на предложение и ещё одно. " * 5],
+            "open_threads": ["Нить, описанная непозволительно подробно и длинно. " * 5],
+        }
+
+        clamped = self._clamped(payload)
+
+        for field in ("key_facts", "goals", "open_threads"):
+            for item in clamped[field]:
+                self.assertLessEqual(len(item), RELATIONSHIP_ITEM_MAX_CHARS, f"{field}: {item}")
+
+        # A compliant item survives verbatim - the clamp is a backstop, not a rewriter.
+        self.assertEqual(clamped["key_facts"][0], "Короткий факт.")
+        self.assertTrue(clamped["key_facts"][1].endswith("…"))
+
+    def test_the_cut_lands_on_a_word_boundary(self) -> None:
+        clamped = self._clamped({"status": "слово " * 60})
+
+        self.assertNotIn("сло…", clamped["status"], "must not cut mid-word")
+        self.assertTrue(clamped["status"].endswith("слово…"))
+
+    def test_a_compliant_document_passes_through_untouched(self) -> None:
+        payload = {
+            "affinity_score": 62,
+            "affinity_evidence": "Держит дистанцию, но приходит первой.",
+            "status": "Напряжённые.",
+            "trust": "Растёт медленно.",
+            "tension": "Высокая.",
+            "custom_dimensions": [],
+            "key_facts": ["Знает про брата."],
+            "goals": ["Выяснить, кто донёс."],
+            "open_threads": ["Обещала вернуться в четверг."],
+        }
+
+        self.assertEqual(self._clamped(payload), payload)

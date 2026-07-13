@@ -19,7 +19,13 @@ export const TRACKER_LABELS = {
     character_pov_notes: 'Character POV Notes',
 };
 
-export const DEFAULT_MAX_TRACKER_CHARS = 1200;
+// A relationship doc that fully honours the backend's own limits (12 key_facts + 6 goals
+// + 6 open_threads, one sentence each, plus four capped scalar fields) lands around 1.5-2k
+// chars on its own - so the previous 1200 guaranteed the client trimmed it every single
+// time, budget as primary mechanism rather than backstop. 2000 is the compromise: a
+// compact relationship fits whole, and the cap still binds all four of a character's
+// trackers together so timeline can't run away.
+export const DEFAULT_MAX_TRACKER_CHARS = 2000;
 export const DEFAULT_TRACKER_REMINDER_THRESHOLD = 22;
 export const MIN_TRACKER_REMINDER_THRESHOLD = 5;
 

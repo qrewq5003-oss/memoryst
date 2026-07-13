@@ -23,6 +23,15 @@ GUARDRAIL = (
 
 TRACKER_TYPES = ("timeline", "relationship", "npc_whoswho", "character_pov_notes")
 
+# The relationship document's size limits. Stated in the prompt AND enforced in
+# _clamp_relationship - the prompt keeps the model from getting close, the clamp
+# guarantees the result. Keep the two in sync: the numbers below are interpolated into
+# RELATIONSHIP_PROMPT, so there is only one place to change them.
+RELATIONSHIP_TEXT_MAX_CHARS = 150
+RELATIONSHIP_ITEM_MAX_CHARS = 100
+RELATIONSHIP_TEXT_FIELDS = ("affinity_evidence", "status", "trust", "tension")
+RELATIONSHIP_LIST_FIELDS = ("key_facts", "goals", "open_threads")
+
 
 # --------------------------------------------------------------------------- prompts
 
@@ -66,22 +75,24 @@ RELATIONSHIP_PROMPT = f"""Ты ведёшь СТАТУС ОТНОШЕНИЙ пе
 - Обновляй и сливай существующие пункты. Удаляй устаревшие и противоречащие новым.
 - Если факт из "key_facts" больше не верен — ЗАМЕНИ его, а не добавляй новый рядом.
 - "affinity_score" — целое 0..100, общая расположенность персонажа к пользователю.
-- "affinity_evidence" — на чём основана оценка. НЕ ДЛИННЕЕ 150 СИМВОЛОВ (одно предложение).
-  Не пересказывай сцену и не перечисляй реплики — только суть.
+- "affinity_evidence" — на чём основана оценка. НЕ ДЛИННЕЕ {RELATIONSHIP_TEXT_MAX_CHARS}
+  СИМВОЛОВ (одно предложение). Не пересказывай сцену и не перечисляй реплики — только суть.
 - "custom_dimensions" — измерения, уместные ИМЕННО ДЛЯ ЭТОГО сеттинга, ты выбираешь их сам.
   В романтическом сюжете это может быть "влюблённость"/"влечение"; в служебном —
   "лояльность"/"долг"/"страх". Значение — целое 0..100. Не выдумывай измерения,
   для которых в чате нет оснований.
-- "status", "trust", "tension" — КАЖДОЕ НЕ ДЛИННЕЕ 150 СИМВОЛОВ (одно-два коротких
-  предложения). "status" — где отношения сейчас, "trust" — насколько персонаж доверяет
-  пользователю, "tension" — что между ними напряжено или не разрешено. Это шкала
-  состояния, а не пересказ последней сцены: обстановку, реплики и детали момента сюда
-  писать не надо.
+- "status", "trust", "tension" — КАЖДОЕ НЕ ДЛИННЕЕ {RELATIONSHIP_TEXT_MAX_CHARS} СИМВОЛОВ
+  (одно-два коротких предложения). "status" — где отношения сейчас, "trust" — насколько
+  персонаж доверяет пользователю, "tension" — что между ними напряжено или не разрешено.
+  Это шкала состояния, а не пересказ последней сцены: обстановку, реплики и детали
+  момента сюда писать не надо.
 - "key_facts" — не больше 12 пунктов, "goals" и "open_threads" — не больше 6 каждый.
   Достиг предела — сливай или выбрасывай наименее важное, а не удлиняй список.
-- КАЖДЫЙ пункт этих трёх списков — не длиннее 100 символов (одно предложение). Пункт,
-  который не умещается в предложение, почти всегда на самом деле два пункта или лишняя
-  подробность.
+- КАЖДЫЙ пункт этих трёх списков — не длиннее {RELATIONSHIP_ITEM_MAX_CHARS} символов
+  (одно предложение). Пункт, который не умещается в предложение, почти всегда на самом
+  деле два пункта или лишняя подробность.
+- Текст, превышающий эти лимиты, будет ОБРЕЗАН на полуслове перед сохранением — пиши
+  так, чтобы обрезать было нечего.
 - Пиши на языке чата.
 - {GUARDRAIL}"""
 
@@ -441,9 +452,55 @@ def normalize_payload(
         return [{"note": n.strip()} for n in notes if isinstance(n, str) and n.strip()]
 
     if tracker_type == "relationship":
-        return [payload] if isinstance(payload, dict) else []
+        return [_clamp_relationship(payload)] if isinstance(payload, dict) else []
 
     return []
+
+
+def _truncate(text: str, limit: int) -> str:
+    """Cut to `limit` characters on a word boundary, marking the cut."""
+    stripped = " ".join(str(text or "").split())
+    if len(stripped) <= limit:
+        return stripped
+
+    cut = stripped[: limit - 1].rstrip()
+    last_space = cut.rfind(" ")
+    # Only fall back to a mid-word cut if the last word is absurdly long; otherwise a
+    # single unbroken token could eat the whole budget.
+    if last_space >= limit // 2:
+        cut = cut[:last_space].rstrip()
+    return f"{cut}…"
+
+
+def _clamp_relationship(payload: dict) -> dict:
+    """
+    Hard-cap the relationship document's free text in Python.
+
+    The prompt asks for these limits and the model *mostly* obeys - phrasing them as
+    character counts rather than sentence counts took affinity_evidence from 403 to 138
+    chars - but "mostly" is not a limit. Measured live after three prompt iterations,
+    status/trust/tension still ran 187-252 chars against a stated cap of 150. So the cap
+    lives here, where it is a fact rather than a request; the prompt keeps its wording so
+    the model rarely gets close enough for this to bite. Same reasoning as exclude_names
+    in normalize_payload: structure is enforced in Python.
+    """
+    clamped = dict(payload)
+
+    for field in RELATIONSHIP_TEXT_FIELDS:
+        value = clamped.get(field)
+        if isinstance(value, str):
+            clamped[field] = _truncate(value, RELATIONSHIP_TEXT_MAX_CHARS)
+
+    for field in RELATIONSHIP_LIST_FIELDS:
+        items = clamped.get(field)
+        if isinstance(items, list):
+            clamped[field] = [
+                _truncate(item, RELATIONSHIP_ITEM_MAX_CHARS)
+                for item in items
+                if isinstance(item, str) and item.strip()
+            ]
+
+    return clamped
 
 
 def _rank_of(npc: dict) -> int:
