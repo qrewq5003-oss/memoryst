@@ -1,5 +1,6 @@
 from app.db import get_connection
 from app.schemas import ChatMessageItem
+from app.services.text_utils import normalize_for_similarity
 
 
 def _row_to_chat_message(row: dict) -> ChatMessageItem:
@@ -16,14 +17,20 @@ def _row_to_chat_message(row: dict) -> ChatMessageItem:
 
 
 def insert_chat_message(message: ChatMessageItem) -> ChatMessageItem:
-    """Insert a cooled chat message into the raw-history table."""
+    """
+    Insert a cooled chat message into the raw-history table.
+
+    normalized_text is derived here rather than carried on ChatMessageItem: it is a
+    storage-level dedup key, not part of the message as callers see it.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
             INSERT INTO chat_messages (
-                id, chat_id, character_id, role, text, created_at, sequence_index
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, chat_id, character_id, role, text, created_at, sequence_index,
+                normalized_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 message.id,
@@ -33,10 +40,52 @@ def insert_chat_message(message: ChatMessageItem) -> ChatMessageItem:
                 message.text,
                 message.created_at,
                 message.sequence_index,
+                normalize_for_similarity(message.text),
             ),
         )
         conn.commit()
     return message
+
+
+def find_recent_chat_message_by_normalized_text(
+    chat_id: str,
+    character_id: str,
+    role: str,
+    normalized_text: str,
+    lookback: int = 50,
+) -> ChatMessageItem | None:
+    """
+    Find an already-cooled message with the same normalized text, within the most
+    recent `lookback` rows of this chat/character.
+
+    Used to make message intake idempotent: the extension resends a window of the
+    last N messages on every turn, so the same text arrives many times. The window
+    is bounded because a genuine repeat far back in history ("да", "хорошо") is a
+    distinct message, not a resend - only a recent match means "we already have it".
+
+    Returns the earliest match in the window, so repeated intake keeps resolving to
+    the same row (and the same id) rather than drifting forward.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM (
+                SELECT * FROM chat_messages
+                WHERE chat_id = ? AND character_id = ?
+                ORDER BY sequence_index DESC
+                LIMIT ?
+            )
+            WHERE role = ? AND normalized_text = ?
+            ORDER BY sequence_index ASC
+            LIMIT 1
+            """,
+            (chat_id, character_id, lookback, role, normalized_text),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return _row_to_chat_message(dict(row))
 
 
 def get_chat_message_by_id(message_id: str) -> ChatMessageItem | None:

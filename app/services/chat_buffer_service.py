@@ -1,11 +1,21 @@
 import uuid
 from typing import Literal
 
-from app.repositories.chat_message_repo import get_max_sequence_index, insert_chat_message
+from app.repositories.chat_message_repo import (
+    find_recent_chat_message_by_normalized_text,
+    get_max_sequence_index,
+    insert_chat_message,
+)
 from app.schemas import ChatMessageItem, MessageInput
-from app.services.text_utils import get_utc_now, is_ooc_text
+from app.services.text_utils import get_utc_now, is_ooc_text, normalize_for_similarity
 
 HOT_BUFFER_SIZE = 4
+
+# How far back into cooled rows to look for an already-seen message. The extension
+# resends its last `recentMessagesCount` messages (8 by default) on every turn, so
+# the lookback only has to comfortably outrun that window - not scan all history,
+# where a short repeated line ("да") would be a real message, not a resend.
+DEDUP_LOOKBACK = 50
 
 # Per (chat_id, character_id) sliding window of the most recent chat-only messages,
 # kept out of chat_messages so they can be swiped/edited without leaving stale rows
@@ -35,6 +45,16 @@ def is_filtered_input(role: str, text: str) -> bool:
     return is_ooc_text(text)
 
 
+def _find_in_hot_buffer(
+    buffer: list[ChatMessageItem], role: str, normalized_text: str
+) -> ChatMessageItem | None:
+    """Earliest message in the hot buffer with this role and normalized text."""
+    for message in buffer:
+        if message.role == role and normalize_for_similarity(message.text) == normalized_text:
+            return message
+    return None
+
+
 def add_message(
     chat_id: str,
     character_id: str,
@@ -50,13 +70,31 @@ def add_message(
     holds more than HOT_BUFFER_SIZE messages, the oldest one cools into the
     chat_messages table and is removed from the buffer.
 
-    Returns the buffered ChatMessageItem, or None if it was filtered.
+    Intake is idempotent. The extension posts its whole recent-message window on
+    every turn, so most of what arrives has been seen before; a message already
+    present (in the hot buffer, or among the last DEDUP_LOOKBACK cooled rows) is
+    returned as-is. It keeps its original UUID and sequence_index, so memories that
+    already reference it via metadata.source_message_ids keep pointing at a live row.
+
+    Returns the buffered or already-stored ChatMessageItem, or None if it was filtered.
     """
     if is_filtered_input(role, text):
         return None
 
     key = _buffer_key(chat_id, character_id)
     buffer = _buffers.setdefault(key, [])
+
+    normalized_text = normalize_for_similarity(text)
+
+    existing = _find_in_hot_buffer(buffer, role, normalized_text)
+    if existing is not None:
+        return existing
+
+    existing = find_recent_chat_message_by_normalized_text(
+        chat_id, character_id, role, normalized_text, lookback=DEDUP_LOOKBACK
+    )
+    if existing is not None:
+        return existing
 
     message = ChatMessageItem(
         id=str(uuid.uuid4()),

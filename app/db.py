@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from app.config import config
+from app.services.text_utils import normalize_for_similarity
 
 MEMORIES_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS memories (
@@ -51,13 +52,22 @@ CHAT_MESSAGES_TABLE_SQL = """
         role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
         text TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        sequence_index INTEGER NOT NULL
+        sequence_index INTEGER NOT NULL,
+        normalized_text TEXT NOT NULL DEFAULT ''
     )
 """
 
 CHAT_MESSAGES_INDEX_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_character "
     "ON chat_messages (chat_id, character_id, sequence_index)",
+)
+
+# Kept out of CHAT_MESSAGES_INDEX_SQL: on a pre-normalized_text database the column
+# only exists after the migration below, so this index can only be created once
+# both paths (fresh create / migrate) have settled on the same shape.
+CHAT_MESSAGES_NORMALIZED_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_chat_messages_normalized "
+    "ON chat_messages (chat_id, character_id, normalized_text)"
 )
 
 CHAT_MESSAGES_FTS_SQL = """
@@ -132,6 +142,61 @@ def _create_chat_messages_table(cursor: sqlite3.Cursor) -> None:
         cursor.execute(statement)
 
 
+def _create_chat_messages_normalized_index(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(CHAT_MESSAGES_NORMALIZED_INDEX_SQL)
+
+
+def _needs_chat_messages_normalized_text_migration(cursor: sqlite3.Cursor) -> bool:
+    """Check whether chat_messages still lacks the normalized_text dedup column."""
+    cursor.execute("PRAGMA table_info(chat_messages)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if not columns:
+        return False
+    return "normalized_text" not in columns
+
+
+def _run_chat_messages_normalized_text_migration(conn: sqlite3.Connection) -> None:
+    """
+    Add normalized_text to chat_messages and backfill it, wrapped in a savepoint.
+
+    ALTER TABLE ADD COLUMN rather than the rename/create/copy/drop dance used by
+    _run_summary_migration: chat_messages_fts is an external-content FTS5 index
+    keyed on chat_messages.rowid, and rebuilding the table would both scramble
+    those rowids and re-fire the insert trigger, doubling every row in the index.
+    Adding a column leaves rowids alone.
+
+    The FTS sync triggers come off for the duration. Left in place they fire once per
+    backfilled row for a text that hasn't changed - pointless churn, and on a database
+    whose index had already drifted out of sync the delete half of the update trigger
+    aborts the whole migration with "database disk image is malformed". Rebuilding the
+    index at the end is both cheaper and self-healing.
+    """
+    cursor = conn.cursor()
+    cursor.execute("SAVEPOINT migrate_chat_messages_normalized_text")
+    try:
+        for trigger in ("chat_messages_fts_ai", "chat_messages_fts_ad", "chat_messages_fts_au"):
+            cursor.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+
+        cursor.execute(
+            "ALTER TABLE chat_messages ADD COLUMN normalized_text TEXT NOT NULL DEFAULT ''"
+        )
+        cursor.execute("SELECT id, text FROM chat_messages")
+        rows = cursor.fetchall()
+        cursor.executemany(
+            "UPDATE chat_messages SET normalized_text = ? WHERE id = ?",
+            [(normalize_for_similarity(row[1]), row[0]) for row in rows],
+        )
+
+        for statement in CHAT_MESSAGES_FTS_TRIGGERS_SQL:
+            cursor.execute(statement)
+        cursor.execute("INSERT INTO chat_messages_fts(chat_messages_fts) VALUES ('rebuild')")
+
+        cursor.execute("RELEASE migrate_chat_messages_normalized_text")
+    except Exception:
+        cursor.execute("ROLLBACK TO migrate_chat_messages_normalized_text")
+        raise
+
+
 def _needs_summary_migration(cursor: sqlite3.Cursor) -> bool:
     """Check whether the type CHECK constraint includes 'summary'."""
     cursor.execute(
@@ -187,5 +252,12 @@ def init_schema() -> None:
         if _needs_summary_migration(cursor):
             _run_summary_migration(conn)
             conn.commit()
+
+        if _needs_chat_messages_normalized_text_migration(cursor):
+            _run_chat_messages_normalized_text_migration(conn)
+            conn.commit()
+
+        _create_chat_messages_normalized_index(cursor)
+        conn.commit()
     finally:
         conn.close()

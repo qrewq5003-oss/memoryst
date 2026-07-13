@@ -8,11 +8,16 @@ def get_utc_now() -> str:
 
 
 def normalize_for_similarity(text: str) -> str:
-    """Normalize text for similarity checks: lowercase, strip punctuation, collapse whitespace."""
+    """Normalize text for similarity checks: lowercase, strip punctuation, collapse whitespace.
+
+    The trailing strip matters: punctuation becomes a space, so without it "Хорошо."
+    normalizes to "хорошо " and compares unequal to "хорошо". Callers compare these
+    strings directly (dedup keys, near-duplicate checks), not just token sets.
+    """
     normalized = text.lower().strip()
     normalized = re.sub(r"[^\w\s]", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized)
-    return normalized
+    return normalized.strip()
 
 
 def token_overlap_ratio(text1: str, text2: str) -> float:
