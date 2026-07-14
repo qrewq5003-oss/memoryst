@@ -31,6 +31,11 @@ RELATIONSHIP_TEXT_MAX_CHARS = 150
 RELATIONSHIP_ITEM_MAX_CHARS = 100
 RELATIONSHIP_TEXT_FIELDS = ("affinity_evidence", "status", "trust", "tension")
 RELATIONSHIP_LIST_FIELDS = ("key_facts", "goals", "open_threads")
+# Live, the model invented nine dimensions and pinned eight of them at 100/100 - a fifth of
+# the whole injection budget spent on lines that say nothing. The cap is on count, and the
+# prompt asks for dimensions that actually differentiate; a dimension equal to the affinity
+# score is not a dimension, it is a restatement.
+RELATIONSHIP_MAX_DIMENSIONS = 5
 
 # The other three trackers have the same failure mode, measured on the same live chat: one
 # timeline entry ran to 600 chars ("Valeria greets Marcus with a slow, lazy kiss, noting he
@@ -40,6 +45,11 @@ RELATIONSHIP_LIST_FIELDS = ("key_facts", "goals", "open_threads")
 TIMELINE_SUMMARY_MAX_CHARS = 120
 NPC_DESCRIPTION_MAX_CHARS = 120
 POV_NOTE_MAX_CHARS = 100
+# The prefix of a rendered timeline line - "Tuesday, March 18, 2025, 7:45 PM — Milan -
+# Wanted's Apartment, Kitchen: " - ran to ~75 chars before a single word of the event, on
+# every line. The date/time are re-rendered compactly from the parsed values (see
+# _render_timeline) and the location is capped here.
+TIMELINE_LOCATION_MAX_CHARS = 24
 
 
 # --------------------------------------------------------------------------- prompts
@@ -89,10 +99,15 @@ RELATIONSHIP_PROMPT = f"""Ты ведёшь СТАТУС ОТНОШЕНИЙ пе
 - "affinity_score" — целое 0..100, общая расположенность персонажа к пользователю.
 - "affinity_evidence" — на чём основана оценка. НЕ ДЛИННЕЕ {RELATIONSHIP_TEXT_MAX_CHARS}
   СИМВОЛОВ (одно предложение). Не пересказывай сцену и не перечисляй реплики — только суть.
-- "custom_dimensions" — измерения, уместные ИМЕННО ДЛЯ ЭТОГО сеттинга, ты выбираешь их сам.
-  В романтическом сюжете это может быть "влюблённость"/"влечение"; в служебном —
-  "лояльность"/"долг"/"страх". Значение — целое 0..100. Не выдумывай измерения,
-  для которых в чате нет оснований.
+- "custom_dimensions" — НЕ БОЛЬШЕ {RELATIONSHIP_MAX_DIMENSIONS} измерений, уместных ИМЕННО
+  ДЛЯ ЭТОГО сеттинга, ты выбираешь их сам. В романтическом сюжете это может быть
+  "влюблённость"/"влечение"; в служебном — "лояльность"/"долг"/"страх".
+  Значение — целое 0..100.
+  Включай только те измерения, которые РАЗЛИЧАЮТ состояние отношений: то есть заметно
+  отличаются друг от друга и от "affinity_score". Измерение, чьё значение совпадает с
+  affinity_score, — это не измерение, а повтор: выбрось его. Не перечисляй всё подряд и не
+  выдумывай измерения, для которых в чате нет оснований. Лучше два говорящих измерения,
+  чем пять одинаковых.
 - "status", "trust", "tension" — КАЖДОЕ НЕ ДЛИННЕЕ {RELATIONSHIP_TEXT_MAX_CHARS} СИМВОЛОВ
   (одно-два коротких предложения). "status" — где отношения сейчас, "trust" — насколько
   персонаж доверяет пользователю, "tension" — что между ними напряжено или не разрешено.
@@ -446,7 +461,11 @@ def normalize_payload(
     if tracker_type == "timeline":
         entries = payload.get("entries") or []
         return [
-            {**e, "summary": _truncate(e["summary"], TIMELINE_SUMMARY_MAX_CHARS)}
+            {
+                **e,
+                "summary": _truncate(e["summary"], TIMELINE_SUMMARY_MAX_CHARS),
+                "location": _truncate(e.get("location") or "", TIMELINE_LOCATION_MAX_CHARS),
+            }
             for e in entries
             if isinstance(e, dict) and (e.get("summary") or "").strip()
         ]
@@ -494,6 +513,36 @@ def _truncate(text: str, limit: int) -> str:
     return f"{cut}…"
 
 
+def _pick_dimensions(dimensions, affinity_score) -> list[dict]:
+    """
+    Keep at most RELATIONSHIP_MAX_DIMENSIONS dimensions, preferring the ones that say
+    something.
+
+    A dimension whose value just restates affinity_score carries no information but costs a
+    line of the injection budget. Observed live: nine dimensions, eight of them at 100/100
+    next to an affinity of 100. So dimensions that differ from the affinity score are kept
+    first, ordered by how far they diverge from it; the redundant ones only fill leftover
+    slots. Order within the payload is not meaningful, so reordering costs nothing.
+    """
+    if not isinstance(dimensions, list):
+        return []
+
+    valid = [
+        d
+        for d in dimensions
+        if isinstance(d, dict)
+        and (d.get("name") or "").strip()
+        and isinstance(d.get("value"), int)
+    ]
+
+    if not isinstance(affinity_score, int):
+        return valid[:RELATIONSHIP_MAX_DIMENSIONS]
+
+    return sorted(valid, key=lambda d: -abs(d["value"] - affinity_score))[
+        :RELATIONSHIP_MAX_DIMENSIONS
+    ]
+
+
 def _clamp_relationship(payload: dict) -> dict:
     """
     Hard-cap the relationship document's free text in Python.
@@ -507,6 +556,11 @@ def _clamp_relationship(payload: dict) -> dict:
     in normalize_payload: structure is enforced in Python.
     """
     clamped = dict(payload)
+
+    clamped["custom_dimensions"] = _pick_dimensions(
+        payload.get("custom_dimensions"),
+        payload.get("affinity_score"),
+    )
 
     for field in RELATIONSHIP_TEXT_FIELDS:
         value = clamped.get(field)
@@ -570,15 +624,32 @@ def render_tracker(tracker_type: str, entries: list[dict]) -> str:
 
 
 def _render_timeline(entries: list[dict]) -> str:
+    """
+    One line per entry, with the stamp rendered compactly.
+
+    The model writes dates as it finds them in the chat ("Tuesday, March 18, 2025, 7:45
+    PM"), which is 32 characters of prefix on every single line, before the event itself.
+    Re-rendering from the parsed date/time gives "2025-03-18 19:45" - the same information
+    in half the space, and the injected block holds correspondingly more events. The raw
+    string is kept only when it cannot be parsed, since something is better than nothing.
+    """
     lines = []
     for entry in entries:
-        head = ", ".join(
-            part for part in ((entry.get("date") or "").strip(), (entry.get("time") or "").strip()) if part
-        )
+        raw_date = (entry.get("date") or "").strip()
+        raw_time = (entry.get("time") or "").strip()
+        parsed_date = parse_date(raw_date)
+        parsed_time = parse_time(raw_time)
+
+        stamp_parts = [
+            parsed_date.isoformat() if parsed_date else _truncate(raw_date, 20),
+            parsed_time.strftime("%H:%M") if parsed_time else _truncate(raw_time, 8),
+        ]
+        stamp = " ".join(part for part in stamp_parts if part)
+
         location = (entry.get("location") or "").strip()
         summary = (entry.get("summary") or "").strip()
 
-        prefix = head or "—"
+        prefix = stamp or "—"
         if location:
             lines.append(f"- {prefix} — {location}: {summary}")
         else:

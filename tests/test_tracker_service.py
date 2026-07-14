@@ -141,7 +141,7 @@ class WatermarkTests(TrackerServiceTestCase):
         self.assertIn("[]", document)
         self.assertNotIn("February 13", document)
         self.assertIn("первое", seen["user"])
-        self.assertIn("February 14", result.content)
+        self.assertIn("2025-02-14", result.content)
         self.assertNotIn("February 13", result.content)
 
     def test_hot_buffer_messages_are_consumed_so_the_tracker_does_not_lag(self) -> None:
@@ -444,9 +444,10 @@ class RenderingTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(
-            text, "- Thursday, February 13, 2025, 7:45 PM — Milan, apartment: она приехала"
-        )
+        # The stamp is re-rendered from the parsed date/time rather than echoed: the
+        # model's own wording cost ~32 chars of prefix on every line. See
+        # TimelineRenderCompactnessTests.
+        self.assertEqual(text, "- 2025-02-13 19:45 — Milan, apartment: она приехала")
 
     def test_relationship_renders_score_dimensions_and_lists(self) -> None:
         text = render_tracker(
@@ -818,3 +819,97 @@ class OtherTrackerSizeClampTests(unittest.TestCase):
         self.assertEqual(notes[0]["note"], "Он не врёт.")
         self.assertLessEqual(len(notes[1]["note"]), POV_NOTE_MAX_CHARS)
         self.assertTrue(notes[1]["note"].endswith("…"))
+
+
+class RelationshipDimensionTests(unittest.TestCase):
+    """Nine dimensions, eight of them 100/100 next to an affinity of 100 - observed live."""
+
+    def _dims(self, payload: dict) -> list[dict]:
+        from app.services.tracker_prompts import normalize_payload
+
+        return normalize_payload("relationship", payload)[0]["custom_dimensions"]
+
+    def test_dimensions_are_capped_and_the_informative_ones_win(self) -> None:
+        from app.services.tracker_prompts import RELATIONSHIP_MAX_DIMENSIONS
+
+        dims = self._dims({
+            "affinity_score": 100,
+            "custom_dimensions": [
+                {"name": "Влечение", "value": 100},
+                {"name": "Бытовая совместимость", "value": 100},
+                {"name": "Эмоциональная близость", "value": 100},
+                {"name": "Уязвимость", "value": 100},
+                {"name": "Принятие заботы", "value": 100},
+                {"name": "Игривость", "value": 100},
+                {"name": "Ревность", "value": 20},
+                {"name": "Страх потери", "value": 55},
+                {"name": "Доверие к семье", "value": 70},
+            ],
+        })
+
+        self.assertLessEqual(len(dims), RELATIONSHIP_MAX_DIMENSIONS)
+        names = [d["name"] for d in dims]
+        # The three that diverge from affinity are the only ones that say anything.
+        self.assertEqual(names[:3], ["Ревность", "Страх потери", "Доверие к семье"])
+
+    def test_dimensions_survive_when_affinity_is_missing(self) -> None:
+        from app.services.tracker_prompts import RELATIONSHIP_MAX_DIMENSIONS
+
+        dims = self._dims({
+            "custom_dimensions": [{"name": f"Измерение {i}", "value": i} for i in range(8)],
+        })
+
+        self.assertEqual(len(dims), RELATIONSHIP_MAX_DIMENSIONS)
+
+    def test_malformed_dimensions_are_dropped(self) -> None:
+        dims = self._dims({
+            "affinity_score": 50,
+            "custom_dimensions": [
+                {"name": "Ревность", "value": 20},
+                {"name": "", "value": 90},
+                {"name": "Без значения"},
+                "не словарь",
+            ],
+        })
+
+        self.assertEqual(dims, [{"name": "Ревность", "value": 20}])
+
+
+class TimelineRenderCompactnessTests(unittest.TestCase):
+    """
+    The rendered prefix ran to ~75 chars ("Tuesday, March 18, 2025, 7:45 PM — Milan -
+    Wanted's Apartment, Kitchen: ") before a single word of the event, on every line.
+    """
+
+    def test_the_stamp_is_re_rendered_compactly_from_the_parsed_values(self) -> None:
+        from app.services.tracker_prompts import normalize_payload, render_tracker
+
+        entries = normalize_payload("timeline", {
+            "entries": [{
+                "date": "Tuesday, March 18, 2025",
+                "time": "7:45 PM",
+                "location": "Milan - Wanted's Apartment, Kitchen",
+                "summary": "Marcus уходит на работу.",
+                "source_message_indices": [1],
+            }],
+        })
+        rendered = render_tracker("timeline", entries)
+
+        self.assertTrue(rendered.startswith("- 2025-03-18 19:45 — "), rendered)
+        self.assertIn("Marcus уходит на работу.", rendered)
+        # Same information, half the prefix: the old form cost 75 chars before the event.
+        prefix = rendered.split(": ", 1)[0]
+        self.assertLess(len(prefix), 50, prefix)
+
+    def test_an_unparseable_stamp_is_kept_rather_than_dropped(self) -> None:
+        from app.services.tracker_prompts import render_tracker
+
+        rendered = render_tracker("timeline", [{
+            "date": "как-то вечером",
+            "time": "",
+            "location": "",
+            "summary": "Они поссорились.",
+        }])
+
+        self.assertIn("как-то вечером", rendered)
+        self.assertIn("Они поссорились.", rendered)

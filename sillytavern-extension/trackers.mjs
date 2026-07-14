@@ -378,6 +378,11 @@ export function buildTrackerBlock({
         includedCharacters.push({
             characterId: match.characterId,
             characterName: match.characterName,
+            // Which resolution branch won: 'marker' | 'name' | 'fallback'. Surfaced all the
+            // way into the audit record, because "the tracker was injected" and "the
+            // @memory-tracker marker is what injected it" are different claims, and only
+            // the audit can tell them apart after the fact.
+            source: match.source,
             trackerTypes: built.sections.map(section => section.trackerType),
             chars: built.actualChars,
         });

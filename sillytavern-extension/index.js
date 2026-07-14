@@ -134,6 +134,9 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         loreAnchorItemCount: currentLoreAnchorInfo?.anchorItemCount || 0,
         trackerBlock: currentTrackerInfo?.trackerBlock || '',
         trackerSubjectCount: currentTrackerInfo?.includedCharacters?.length || 0,
+        trackerMatchSources: (currentTrackerInfo?.includedCharacters || []).map(
+            item => `${item.source}:${item.characterName || item.characterId}`
+        ),
     });
     record.applied_to_current_turn = anyBlock;
 }

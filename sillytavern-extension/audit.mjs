@@ -289,6 +289,7 @@ export function buildPromptInsertionAuditSection({
     loreAnchorItemCount = 0,
     trackerBlock = '',
     trackerSubjectCount = 0,
+    trackerMatchSources = [],
 }) {
     return {
         applied: Boolean(applied),
@@ -308,6 +309,9 @@ export function buildPromptInsertionAuditSection({
         tracker_block_length: (trackerBlock || '').length,
         // How many characters' trackers made it in - not a char count; see tracker_block_length.
         tracker_subject_count: trackerSubjectCount || 0,
+        // 'marker' | 'name' | 'fallback' per injected character - which lorebook resolution
+        // branch actually fired, so the marker path can be told apart from the fallback.
+        tracker_match_sources: trackerMatchSources || [],
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,
