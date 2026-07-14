@@ -139,6 +139,7 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         ),
         trackerUnresolved: currentTrackerInfo?.unresolved || [],
         trackerRosterSize: currentTrackerInfo?.rosterSize ?? null,
+        trackerLorebookEntryCount: currentTrackerInfo?.entryCount ?? null,
     });
     record.applied_to_current_turn = anyBlock;
 }
@@ -593,7 +594,10 @@ function injectTrackersFor(entries = []) {
 
     // Kept even when nothing matched: an unresolvable marker used to leave no trace at all,
     // which is precisely the case that needs explaining.
-    const diagnostics = { unresolved, rosterSize: roster.length };
+    // entryCount distinguishes "WORLD_INFO_ACTIVATED never fired" (stays null in the audit)
+    // from "it fired and no entry resolved to a character" (0 or more). Without it, both
+    // look identical from the outside: an empty tracker block and no explanation.
+    const diagnostics = { unresolved, rosterSize: roster.length, entryCount: (entries || []).length };
 
     if (unresolved.length) {
         console.warn('[Memory Service] Unresolved tracker markers:', unresolved,

@@ -292,6 +292,7 @@ export function buildPromptInsertionAuditSection({
     trackerMatchSources = [],
     trackerUnresolved = [],
     trackerRosterSize = null,
+    trackerLorebookEntryCount = null,
 }) {
     return {
         applied: Boolean(applied),
@@ -319,6 +320,9 @@ export function buildPromptInsertionAuditSection({
         // gave us nothing to map names against).
         tracker_unresolved: trackerUnresolved || [],
         tracker_roster_size: trackerRosterSize,
+        // null = the lorebook handler never ran this turn (no WORLD_INFO_ACTIVATED at all),
+        // which is a different failure from "it ran and matched nobody".
+        tracker_lorebook_entry_count: trackerLorebookEntryCount,
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,
