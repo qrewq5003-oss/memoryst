@@ -26,7 +26,7 @@ export const MEMORY_PROTOCOL_VERSION = 1;
 // record: ES modules are cached aggressively (and Android has no hard-reload gesture), so
 // "the fix is not working" and "the fix is not loaded" are otherwise indistinguishable -
 // which cost several rounds of the live tracker test. Bump on every extension change.
-export const MEMORY_EXTENSION_BUILD = '6851f22';
+export const MEMORY_EXTENSION_BUILD = 'de8f972';
 
 /**
  * Compare the extension's embedded protocol version against the backend's
