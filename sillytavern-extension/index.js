@@ -46,6 +46,7 @@ import {
     TRACKER_PROMPT_KEY,
 } from './trackers.mjs';
 import {
+    MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
 } from './version.mjs';
@@ -779,6 +780,7 @@ async function onBeforeGeneration() {
             chatScopeSource: chatContext?.chatScopeSource || null,
             characterScopeSource: chatContext?.characterScopeSource || null,
             recentMessagesCount: settings.recentMessagesCount,
+            extensionBuild: MEMORY_EXTENSION_BUILD,
         });
         auditRecord.retrieve_stage = 'pre_generation';
         auditRecord.prompt_injection_stage = 'pre_generation';
@@ -832,6 +834,7 @@ async function onMessageRendered() {
             chatScopeSource: chatContext?.chatScopeSource || null,
             characterScopeSource: chatContext?.characterScopeSource || null,
             recentMessagesCount: settings.recentMessagesCount,
+            extensionBuild: MEMORY_EXTENSION_BUILD,
         });
 
         const storeResult = await storeMemories();
@@ -903,7 +906,7 @@ function init() {
     // incompatible or stale pairing, without blocking initialization.
     checkBackendCompatibility();
 
-    console.log('[Memory Service] Extension initialized');
+    console.log('[Memory Service] Extension initialized, build', MEMORY_EXTENSION_BUILD);
     console.log('[Memory Service] Current-turn pattern: retrieve happens before generation, store after render');
     if (settings.auditEnabled) {
         console.log('[Memory Service] Integration audit mode enabled');

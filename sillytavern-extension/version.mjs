@@ -22,6 +22,12 @@ export const EXTENSION_VERSION = '1.0.0';
 // Keep in sync with PROTOCOL_VERSION in app/version.py.
 export const MEMORY_PROTOCOL_VERSION = 1;
 
+// Which build of the extension the browser actually loaded. Stamped into every audit
+// record: ES modules are cached aggressively (and Android has no hard-reload gesture), so
+// "the fix is not working" and "the fix is not loaded" are otherwise indistinguishable -
+// which cost several rounds of the live tracker test. Bump on every extension change.
+export const MEMORY_EXTENSION_BUILD = '6851f22';
+
 /**
  * Compare the extension's embedded protocol version against the backend's
  * reported version info. Pure and side-effect free so it can be unit tested.

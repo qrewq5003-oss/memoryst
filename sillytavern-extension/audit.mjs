@@ -195,6 +195,7 @@ export function buildMessageAuditEntries(messages, previewChars = DEFAULT_AUDIT_
 }
 
 export function createIntegrationAuditRecord({
+    extensionBuild = null,
     chatId,
     characterId,
     groupId = null,
@@ -205,6 +206,7 @@ export function createIntegrationAuditRecord({
     return {
         interaction_id: `${chatId || 'chat'}:${Date.now()}`,
         timestamp: nowIso(),
+        extension_build: extensionBuild,
         chat_id: chatId || null,
         character_id: characterId || null,
         group_id: groupId || null,
