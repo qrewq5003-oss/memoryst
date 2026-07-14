@@ -298,7 +298,7 @@ export function buildPromptInsertionAuditSection({
     trackerError = null,
     trackerWiEventCount = 0,
     trackerEventTrace = [],
-    trackerEntryFields = [],
+    trackerEntryComments = [],
 }) {
     return {
         applied: Boolean(applied),
@@ -337,7 +337,7 @@ export function buildPromptInsertionAuditSection({
         // The actual order of pre-generation hooks, lorebook activation and prompt clears
         // during this turn.
         tracker_event_trace: trackerEventTrace,
-        tracker_entry_fields: trackerEntryFields,
+        tracker_entry_comments: trackerEntryComments,
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,

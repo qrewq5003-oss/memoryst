@@ -65,6 +65,66 @@ Lore anchors are injected as a compact, separate system block:
 
 This keeps canonical lore assistance available for the current reply without polluting the normal summary/stable/episodic memory layers.
 
+## Character Trackers
+
+Four per-character documents the backend maintains (Timeline, Relationship, NPC Who's Who,
+Character POV Notes). The extension fetches them on chat change and injects the current
+character's trackers when a lorebook entry for that character activates.
+
+Like the anchors above, this rides the World Info activation event - but unlike them it is
+injected under its own extension-prompt key (`memory-service-tracker`) and does **not** pass
+through the memory budget, so a tracker never costs a retrieved memory its slot.
+
+Trackers are never regenerated on mention: whatever the backend last stored is what gets
+injected. Update them from the backend's web UI (`/ui`), or call
+`memoryServiceTrackers.refresh()` from the console to pick up an update without switching
+chats.
+
+### Which character a lorebook entry is about
+
+Resolved in this order:
+
+1. **Explicit marker** in the entry's `comment`: `@memory-tracker: Valeria Mendoza` (a name)
+   or `@memory-tracker: 20` (a raw character id). Beats everything else, no matter which
+   entry the lorebook happens to hand over first.
+2. **By character name** - matched against the entry's comment and its keys, case-insensitively
+   and on word boundaries (Cyrillic included).
+3. **Fallback**: in a solo chat, an entry that matches nobody still means "these trackers are
+   relevant now", so the current character's trackers are used.
+
+A marker naming somebody unknown does not veto the entry - it is recorded in the audit
+(`tracker_unresolved`) and the other branches still run.
+
+Note: an entry that is **vectorized** (as entries created by STMemoryBooks are) activates only
+when the Vector Storage extension finds it semantically relevant - not by keyword and not by
+`constant`. Trackers therefore only reach the prompt on the turns such an entry happens to
+fire.
+
+### Budget
+
+`maxTrackerChars` (default 2000) is a single budget shared by all four of a character's
+trackers, not one budget each. When it overflows, the largest tracker is shrunk one unit at a
+time - Timeline from the oldest entry (with an `…(ранее опущено)` marker), Relationship from
+the tails of its lists, NPCs and notes from the end - so all four survive as long as possible.
+The last surviving tracker is truncated rather than dropped: a truncated tracker beats no
+tracker.
+
+### Reminder toasts
+
+`/memory/store` returns, for free, how many messages each tracker is behind the chat. Past
+`trackerReminderThreshold` (default 22) a toast suggests updating it, and then stays quiet
+until the tracker drifts another full threshold - state kept in `lastTrackerToastAt`, so a
+page reload does not restart the nagging.
+
+### Debugging
+
+Audit records (`auditEnabled`) carry `tracker_*` fields that say exactly why a tracker did or
+did not reach the prompt: whether the lorebook listener fired at all
+(`tracker_wi_event_count`), how many entries it carried, what their comments were, which
+resolution branch won (`tracker_match_sources`), the character roster size, any thrown error,
+and the ordered hook trace. `extension_build` names the build the browser actually loaded -
+ES modules cache hard, and a mobile browser has no hard-reload gesture.
+
 ## Scoping Policy
 
 The memory scope unit is always:
