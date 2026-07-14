@@ -140,6 +140,7 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         trackerUnresolved: currentTrackerInfo?.unresolved || [],
         trackerRosterSize: currentTrackerInfo?.rosterSize ?? null,
         trackerLorebookEntryCount: currentTrackerInfo?.entryCount ?? null,
+        trackerError: currentTrackerInfo?.error || null,
     });
     record.applied_to_current_turn = anyBlock;
 }
@@ -564,7 +565,24 @@ function onWorldInfoActivated(entries = []) {
         clearLoreAnchorPrompt();
     }
 
-    injectTrackersFor(entries);
+    // eventSource.emit() awaits its listeners and swallows what they throw, so a bug in
+    // here is invisible: the lorebook fires, the tracker never appears, and the audit shows
+    // nothing at all - which is exactly what happened during the live test. Catch it and
+    // put the message where it can be read without a browser console.
+    try {
+        injectTrackersFor(entries);
+    } catch (error) {
+        const detail = error?.stack || error?.message || String(error);
+        currentTrackerInfo = {
+            trackerBlock: '',
+            includedCharacters: [],
+            unresolved: [],
+            rosterSize: null,
+            entryCount: (entries || []).length,
+            error: detail,
+        };
+        console.error('[Memory Service] Tracker injection threw:', error);
+    }
 
     refreshPromptInsertionAudit();
 }

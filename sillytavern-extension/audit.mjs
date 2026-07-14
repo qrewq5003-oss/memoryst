@@ -293,6 +293,7 @@ export function buildPromptInsertionAuditSection({
     trackerUnresolved = [],
     trackerRosterSize = null,
     trackerLorebookEntryCount = null,
+    trackerError = null,
 }) {
     return {
         applied: Boolean(applied),
@@ -323,6 +324,9 @@ export function buildPromptInsertionAuditSection({
         // null = the lorebook handler never ran this turn (no WORLD_INFO_ACTIVATED at all),
         // which is a different failure from "it ran and matched nobody".
         tracker_lorebook_entry_count: trackerLorebookEntryCount,
+        // Set when tracker injection threw. SillyTavern's event bus swallows listener
+        // exceptions, so without this a crash and a no-op look identical.
+        tracker_error: trackerError,
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,
