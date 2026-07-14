@@ -355,3 +355,24 @@ test('with an empty character roster the marker cannot resolve, but injection st
     assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['20', 'fallback']]);
     assert.equal(unresolved[0].reason, 'marker_unresolved');
 });
+
+test('the strongest resolution wins regardless of lorebook entry order', () => {
+    // Live regression: the lorebook fired two entries. The plain one came first and resolved
+    // to the current character by fallback; the marked one followed and mapped to the same
+    // character, but the first source kept the slot - so the marker looked ignored and the
+    // block heading lost the character's name.
+    const { matches } = resolveTrackerCharacterIds({
+        entries: [
+            { uid: 'plain', comment: '002 - Утро после Дня святого Валентина' },
+            { uid: 'marked', comment: '001 - Массаж @memory-tracker: Валерия' },
+        ],
+        characters: CHARACTERS,
+        currentCharacterId: '2',
+        isGroupChat: false,
+    });
+
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].source, 'marker');
+    assert.equal(matches[0].characterName, 'Валерия');
+    assert.deepEqual(matches[0].entryIds, ['plain', 'marked']);
+});

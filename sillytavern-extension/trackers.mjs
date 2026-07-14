@@ -35,6 +35,9 @@ export const MIN_TRACKER_REMINDER_THRESHOLD = 5;
 export const TRACKER_OMITTED_MARKER = '- …(ранее опущено)';
 
 const TRACKER_MARKER_RE = /@memory-tracker\s*:\s*([^\n]+)/i;
+// An explicit marker beats a name match beats the solo-chat fallback - regardless of which
+// lorebook entry happened to be resolved first.
+const SOURCE_PRIORITY = { marker: 3, name: 2, fallback: 1 };
 const RELATIONSHIP_LIST_HEADERS = ['Key facts:', 'Goals:', 'Open threads:'];
 
 function normalizeWhitespace(text) {
@@ -197,7 +200,17 @@ export function resolveTrackerCharacterIds({
         const existing = resolved.get(match.characterId);
         if (existing) {
             existing.entryIds.push(getEntryId(entry));
-            existing.characterName = existing.characterName || match.characterName;
+            // The strongest resolution wins, not the first one seen. A lorebook fires several
+            // entries at once and their order is SillyTavern's business: live, a plain entry
+            // resolved to the current character by fallback, the very next entry named the
+            // same character by explicit marker, and the fallback kept the slot - so the
+            // marker looked ignored and the block lost its heading name.
+            if (SOURCE_PRIORITY[match.source] > SOURCE_PRIORITY[existing.source]) {
+                existing.source = match.source;
+                existing.characterName = match.characterName || existing.characterName;
+            } else {
+                existing.characterName = existing.characterName || match.characterName;
+            }
             continue;
         }
 
