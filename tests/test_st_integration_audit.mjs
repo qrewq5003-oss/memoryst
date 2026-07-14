@@ -144,11 +144,30 @@ test('pre-generation hook resolution and turn keys support current-turn retrieva
     const turnKey = buildTurnKey({
         chatId: 'chat-1',
         characterId: 'char-1',
-        chatLength: 42,
         userInput: 'Напомни, что Лена боится грозы',
     });
 
     assert.ok(PRE_GENERATION_HOOK_CANDIDATES.includes('GENERATE_BEFORE_COMBINE_PROMPTS'));
     assert.ok(hookNames.includes('generate_before_combine_prompts'));
-    assert.match(turnKey, /chat-1::char-1::42::/);
+    // The chat length is deliberately absent: SillyTavern grows `chat` mid-generation, so
+    // including it made the key change between the hooks of a single turn.
+    assert.equal(turnKey, 'chat-1::char-1::Напомни, что Лена боится грозы');
+});
+
+test('the turn key is stable while SillyTavern grows the chat mid-generation', () => {
+    // Live regression: ST pushes a placeholder message for the reply into `chat` during
+    // generation, so chat.length differed between GENERATION_STARTED and
+    // GENERATE_BEFORE_COMBINE_PROMPTS. With the length in the key, the second hook saw a
+    // "new" turn, re-ran retrieve, and cleared the tracker block that WORLD_INFO_ACTIVATED
+    // had set in between - which is exactly why the injected tracker never reached the
+    // prompt.
+    const before = buildTurnKey({ chatId: 'c', characterId: '20', userInput: 'привет' });
+    const during = buildTurnKey({ chatId: 'c', characterId: '20', userInput: 'привет' });
+
+    assert.equal(before, during);
+    assert.notEqual(
+        before,
+        buildTurnKey({ chatId: 'c', characterId: '20', userInput: 'другой ввод' }),
+        'a different user input is still a different turn',
+    );
 });

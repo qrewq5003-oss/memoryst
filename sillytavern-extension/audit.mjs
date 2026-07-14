@@ -397,6 +397,20 @@ export function resolvePreGenerationHookNames(eventTypes = {}) {
     return [...resolved];
 }
 
-export function buildTurnKey({ chatId, characterId, chatLength, userInput }) {
-    return [chatId || '', characterId || '', chatLength || 0, userInput || ''].join('::');
+/**
+ * Identifies one generation, so the several pre-generation hooks we listen on do the work
+ * once instead of once each.
+ *
+ * Deliberately does NOT include the chat length. SillyTavern pushes a placeholder message
+ * for the reply into `chat` while generating, so the length changes *between* the hooks of
+ * a single turn: the key changed mid-generation, the guard missed, and the later hook ran
+ * the whole path again - re-issuing /memory/retrieve and, worse, clearing the tracker block
+ * that WORLD_INFO_ACTIVATED had just set (the lorebook event fires between the two hooks).
+ * That is what kept the injected tracker out of the prompt.
+ *
+ * Repeating the same user input on a later turn is not a problem: onMessageRendered resets
+ * the pending key, so the guard only ever suppresses work inside one generation.
+ */
+export function buildTurnKey({ chatId, characterId, userInput }) {
+    return [chatId || '', characterId || '', userInput || ''].join('::');
 }

@@ -754,7 +754,6 @@ async function onBeforeGeneration() {
     const turnKey = buildTurnKey({
         chatId: chatContext?.chatId || null,
         characterId: chatContext?.characterId || chatContext?.chatId || null,
-        chatLength: chatContext?.chat?.length || 0,
         userInput,
     });
 
