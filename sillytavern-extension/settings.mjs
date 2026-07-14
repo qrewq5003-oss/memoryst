@@ -6,11 +6,11 @@ import {
     DEFAULT_MAX_PROMPT_MEMORIES,
     DEFAULT_MAX_STABLE_ITEMS,
     DEFAULT_MAX_SUMMARY_ITEMS,
-} from './audit.mjs?v=ead4e46';
+} from './audit.mjs?v=b60a1cc';
 import {
     DEFAULT_MAX_TRACKER_CHARS,
     DEFAULT_TRACKER_REMINDER_THRESHOLD,
-} from './trackers.mjs?v=ead4e46';
+} from './trackers.mjs?v=b60a1cc';
 
 export const DEFAULT_CONNECTION_SETTINGS = {
     enabled: false,
