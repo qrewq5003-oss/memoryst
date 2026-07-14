@@ -137,6 +137,8 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         trackerMatchSources: (currentTrackerInfo?.includedCharacters || []).map(
             item => `${item.source}:${item.characterName || item.characterId}`
         ),
+        trackerUnresolved: currentTrackerInfo?.unresolved || [],
+        trackerRosterSize: currentTrackerInfo?.rosterSize ?? null,
     });
     record.applied_to_current_turn = anyBlock;
 }
@@ -581,15 +583,26 @@ function injectTrackersFor(entries = []) {
     }
 
     const chatContext = getChatContext();
-    const { matches } = resolveTrackerCharacterIds({
+    const roster = getCharacterRoster();
+    const { matches, unresolved } = resolveTrackerCharacterIds({
         entries,
-        characters: getCharacterRoster(),
+        characters: roster,
         currentCharacterId: chatContext?.characterId || null,
         isGroupChat: Boolean(chatContext?.groupId),
     });
 
+    // Kept even when nothing matched: an unresolvable marker used to leave no trace at all,
+    // which is precisely the case that needs explaining.
+    const diagnostics = { unresolved, rosterSize: roster.length };
+
+    if (unresolved.length) {
+        console.warn('[Memory Service] Unresolved tracker markers:', unresolved,
+            `(character roster: ${roster.length})`);
+    }
+
     if (!matches.length) {
         clearTrackerPrompt();
+        currentTrackerInfo = { trackerBlock: '', includedCharacters: [], ...diagnostics };
         return;
     }
 
@@ -610,10 +623,11 @@ function injectTrackersFor(entries = []) {
 
     if (!trackerInfo.trackerBlock) {
         clearTrackerPrompt();
+        currentTrackerInfo = { trackerBlock: '', includedCharacters: [], ...diagnostics };
         return;
     }
 
-    currentTrackerInfo = trackerInfo;
+    currentTrackerInfo = { ...trackerInfo, ...diagnostics };
     setTrackerPrompt(trackerInfo.trackerBlock);
     console.log(
         '[Memory Service] Tracker block injected for',

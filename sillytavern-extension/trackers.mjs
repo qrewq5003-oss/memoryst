@@ -119,9 +119,18 @@ function resolveMarker(entry, nameIndex) {
         return { characterId: token, characterName: known?.name || null, source: 'marker' };
     }
 
-    const byName = nameIndex.find(candidate => foldCase(candidate.name) === foldCase(token));
-    if (byName) {
-        return { characterId: byName.characterId, characterName: byName.name, source: 'marker' };
+    const exact = nameIndex.find(candidate => foldCase(candidate.name) === foldCase(token));
+    if (exact) {
+        return { characterId: exact.characterId, characterName: exact.name, source: 'marker' };
+    }
+
+    // "@memory-tracker: Валерия" against a card named "Валерия Мендоса" is the obvious
+    // intent, and demanding the full card name character-for-character is a trap: the
+    // marker silently stops working and nothing says why.
+    const partial = nameIndex.find(candidate =>
+        containsName(candidate.name, token) || containsName(token, candidate.name));
+    if (partial) {
+        return { characterId: partial.characterId, characterName: partial.name, source: 'marker' };
     }
 
     return { characterId: null, characterName: token, source: 'marker_unresolved' };
@@ -159,7 +168,18 @@ export function resolveTrackerCharacterIds({
     const unresolved = [];
 
     for (const entry of entries || []) {
-        const match = resolveMarker(entry, nameIndex)
+        const marker = resolveMarker(entry, nameIndex);
+
+        // A marker naming somebody we cannot map to a character index must NOT suppress the
+        // other branches. It did, and the result was the worst possible failure: adding a
+        // marker to a lorebook entry turned tracker injection off entirely, silently, with
+        // the audit showing an empty match list and no reason. A marker is a hint about who
+        // the entry is about, not a veto on the entry.
+        if (marker && !marker.characterId) {
+            unresolved.push({ entryId: getEntryId(entry), reason: marker.source, token: marker.characterName });
+        }
+
+        const match = (marker?.characterId ? marker : null)
             || resolveByName(entry, nameIndex)
             // A solo chat has exactly one character the entry could possibly be about, so
             // an unmatched entry still means "these trackers are relevant now".
@@ -168,7 +188,9 @@ export function resolveTrackerCharacterIds({
                 : null);
 
         if (!match || !match.characterId) {
-            unresolved.push({ entryId: getEntryId(entry), reason: match?.source || 'no_match' });
+            if (!marker) {
+                unresolved.push({ entryId: getEntryId(entry), reason: 'no_match' });
+            }
             continue;
         }
 

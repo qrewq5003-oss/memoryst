@@ -290,6 +290,8 @@ export function buildPromptInsertionAuditSection({
     trackerBlock = '',
     trackerSubjectCount = 0,
     trackerMatchSources = [],
+    trackerUnresolved = [],
+    trackerRosterSize = null,
 }) {
     return {
         applied: Boolean(applied),
@@ -312,6 +314,11 @@ export function buildPromptInsertionAuditSection({
         // 'marker' | 'name' | 'fallback' per injected character - which lorebook resolution
         // branch actually fired, so the marker path can be told apart from the fallback.
         tracker_match_sources: trackerMatchSources || [],
+        // Why a lorebook entry produced no tracker: an unresolvable @memory-tracker marker,
+        // or an empty character roster (tracker_roster_size 0 means getContext().characters
+        // gave us nothing to map names against).
+        tracker_unresolved: trackerUnresolved || [],
+        tracker_roster_size: trackerRosterSize,
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,

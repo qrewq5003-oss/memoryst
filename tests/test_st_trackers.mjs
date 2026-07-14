@@ -71,16 +71,20 @@ test('an unmatched entry falls back to the current character in a solo chat only
     assert.deepEqual(group.unresolved, [{ entryId: 'lore', reason: 'no_match' }]);
 });
 
-test('a marker naming an unknown character resolves to nobody rather than to the fallback', () => {
+test('a marker naming an unknown character invents nobody when there is no fallback', () => {
+    // In a group chat there is no "the one character this could be about", so an
+    // unresolvable marker resolves to nothing - but it is recorded, not swallowed. In a solo
+    // chat the fallback still applies: see 'an unresolvable marker must not suppress...',
+    // which is the live regression this test used to enshrine.
     const { matches, unresolved } = resolveTrackerCharacterIds({
         entries: [{ uid: 'ghost', comment: '@memory-tracker: Незнакомец' }],
         characters: CHARACTERS,
         currentCharacterId: '0',
-        isGroupChat: false,
+        isGroupChat: true,
     });
 
     assert.deepEqual(matches, []);
-    assert.deepEqual(unresolved, [{ entryId: 'ghost', reason: 'marker_unresolved' }]);
+    assert.deepEqual(unresolved, [{ entryId: 'ghost', reason: 'marker_unresolved', token: 'Незнакомец' }]);
 });
 
 test('dropOneTrackerUnit trims each tracker by its own semantics', () => {
@@ -308,4 +312,46 @@ test('a single oversized tracker is truncated to fit, never dropped to nothing',
     assert.match(built.block, /…$/, 'the cut is marked');
     assert.ok(built.trimReasons.includes('char_budget_truncated:relationship'));
     assert.ok(!built.trimReasons.includes('char_budget_dropped:relationship'));
+});
+
+test('an unresolvable marker must not suppress the other branches', () => {
+    // Live regression: adding "@memory-tracker: Valeria Mendoza" to a lorebook entry turned
+    // tracker injection OFF - the marker parsed, failed to map to a character index, and the
+    // early return took the fallback with it. A marker is a hint about who an entry is
+    // about, not a veto on the entry.
+    const { matches, unresolved } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: 'Досье @memory-tracker: Кто-то Неизвестный' }],
+        characters: CHARACTERS,
+        currentCharacterId: '2',
+        isGroupChat: false,
+    });
+
+    assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['2', 'fallback']]);
+    assert.deepEqual(unresolved, [{ entryId: 'e1', reason: 'marker_unresolved', token: 'Кто-то Неизвестный' }]);
+});
+
+test('a marker matches a partial name rather than demanding the full card name', () => {
+    const { matches } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
+        characters: [{ name: 'Маркус' }, { name: 'Валерия Мендоса' }],
+        currentCharacterId: '0',
+    });
+
+    assert.deepEqual(matches.map(m => [m.characterId, m.characterName, m.source]), [
+        ['1', 'Валерия Мендоса', 'marker'],
+    ]);
+});
+
+test('with an empty character roster the marker cannot resolve, but injection still happens', () => {
+    // getContext().characters being empty is exactly what tracker_roster_size in the audit
+    // exists to reveal.
+    const { matches, unresolved } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
+        characters: [],
+        currentCharacterId: '20',
+        isGroupChat: false,
+    });
+
+    assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['20', 'fallback']]);
+    assert.equal(unresolved[0].reason, 'marker_unresolved');
 });
