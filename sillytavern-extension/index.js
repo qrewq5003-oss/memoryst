@@ -161,6 +161,7 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         trackerError: currentTrackerInfo?.error || null,
         trackerWiEventCount: worldInfoActivationCount,
         trackerEventTrace: [...turnEventTrace],
+        trackerEntryFields: currentTrackerInfo?.entryFields || [],
     });
     record.applied_to_current_turn = anyBlock;
 }
@@ -638,7 +639,19 @@ function injectTrackersFor(entries = []) {
     // entryCount distinguishes "WORLD_INFO_ACTIVATED never fired" (stays null in the audit)
     // from "it fired and no entry resolved to a character" (0 or more). Without it, both
     // look identical from the outside: an empty tracker block and no explanation.
-    const diagnostics = { unresolved, rosterSize: roster.length, entryCount: (entries || []).length };
+    const diagnostics = {
+        unresolved,
+        rosterSize: roster.length,
+        entryCount: (entries || []).length,
+        // What the lorebook payload actually looks like from here. The @memory-tracker marker
+        // sits in an entry's comment, and the resolver keeps reporting "no marker found" for
+        // an entry whose comment demonstrably contains one - so stop trusting the field names
+        // and record them.
+        entryFields: (entries || []).slice(0, 4).map(entry => ({
+            keys: Object.keys(entry || {}).slice(0, 24),
+            comment: String(entry?.comment ?? '').slice(0, 80),
+        })),
+    };
 
     if (unresolved.length) {
         console.warn('[Memory Service] Unresolved tracker markers:', unresolved,
