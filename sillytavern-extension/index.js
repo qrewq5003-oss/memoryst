@@ -27,29 +27,29 @@ import {
     finalizeIntegrationAuditRecord,
     pushAuditRecord,
     resolvePreGenerationHookNames,
-} from './audit.mjs?v=561a10d';
+} from './audit.mjs?v=1f60012';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=561a10d';
-import { mountSettingsUi } from './settings-ui.mjs?v=561a10d';
-import { resolveEffectiveScope } from './scope.mjs?v=561a10d';
+} from './settings.mjs?v=1f60012';
+import { mountSettingsUi } from './settings-ui.mjs?v=1f60012';
+import { resolveEffectiveScope } from './scope.mjs?v=1f60012';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=561a10d';
+} from './lore-anchors.mjs?v=1f60012';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
     fetchTrackers,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=561a10d';
+} from './trackers.mjs?v=1f60012';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=561a10d';
+} from './version.mjs?v=1f60012';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -631,6 +631,7 @@ function injectTrackersFor(entries = []) {
         entries,
         characters: roster,
         currentCharacterId: chatContext?.characterId || null,
+        currentCharacterName: roster[Number(chatContext?.characterId)]?.name || null,
         isGroupChat: Boolean(chatContext?.groupId),
     });
 

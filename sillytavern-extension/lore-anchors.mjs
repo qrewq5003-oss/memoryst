@@ -1,4 +1,4 @@
-import { previewText } from './audit.mjs?v=561a10d';
+import { previewText } from './audit.mjs?v=1f60012';
 
 export const LORE_ANCHOR_PROMPT_KEY = 'memory-service-lore-anchor';
 export const DEFAULT_MAX_LORE_ANCHOR_ITEMS = 1;

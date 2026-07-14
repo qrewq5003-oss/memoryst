@@ -93,14 +93,29 @@ function containsName(haystack, name) {
  * that index stringified (see scope.mjs). Longest names first so "Валерия Ким" wins over
  * "Валерия" when both exist.
  */
-export function buildCharacterNameIndex(characters = []) {
+export function buildCharacterNameIndex(characters = [], currentCharacterId = null, currentCharacterName = null) {
     const byName = [];
+    const currentName = normalizeWhitespace(currentCharacterName);
+
     (characters || []).forEach((character, index) => {
         const name = normalizeWhitespace(character?.name);
-        if (name) {
-            byName.push({ name, characterId: String(index) });
+        if (!name) {
+            return;
         }
+        // The chat scope's id wins over the array position for the character of this chat.
+        const isCurrent = currentName && foldCase(name) === foldCase(currentName);
+        byName.push({
+            name,
+            characterId: isCurrent && currentCharacterId ? String(currentCharacterId) : String(index),
+        });
     });
+
+    if (currentName && currentCharacterId && !byName.some(c => foldCase(c.name) === foldCase(currentName))) {
+        // The roster did not even contain the current character (an empty or unusual context):
+        // the name we are certain about is still worth matching on.
+        byName.push({ name: currentName, characterId: String(currentCharacterId) });
+    }
+
     return byName.sort((a, b) => b.name.length - a.name.length);
 }
 
@@ -164,9 +179,16 @@ export function resolveTrackerCharacterIds({
     entries = [],
     characters = [],
     currentCharacterId = null,
+    currentCharacterName = null,
     isGroupChat = false,
 } = {}) {
-    const nameIndex = buildCharacterNameIndex(characters);
+    // The roster index is what a name resolves to, and SillyTavern's index is not stable
+    // across deletions and reordering - the spec admits as much. So when a marker or a key
+    // names the character we are actually talking to, take the id from the chat scope, which
+    // is authoritative, instead of trusting the position in the array. Otherwise a marker
+    // could point at the wrong character_id, find no trackers there, and end up *worse* than
+    // no marker at all.
+    const nameIndex = buildCharacterNameIndex(characters, currentCharacterId, currentCharacterName);
     const resolved = new Map();
     const unresolved = [];
 

@@ -376,3 +376,32 @@ test('the strongest resolution wins regardless of lorebook entry order', () => {
     assert.equal(matches[0].characterName, 'Валерия');
     assert.deepEqual(matches[0].entryIds, ['plain', 'marked']);
 });
+
+test('a marker naming the current character takes the id from the chat scope, not the roster index', () => {
+    // SillyTavern's character index shifts when characters are deleted or reordered, so a
+    // name->index lookup can point the marker at the wrong character_id - where no trackers
+    // exist, making the marker worse than useless. The scope's id is authoritative.
+    const { matches } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
+        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        currentCharacterId: '20',
+        currentCharacterName: 'Валерия',
+        isGroupChat: false,
+    });
+
+    assert.deepEqual(matches.map(m => [m.characterId, m.characterName, m.source]), [
+        ['20', 'Валерия', 'marker'],
+    ]);
+});
+
+test('other characters still resolve by roster index', () => {
+    const { matches } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: '@memory-tracker: Маркус' }],
+        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        currentCharacterId: '20',
+        currentCharacterName: 'Валерия',
+        isGroupChat: true,
+    });
+
+    assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['0', 'marker']]);
+});
