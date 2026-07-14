@@ -7,6 +7,7 @@ import {
     dropOneTrackerUnit,
     evaluateTrackerToasts,
     fetchTrackers,
+    mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_OMITTED_MARKER,
 } from '../sillytavern-extension/trackers.mjs';
@@ -404,4 +405,52 @@ test('other characters still resolve by roster index', () => {
     });
 
     assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['0', 'marker']]);
+});
+
+test('the current character is injected on its own, with no lorebook activation at all', () => {
+    // The main path for a solo chat. STMemoryBooks writes vectorized lorebook entries, which
+    // fire only when a semantic search surfaces them - so the character you are actually
+    // talking to cannot depend on the lorebook to get their tracker into the prompt.
+    const always = [{ characterId: '20', characterName: 'Valeria Mendoza', source: 'always', entryIds: [] }];
+
+    const merged = mergeTrackerMatches(always, []);
+
+    assert.deepEqual(merged.map(m => [m.characterId, m.source]), [['20', 'always']]);
+});
+
+test('a lorebook match upgrades how the current character was resolved, never drops them', () => {
+    const always = [{ characterId: '20', characterName: null, source: 'always', entryIds: [] }];
+    const { matches } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
+        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        currentCharacterId: '20',
+        currentCharacterName: 'Валерия',
+        isGroupChat: false,
+    });
+
+    const merged = mergeTrackerMatches(always, matches);
+
+    assert.equal(merged.length, 1, 'the same character is not injected twice');
+    assert.equal(merged[0].source, 'marker', 'the marker is the stronger claim');
+    assert.equal(merged[0].characterName, 'Валерия');
+});
+
+test('a lorebook entry about a secondary character adds them alongside the current one', () => {
+    // This is what the lorebook route is for now: pulling in somebody who is not the character
+    // of this chat.
+    const always = [{ characterId: '20', characterName: 'Валерия', source: 'always', entryIds: [] }];
+    const { matches } = resolveTrackerCharacterIds({
+        entries: [{ uid: 'e1', comment: 'Досье @memory-tracker: Маркус' }],
+        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        currentCharacterId: '20',
+        currentCharacterName: 'Валерия',
+        isGroupChat: true,
+    });
+
+    const merged = mergeTrackerMatches(always, matches);
+
+    assert.deepEqual(
+        merged.map(m => [m.characterId, m.source]).sort(),
+        [['0', 'marker'], ['20', 'always']],
+    );
 });

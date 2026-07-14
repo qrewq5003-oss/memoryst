@@ -6,11 +6,11 @@ import {
     DEFAULT_MAX_PROMPT_MEMORIES,
     DEFAULT_MAX_STABLE_ITEMS,
     DEFAULT_MAX_SUMMARY_ITEMS,
-} from './audit.mjs?v=e02815b';
+} from './audit.mjs?v=04d7534';
 import {
     DEFAULT_MAX_TRACKER_CHARS,
     DEFAULT_TRACKER_REMINDER_THRESHOLD,
-} from './trackers.mjs?v=e02815b';
+} from './trackers.mjs?v=04d7534';
 
 export const DEFAULT_CONNECTION_SETTINGS = {
     enabled: false,
@@ -55,6 +55,11 @@ export const DEFAULT_PROMPT_BUDGET_SETTINGS = {
 // which each tracker last nagged, so a reload doesn't restart the nagging.
 export const DEFAULT_TRACKER_SETTINGS = {
     trackerInjectionEnabled: true,
+    // The main path for a solo chat: the tracker of the character you are talking to goes in
+    // every turn, instead of waiting for a lorebook entry about them to activate. The lorebook
+    // route still runs and is still what pulls in a secondary character (by @memory-tracker
+    // marker or by name) - it is simply no longer the only way the main character gets in.
+    trackerAlwaysInjectCurrentCharacter: true,
     maxTrackerChars: DEFAULT_MAX_TRACKER_CHARS,
     trackerReminderThreshold: DEFAULT_TRACKER_REMINDER_THRESHOLD,
 };
@@ -140,6 +145,8 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         maxStableItems: rawSettings.maxStableItems ?? promptBudget.maxStableItems,
         maxEpisodicItems: rawSettings.maxEpisodicItems ?? promptBudget.maxEpisodicItems,
         trackerInjectionEnabled: rawSettings.trackerInjectionEnabled ?? trackers.trackerInjectionEnabled,
+        trackerAlwaysInjectCurrentCharacter:
+            rawSettings.trackerAlwaysInjectCurrentCharacter ?? trackers.trackerAlwaysInjectCurrentCharacter,
         maxTrackerChars: rawSettings.maxTrackerChars ?? trackers.maxTrackerChars,
         trackerReminderThreshold: rawSettings.trackerReminderThreshold ?? trackers.trackerReminderThreshold,
         lastTrackerToastAt: isPlainObject(rawSettings.lastTrackerToastAt)
@@ -187,6 +194,9 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
         },
         trackers: {
             trackerInjectionEnabled: settings.trackerInjectionEnabled ?? DEFAULT_TRACKER_SETTINGS.trackerInjectionEnabled,
+            trackerAlwaysInjectCurrentCharacter:
+                settings.trackerAlwaysInjectCurrentCharacter
+                ?? DEFAULT_TRACKER_SETTINGS.trackerAlwaysInjectCurrentCharacter,
             maxTrackerChars: settings.maxTrackerChars ?? DEFAULT_TRACKER_SETTINGS.maxTrackerChars,
             trackerReminderThreshold: settings.trackerReminderThreshold ?? DEFAULT_TRACKER_SETTINGS.trackerReminderThreshold,
             lastTrackerToastAt: isPlainObject(settings.lastTrackerToastAt) ? settings.lastTrackerToastAt : {},

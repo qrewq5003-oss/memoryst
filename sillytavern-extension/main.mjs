@@ -27,29 +27,29 @@ import {
     finalizeIntegrationAuditRecord,
     pushAuditRecord,
     resolvePreGenerationHookNames,
-} from './audit.mjs?v=e02815b';
+} from './audit.mjs?v=04d7534';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=e02815b';
-import { mountSettingsUi } from './settings-ui.mjs?v=e02815b';
-import { resolveEffectiveScope } from './scope.mjs?v=e02815b';
+} from './settings.mjs?v=04d7534';
+import { mountSettingsUi } from './settings-ui.mjs?v=04d7534';
+import { resolveEffectiveScope } from './scope.mjs?v=04d7534';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=e02815b';
+} from './lore-anchors.mjs?v=04d7534';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
     fetchTrackers,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=e02815b';
+} from './trackers.mjs?v=04d7534';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=e02815b';
+} from './version.mjs?v=04d7534';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -564,6 +564,39 @@ function setTrackerStatus(nextStatus) {
     refreshSettingsUi();
 }
 
+/**
+ * The character of this chat, injected on every turn when trackerAlwaysInjectCurrentCharacter
+ * is on - which is the main path for a solo chat.
+ *
+ * The lorebook route is untouched and still runs (see injectTrackersFor): it remains the way a
+ * *secondary* character's trackers get pulled in, by @memory-tracker marker or by name. It just
+ * is no longer load-bearing for the character you are actually talking to - it could not be.
+ * Lorebook entries written by STMemoryBooks are vectorized, so they fire only when a semantic
+ * search happens to surface them, and the main character's tracker would reach the prompt on
+ * those turns only.
+ *
+ * Group chats stay on the lorebook path: "the current character" is not a well-defined thing
+ * there, and guessing would inject the wrong person's trackers.
+ */
+function getAlwaysInjectMatches() {
+    if (!settings.trackerAlwaysInjectCurrentCharacter) {
+        return [];
+    }
+
+    const chatContext = getChatContext();
+    if (!chatContext?.characterId || chatContext.groupId) {
+        return [];
+    }
+
+    const roster = getCharacterRoster();
+    return [{
+        characterId: String(chatContext.characterId),
+        characterName: roster[Number(chatContext.characterId)]?.name || null,
+        source: 'always',
+        entryIds: [],
+    }];
+}
+
 function getCharacterRoster() {
     const rawContext = getContext();
     return Array.isArray(rawContext?.characters) ? rawContext.characters : [];
@@ -627,13 +660,15 @@ function injectTrackersFor(entries = []) {
 
     const chatContext = getChatContext();
     const roster = getCharacterRoster();
-    const { matches, unresolved } = resolveTrackerCharacterIds({
+    const resolved = resolveTrackerCharacterIds({
         entries,
         characters: roster,
         currentCharacterId: chatContext?.characterId || null,
         currentCharacterName: roster[Number(chatContext?.characterId)]?.name || null,
         isGroupChat: Boolean(chatContext?.groupId),
     });
+    const unresolved = resolved.unresolved;
+    const matches = mergeTrackerMatches(getAlwaysInjectMatches(), resolved.matches);
 
     // Kept even when nothing matched: an unresolvable marker used to leave no trace at all,
     // which is precisely the case that needs explaining.
@@ -851,6 +886,11 @@ async function onBeforeGeneration(hookName, ...hookArgs) {
             auditRecord.prompt_insertion_observed = true;
             auditRecord.applied_to_current_turn = Boolean(retrieveResult.promptApplied);
             currentRetrieveBudget = retrieveResult.budget || null;
+            // No lorebook entry has fired yet (WORLD_INFO_ACTIVATED lands after this hook) and
+            // for a vectorized lorebook it may never fire at all - so inject what we already
+            // know: the current character's trackers. If the lorebook does fire later, the
+            // handler rebuilds the block with whatever else it resolved.
+            injectTrackersFor([]);
             refreshPromptInsertionAudit(auditRecord);
         } else {
             clearMemoryPrompt();

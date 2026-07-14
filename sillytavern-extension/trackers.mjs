@@ -37,7 +37,10 @@ export const TRACKER_OMITTED_MARKER = '- …(ранее опущено)';
 const TRACKER_MARKER_RE = /@memory-tracker\s*:\s*([^\n]+)/i;
 // An explicit marker beats a name match beats the solo-chat fallback - regardless of which
 // lorebook entry happened to be resolved first.
-const SOURCE_PRIORITY = { marker: 3, name: 2, fallback: 1 };
+// 'always' is the current character injected unconditionally (see mergeTrackerMatches); it is
+// the weakest claim, so anything the lorebook says about the same character overrides how the
+// match is reported - but never removes it.
+const SOURCE_PRIORITY = { marker: 3, name: 2, fallback: 1, always: 0 };
 const RELATIONSHIP_LIST_HEADERS = ['Key facts:', 'Goals:', 'Open threads:'];
 
 function normalizeWhitespace(text) {
@@ -245,6 +248,41 @@ export function resolveTrackerCharacterIds({
     }
 
     return { matches: [...resolved.values()], unresolved };
+}
+
+/**
+ * Fold lorebook-resolved matches into a base list (typically the current character, injected
+ * unconditionally), keeping the strongest resolution for each character.
+ *
+ * The lorebook path stays exactly as it was - it is what can pull in a *secondary* character's
+ * trackers by marker or name. What changes is that the main character no longer depends on it:
+ * lorebook entries created by STMemoryBooks are vectorized, so they only fire when a semantic
+ * search happens to surface them, and the tracker of the character you are actually talking to
+ * would reach the prompt only on those turns.
+ */
+export function mergeTrackerMatches(base = [], extra = []) {
+    const merged = new Map();
+
+    for (const match of [...base, ...extra]) {
+        if (!match?.characterId) {
+            continue;
+        }
+        const existing = merged.get(match.characterId);
+        if (!existing) {
+            merged.set(match.characterId, { ...match, entryIds: [...(match.entryIds || [])] });
+            continue;
+        }
+
+        existing.entryIds.push(...(match.entryIds || []));
+        if (SOURCE_PRIORITY[match.source] > SOURCE_PRIORITY[existing.source]) {
+            existing.source = match.source;
+            existing.characterName = match.characterName || existing.characterName;
+        } else {
+            existing.characterName = existing.characterName || match.characterName;
+        }
+    }
+
+    return [...merged.values()];
 }
 
 // ------------------------------------------------------------------ char budget

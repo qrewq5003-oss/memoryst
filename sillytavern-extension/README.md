@@ -80,6 +80,24 @@ injected. Update them from the backend's web UI (`/ui`), or call
 `memoryServiceTrackers.refresh()` from the console to pick up an update without switching
 chats.
 
+### Always Inject Current Character
+
+`trackerAlwaysInjectCurrentCharacter` (default on) injects the current character's trackers
+every turn, without waiting for a lorebook entry about them to activate. This is the main path
+for a solo chat.
+
+It exists because the lorebook cannot carry that weight: entries written by STMemoryBooks are
+vectorized, so they activate only when the Vector Storage extension finds them semantically
+relevant - the main character's tracker would otherwise reach the prompt only on the turns that
+happened to surface such an entry.
+
+The lorebook route below is unchanged and still runs. Its job now is to pull in a *secondary*
+character's trackers. When both paths name the same character, the stronger resolution is the
+one reported (marker > name > fallback > always) and the character is injected once.
+
+Group chats stay on the lorebook path only: "the current character" is not well defined there,
+and guessing would inject the wrong person's trackers.
+
 ### Which character a lorebook entry is about
 
 Resolved in this order:

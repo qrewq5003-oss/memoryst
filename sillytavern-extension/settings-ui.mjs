@@ -1,7 +1,7 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=e02815b';
+} from './settings.mjs?v=04d7534';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -111,6 +111,12 @@ export const SETTINGS_UI_FIELDS = [
                 key: 'trackerInjectionEnabled',
                 label: 'Inject Trackers',
                 help: 'Add the character\'s stored trackers to the prompt when their lorebook entry activates.',
+                type: 'checkbox',
+            },
+            {
+                key: 'trackerAlwaysInjectCurrentCharacter',
+                label: 'Always Inject Current Character',
+                help: 'Inject the current character\'s trackers every turn, without waiting for a lorebook entry about them to fire. Leave on for solo chats: STMemoryBooks entries are vectorized and only activate when a semantic search surfaces them.',
                 type: 'checkbox',
             },
             {
