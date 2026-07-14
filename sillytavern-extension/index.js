@@ -86,6 +86,17 @@ let currentTrackerStatus = { status: 'unknown', detail: null };
 // event-name problem) from "it runs and the injection path bails", which no other field can
 // tell apart.
 let worldInfoActivationCount = 0;
+// Ordered trace of what actually happened during this generation. The tracker block is
+// demonstrably being set and then wiped, and reconstructing SillyTavern's hook order from
+// its source has now been wrong twice - so record the order instead of reasoning about it.
+let turnEventTrace = [];
+
+function trace(event) {
+    turnEventTrace.push(`${turnEventTrace.length}:${event}`);
+    if (turnEventTrace.length > 24) {
+        turnEventTrace.shift();
+    }
+}
 
 function setMemoryPrompt(memoryBlock) {
     currentMemoryPromptBlock = memoryBlock || '';
@@ -111,6 +122,7 @@ function setTrackerPrompt(trackerBlock) {
 }
 
 function clearTrackerPrompt() {
+    trace('clear_tracker');
     currentTrackerInfo = null;
     setTrackerPrompt('');
 }
@@ -148,6 +160,7 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         trackerLorebookEntryCount: currentTrackerInfo?.entryCount ?? null,
         trackerError: currentTrackerInfo?.error || null,
         trackerWiEventCount: worldInfoActivationCount,
+        trackerEventTrace: [...turnEventTrace],
     });
     record.applied_to_current_turn = anyBlock;
 }
@@ -557,6 +570,7 @@ function getCharacterRoster() {
 
 function onWorldInfoActivated(entries = []) {
     worldInfoActivationCount += 1;
+    trace(`wi(${(entries || []).length})`);
 
     if (!settings.enabled) {
         return;
@@ -745,8 +759,10 @@ function exposeAuditHelpers() {
 /**
  * Retrieve and inject memories before the current generation starts.
  */
-async function onBeforeGeneration() {
+async function onBeforeGeneration(...hookArgs) {
+    trace('pregen');
     if (!settings.enabled || isRetrieveProcessing) {
+        trace('pregen_skip_busy');
         return;
     }
 
@@ -759,8 +775,10 @@ async function onBeforeGeneration() {
     });
 
     if (pendingTurnKey === turnKey && pendingInteractionAudit?.retrieve_called) {
+        trace('pregen_skip_guard');
         return;
     }
+    trace('pregen_work');
 
     // Clearing the previous turn's lore-anchor/tracker blocks happens only on the first
     // pre-generation hook of a turn, i.e. after the turn-key guard above. Three candidate
@@ -866,6 +884,7 @@ async function onMessageRendered() {
  * Handle chat change - clear prompt if chat changes
  */
 function onChatChanged() {
+    turnEventTrace = [];
     clearMemoryPrompt();
     clearLoreAnchorPrompt();
     clearTrackerPrompt();

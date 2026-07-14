@@ -297,6 +297,7 @@ export function buildPromptInsertionAuditSection({
     trackerLorebookEntryCount = null,
     trackerError = null,
     trackerWiEventCount = 0,
+    trackerEventTrace = [],
 }) {
     return {
         applied: Boolean(applied),
@@ -332,6 +333,9 @@ export function buildPromptInsertionAuditSection({
         tracker_error: trackerError,
         // 0 means SillyTavern never called our WORLD_INFO_ACTIVATED listener at all.
         tracker_wi_event_count: trackerWiEventCount,
+        // The actual order of pre-generation hooks, lorebook activation and prompt clears
+        // during this turn.
+        tracker_event_trace: trackerEventTrace,
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,
