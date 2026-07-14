@@ -759,8 +759,30 @@ function exposeAuditHelpers() {
 /**
  * Retrieve and inject memories before the current generation starts.
  */
-async function onBeforeGeneration(...hookArgs) {
-    trace('pregen');
+/**
+ * SillyTavern runs a dry-run generation pass (for token counting) before the real one, and
+ * emits the same pre-generation hooks for it - with dryRun=true as the third argument of
+ * GENERATION_STARTED / GENERATION_AFTER_COMMANDS. Two things go wrong if we treat it as a
+ * real turn, and both did:
+ *
+ *  - the dry run's chat state does not yet hold the new user message, so the turn key is
+ *    built from the *previous* one. The real pass then looks like a different turn, sails
+ *    past the de-dupe guard, and calls clearTrackerPrompt() - wiping the tracker block that
+ *    WORLD_INFO_ACTIVATED had just set (the lorebook does not fire on dry runs, so this
+ *    always lands after it). That is what kept trackers out of the prompt.
+ *  - /memory/retrieve was issued for the dry run too, querying with the stale user message.
+ */
+function isDryRun(hookArgs) {
+    return hookArgs.length >= 3 && hookArgs[2] === true;
+}
+
+async function onBeforeGeneration(hookName, ...hookArgs) {
+    if (isDryRun(hookArgs)) {
+        trace(`dryrun:${hookName}`);
+        return;
+    }
+
+    trace(`pregen:${hookName}`);
     if (!settings.enabled || isRetrieveProcessing) {
         trace('pregen_skip_busy');
         return;
@@ -906,10 +928,11 @@ function init() {
 
     // Register likely pre-generation hooks for current-turn retrieval.
     for (const hookName of resolvePreGenerationHookNames(event_types)) {
+        const handler = (...hookArgs) => onBeforeGeneration(hookName, ...hookArgs);
         if (typeof eventSource.makeFirst === 'function') {
-            eventSource.makeFirst(hookName, onBeforeGeneration);
+            eventSource.makeFirst(hookName, handler);
         } else {
-            eventSource.on(hookName, onBeforeGeneration);
+            eventSource.on(hookName, handler);
         }
     }
 
