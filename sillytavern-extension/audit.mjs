@@ -294,6 +294,7 @@ export function buildPromptInsertionAuditSection({
     trackerRosterSize = null,
     trackerLorebookEntryCount = null,
     trackerError = null,
+    trackerWiEventCount = 0,
 }) {
     return {
         applied: Boolean(applied),
@@ -327,6 +328,8 @@ export function buildPromptInsertionAuditSection({
         // Set when tracker injection threw. SillyTavern's event bus swallows listener
         // exceptions, so without this a crash and a no-op look identical.
         tracker_error: trackerError,
+        // 0 means SillyTavern never called our WORLD_INFO_ACTIVATED listener at all.
+        tracker_wi_event_count: trackerWiEventCount,
         tracker_block_preview: previewText(trackerBlock || '', previewChars),
         injected_summary_count: budget?.injectedByLayer?.summary ?? null,
         injected_stable_count: budget?.injectedByLayer?.stable ?? null,

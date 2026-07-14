@@ -80,6 +80,11 @@ const pendingTrackerFetches = new Set();
 // group. A backend that predates trackers answers 404, and a console.warn alone left the
 // panel looking configured while nothing was ever injected.
 let currentTrackerStatus = { status: 'unknown', detail: null };
+// How many times SillyTavern's WORLD_INFO_ACTIVATED listener has fired since page load.
+// Reported in every audit record: it separates "the listener never runs" (registration or
+// event-name problem) from "it runs and the injection path bails", which no other field can
+// tell apart.
+let worldInfoActivationCount = 0;
 
 function setMemoryPrompt(memoryBlock) {
     currentMemoryPromptBlock = memoryBlock || '';
@@ -141,6 +146,7 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         trackerRosterSize: currentTrackerInfo?.rosterSize ?? null,
         trackerLorebookEntryCount: currentTrackerInfo?.entryCount ?? null,
         trackerError: currentTrackerInfo?.error || null,
+        trackerWiEventCount: worldInfoActivationCount,
     });
     record.applied_to_current_turn = anyBlock;
 }
@@ -549,6 +555,8 @@ function getCharacterRoster() {
 }
 
 function onWorldInfoActivated(entries = []) {
+    worldInfoActivationCount += 1;
+
     if (!settings.enabled) {
         return;
     }
