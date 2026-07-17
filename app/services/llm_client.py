@@ -224,6 +224,26 @@ def chat_completion(
     )
 
 
+def _raise_for_status_verbose(response: httpx.Response) -> None:
+    """raise_for_status, but log the body first so a 429/4xx says *why*.
+
+    httpx's own error carries only the status line, so a rate limit and an
+    out-of-credits both surface as a bare '429 Too Many Requests' with the
+    provider's actual explanation (and any Retry-After) thrown away.
+    """
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError:
+        retry_after = response.headers.get("retry-after")
+        print(
+            f"[llm_client] provider returned {response.status_code} for {response.request.url} "
+            f"(retry-after={retry_after!r}): {response.text[:500]}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
+
+
 def _chat_completion_openai_compatible(
     messages: list[dict[str, str]],
     settings: dict,
@@ -249,7 +269,7 @@ def _chat_completion_openai_compatible(
         payload["response_format"] = response_format
 
     response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
-    response.raise_for_status()
+    _raise_for_status_verbose(response)
     return response.json()["choices"][0]["message"]["content"]
 
 
@@ -302,7 +322,7 @@ def _chat_completion_anthropic(
         payload["output_config"] = {"format": output_format}
 
     response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
-    response.raise_for_status()
+    _raise_for_status_verbose(response)
     data = response.json()
 
     if data.get("stop_reason") == "refusal":

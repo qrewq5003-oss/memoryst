@@ -12,6 +12,8 @@ import json
 import sys
 import traceback
 
+import httpx
+
 from app.config import config
 from app.repositories.chat_message_repo import (
     get_max_sequence_index,
@@ -188,6 +190,25 @@ def _warn_on_fused_days(chat_id: str, character_id: str, entries: list[dict]) ->
             )
 
 
+def _summarize_llm_error(exc: Exception) -> str:
+    """A one-line, user-facing cause for the tracker card - so a 429 or a bad key
+    does not get reported as a timeout (the failures are not interchangeable)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 429:
+            retry_after = exc.response.headers.get("retry-after")
+            hint = f" Retry after {retry_after}s." if retry_after else ""
+            return f"the LLM provider returned 429 (rate limited / out of credits).{hint}"
+        if code in (401, 403):
+            return f"the LLM provider returned {code} (bad or missing API key)."
+        return f"the LLM provider returned HTTP {code}."
+    if isinstance(exc, httpx.TimeoutException):
+        return f"the LLM call timed out after {config.TRACKER_LLM_TIMEOUT}s/attempt."
+    if isinstance(exc, json.JSONDecodeError):
+        return "the LLM reply was not valid JSON."
+    return f"{type(exc).__name__}: {exc}".strip()
+
+
 def _call_llm(
     tracker_type: str,
     current_entries: list[dict],
@@ -195,9 +216,10 @@ def _call_llm(
     model: str | None,
     character_name: str | None = None,
     user_name: str | None = None,
-) -> dict | None:
+) -> tuple[dict | None, str | None]:
     """
-    One tracker update call, retried on transient failure. None when it truly failed.
+    One tracker update call, retried on transient failure. Returns (payload, None)
+    on success, or (None, error_summary) when it truly failed.
 
     Retried because the failures seen against real providers were not the model
     rejecting the schema - they were ReadTimeouts and empty completions that succeeded
@@ -232,8 +254,8 @@ def _call_llm(
             )
             if not (response or "").strip():
                 raise ValueError("empty completion (model spent the budget on reasoning)")
-            return json.loads(response)
-        except Exception:
+            return json.loads(response), None
+        except Exception as exc:
             last = attempt == config.TRACKER_LLM_RETRIES
             print(
                 f"[tracker_service] tracker={tracker_type} LLM call/parse FAILED "
@@ -244,9 +266,9 @@ def _call_llm(
                 flush=True,
             )
             if last:
-                return None
+                return None, _summarize_llm_error(exc)
 
-    return None
+    return None, "unknown error"
 
 
 def update_tracker(
@@ -298,9 +320,10 @@ def update_tracker(
     created = existing is None
     consumed = 0
     committed_any = False
+    llm_error: str | None = None
 
     for window in _chunk(pending):
-        payload = _call_llm(
+        payload, llm_error = _call_llm(
             tracker_type, entries, window, model, character_name, user_name
         )
         if payload is None:
@@ -347,9 +370,9 @@ def update_tracker(
             content=existing.content if existing else "",
             entries_count=len(existing.metadata.tracker_entries or []) if existing else 0,
             error_detail=(
-                f"LLM call failed after {config.TRACKER_LLM_RETRIES + 1} attempt(s) "
-                f"(timeout={config.TRACKER_LLM_TIMEOUT}s/attempt). The previous tracker "
-                "content was kept unchanged. Check server logs for the underlying error."
+                f"LLM call failed after {config.TRACKER_LLM_RETRIES + 1} attempt(s): "
+                f"{llm_error or 'unknown error'} The previous tracker content was kept "
+                "unchanged. Check server logs for the full traceback."
             ),
         )
 
