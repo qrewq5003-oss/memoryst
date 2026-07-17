@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
+
 from app.config import config
 from app.db import init_schema
 from app.routes.memory_api import (
@@ -437,6 +439,79 @@ class ProviderPersistenceTests(ProviderConfigTestCase):
 
         set_setting("some-key", "updated-value")
         self.assertEqual(get_setting("some-key"), "updated-value")
+
+
+class KeyRotationTests(ProviderConfigTestCase):
+    """A comma-separated LLM_API_KEY is a failover pool: a 429 on one key
+    rotates to the next, and the cursor sticks to whichever key worked."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        config.ACTIVE_LLM_PROVIDER = "nanogpt"
+        llm_client._active_provider_override = None
+        config.LLM_API_BASE = "https://nano-gpt.example/api"
+        config.LLM_MODEL = "nano-default-model"
+        self._original_cursor = llm_client._key_cursor
+        llm_client._key_cursor = 0
+        self.addCleanup(self._restore_cursor)
+
+    def _restore_cursor(self) -> None:
+        llm_client._key_cursor = self._original_cursor
+
+    @staticmethod
+    def _resp_429() -> httpx.Response:
+        req = httpx.Request("POST", "https://nano-gpt.example/api/v1/chat/completions")
+        return httpx.Response(
+            429, json={"error": {"message": "quota"}}, request=req
+        )
+
+    @staticmethod
+    def _resp_ok(content: str) -> httpx.Response:
+        req = httpx.Request("POST", "https://nano-gpt.example/api/v1/chat/completions")
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": content}}]}, request=req
+        )
+
+    def _auth_header(self, call) -> str:
+        return call[1]["headers"]["Authorization"]
+
+    def test_rotates_to_second_key_on_429(self) -> None:
+        config.LLM_API_KEY = "key-one, key-two"
+        with patch(
+            "httpx.post", side_effect=[self._resp_429(), self._resp_ok("from two")]
+        ) as mock_post:
+            result = llm_client.chat_completion([{"role": "user", "content": "hi"}])
+
+        self.assertEqual(result, "from two")
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertEqual(self._auth_header(mock_post.call_args_list[0]), "Bearer key-one")
+        self.assertEqual(self._auth_header(mock_post.call_args_list[1]), "Bearer key-two")
+
+    def test_cursor_sticks_to_working_key(self) -> None:
+        config.LLM_API_KEY = "key-one,key-two"
+        with patch(
+            "httpx.post", side_effect=[self._resp_429(), self._resp_ok("x")]
+        ):
+            llm_client.chat_completion([{"role": "user", "content": "hi"}])
+
+        # Next call must start from key-two (the one that worked), not key-one.
+        with patch("httpx.post", side_effect=[self._resp_ok("y")]) as mock_post:
+            llm_client.chat_completion([{"role": "user", "content": "hi"}])
+        self.assertEqual(self._auth_header(mock_post.call_args_list[0]), "Bearer key-two")
+
+    def test_all_keys_exhausted_raises_429(self) -> None:
+        config.LLM_API_KEY = "key-one,key-two"
+        with patch("httpx.post", side_effect=[self._resp_429(), self._resp_429()]):
+            with self.assertRaises(httpx.HTTPStatusError) as ctx:
+                llm_client.chat_completion([{"role": "user", "content": "hi"}])
+        self.assertEqual(ctx.exception.response.status_code, 429)
+
+    def test_single_key_does_not_swallow_429(self) -> None:
+        config.LLM_API_KEY = "only-key"
+        with patch("httpx.post", side_effect=[self._resp_429()]) as mock_post:
+            with self.assertRaises(httpx.HTTPStatusError):
+                llm_client.chat_completion([{"role": "user", "content": "hi"}])
+        self.assertEqual(mock_post.call_count, 1)
 
 
 if __name__ == "__main__":

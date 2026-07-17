@@ -28,6 +28,9 @@ class Config:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
     LLM_API_BASE: str = os.getenv("LLM_API_BASE", "")
+    # May hold a comma-separated failover pool: when one key hits its provider
+    # quota (a 429), the client rotates to the next. A single key (no comma)
+    # behaves exactly as before.
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
     # A non-reasoning model on purpose. Reasoning models (the previous default,
     # zai-org/glm-4.7, among them) spend their token budget on hidden reasoning and return

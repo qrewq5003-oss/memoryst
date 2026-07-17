@@ -67,9 +67,11 @@ def set_active_provider(provider: str) -> None:
 
 def _provider_settings(provider: str) -> dict:
     if provider == "nanogpt":
+        keys = [k.strip() for k in config.LLM_API_KEY.split(",") if k.strip()]
         return {
             "api_base": config.LLM_API_BASE,
-            "api_key": config.LLM_API_KEY,
+            "api_key": keys[0] if keys else "",
+            "api_keys": keys,
             "model": config.LLM_MODEL,
         }
     if provider == "openai":
@@ -213,7 +215,7 @@ def chat_completion(
             timeout=resolved_timeout,
         )
 
-    return _chat_completion_openai_compatible(
+    return _chat_completion_with_key_rotation(
         messages,
         settings,
         model=resolved_model,
@@ -222,6 +224,63 @@ def chat_completion(
         response_format=response_format,
         timeout=resolved_timeout,
     )
+
+
+# Sticky pointer into the active key pool. Advances when a key is rejected with
+# 429 so later calls start from a key that still has quota instead of re-hitting
+# the exhausted one every time. Module-level: shared across all callers.
+_key_cursor = 0
+
+
+def _chat_completion_with_key_rotation(
+    messages: list[dict[str, str]],
+    settings: dict,
+    *,
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    response_format: dict | None,
+    timeout: int,
+) -> str:
+    """Try the request against each key in the pool, rotating on a 429.
+
+    Only 429 (the provider saying "this key is out of quota / rate limited")
+    triggers a switch - timeouts and 5xx propagate unchanged so the caller's own
+    retry still handles transient blips. A single-key pool behaves exactly as
+    before. On success the cursor sticks to the working key.
+    """
+    global _key_cursor
+    keys = settings.get("api_keys") or [settings.get("api_key", "")]
+    n = len(keys)
+    last_429: httpx.HTTPStatusError | None = None
+
+    for offset in range(n):
+        idx = (_key_cursor + offset) % n
+        try:
+            result = _chat_completion_openai_compatible(
+                messages,
+                {**settings, "api_key": keys[idx]},
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                response_format=response_format,
+                timeout=timeout,
+            )
+            _key_cursor = idx
+            return result
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 429 or n == 1:
+                raise
+            last_429 = exc
+            print(
+                f"[llm_client] key #{idx + 1}/{n} rejected with 429 - rotating to the next key",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    # Every key in the pool is exhausted; surface the last provider response.
+    assert last_429 is not None
+    raise last_429
 
 
 def _raise_for_status_verbose(response: httpx.Response) -> None:
