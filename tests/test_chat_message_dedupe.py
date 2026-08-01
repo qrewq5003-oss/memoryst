@@ -57,7 +57,7 @@ class ChatMessageDedupeTestCase(unittest.TestCase):
 
 
 class NormalizedTextMigrationTests(ChatMessageDedupeTestCase):
-    def test_fresh_database_has_normalized_text_column_and_index(self) -> None:
+    def test_fresh_database_has_the_normalized_text_column(self) -> None:
         init_schema()
 
         with get_connection() as conn:
@@ -66,11 +66,53 @@ class NormalizedTextMigrationTests(ChatMessageDedupeTestCase):
             columns = {row[1] for row in cursor.fetchall()}
             self.assertIn("normalized_text", columns)
 
+    def test_the_unused_normalized_text_index_is_not_created(self) -> None:
+        """The column is load-bearing; the index over it never was.
+
+        normalized_text averages 2.6KB per row, so indexing it whole stored a second
+        copy of every message - 21.8MB of a 77MB database - to serve a query shape
+        nothing issues. find_recent_chat_message_by_normalized_text narrows by
+        sequence_index first and compares normalized_text inside the resulting
+        50-row subquery.
+        """
+        init_schema()
+
+        with get_connection() as conn:
+            cursor = conn.cursor()
             cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'index' "
                 "AND name = 'idx_chat_messages_normalized'"
             )
-            self.assertIsNotNone(cursor.fetchone())
+            self.assertIsNone(cursor.fetchone())
+
+    def test_an_existing_database_has_the_index_dropped_on_startup(self) -> None:
+        init_schema()
+        with get_connection() as conn:
+            conn.execute(
+                "CREATE INDEX idx_chat_messages_normalized "
+                "ON chat_messages (chat_id, character_id, normalized_text)"
+            )
+            conn.commit()
+
+        init_schema()
+
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index' "
+                "AND name = 'idx_chat_messages_normalized'"
+            ).fetchone()
+        self.assertIsNone(row)
+
+    def test_dedup_still_works_without_the_index(self) -> None:
+        """The point of dropping it: behaviour is unchanged, only the file size."""
+        init_schema()
+        from app.services import chat_buffer_service
+
+        first = chat_buffer_service.add_message("c", "7", "user", "Привет, как дела?")
+        repeat = chat_buffer_service.add_message("c", "7", "user", "Привет, как дела?")
+
+        self.assertIsNotNone(first)
+        self.assertEqual(repeat.id, first.id)
 
     def test_legacy_database_is_migrated_and_backfilled(self) -> None:
         conn = get_connection()

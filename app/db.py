@@ -68,13 +68,22 @@ CHAT_MESSAGES_INDEX_SQL = (
     "ON chat_messages (chat_id, character_id, sequence_index)",
 )
 
-# Kept out of CHAT_MESSAGES_INDEX_SQL: on a pre-normalized_text database the column
-# only exists after the migration below, so this index can only be created once
-# both paths (fresh create / migrate) have settled on the same shape.
-CHAT_MESSAGES_NORMALIZED_INDEX_SQL = (
-    "CREATE INDEX IF NOT EXISTS idx_chat_messages_normalized "
-    "ON chat_messages (chat_id, character_id, normalized_text)"
-)
+# idx_chat_messages_normalized (chat_id, character_id, normalized_text) used to be
+# created here and is now dropped instead. It covered a query shape nothing issues:
+# the dedup lookup in find_recent_chat_message_by_normalized_text narrows to the last
+# `lookback` rows by sequence_index first and only then compares role and
+# normalized_text, so EXPLAIN QUERY PLAN shows it using idx_chat_messages_chat_character
+# and scanning the 50-row subquery. scripts/dedupe_chat_messages.py reads the whole
+# table and groups in Python, so it doesn't use it either.
+#
+# The cost was not theoretical: normalized_text averages 2.6KB per row, so the index
+# held a second full copy of every message - 21.8MB of a 77MB database, 28% of the
+# file, for nothing. The column stays; only the index goes.
+#
+# Dropping an index never loses data, so no backup gate is needed beyond the startup
+# snapshot. Space returns to the freelist immediately and to the filesystem after
+# scripts/vacuum_db.py.
+CHAT_MESSAGES_DROP_UNUSED_INDEX_SQL = "DROP INDEX IF EXISTS idx_chat_messages_normalized"
 
 CHAT_MESSAGES_FTS_SQL = """
     CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
@@ -148,8 +157,13 @@ def _create_chat_messages_table(cursor: sqlite3.Cursor) -> None:
         cursor.execute(statement)
 
 
-def _create_chat_messages_normalized_index(cursor: sqlite3.Cursor) -> None:
-    cursor.execute(CHAT_MESSAGES_NORMALIZED_INDEX_SQL)
+def _drop_unused_chat_messages_index(cursor: sqlite3.Cursor) -> None:
+    """Remove idx_chat_messages_normalized, which no query in the codebase uses.
+
+    Idempotent by construction (DROP INDEX IF EXISTS): a no-op on a database that
+    never had it, and on every start after the first.
+    """
+    cursor.execute(CHAT_MESSAGES_DROP_UNUSED_INDEX_SQL)
 
 
 def _needs_chat_messages_normalized_text_migration(cursor: sqlite3.Cursor) -> bool:
@@ -308,7 +322,7 @@ def init_schema() -> None:
             _run_chat_messages_normalized_text_migration(conn)
             conn.commit()
 
-        _create_chat_messages_normalized_index(cursor)
+        _drop_unused_chat_messages_index(cursor)
         conn.commit()
     finally:
         conn.close()
