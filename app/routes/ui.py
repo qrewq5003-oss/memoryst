@@ -52,6 +52,9 @@ templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["ui"])
 
 UI_SEARCH_SCAN_LIMIT = 2000
+# Export pages through the whole result set rather than capping it, so a large chat
+# can't be truncated without anyone noticing.
+EXPORT_PAGE_SIZE = 1000
 
 TRACKER_LABELS = {
     "timeline": "Timeline",
@@ -717,14 +720,37 @@ def ui_export_memories(
     chat_id: str | None = None,
     character_id: str | None = None,
 ) -> Any:
-    """Export memories as .jsonl download."""
+    """Export memories and trackers as a .jsonl download.
+
+    Trackers are included: the export used to run through list_memories, which hides
+    them, so a full export silently omitted every tracker document. There is no import
+    path yet, but the export is what a manual restore would be rebuilt from, and it
+    can't be the source of truth while a whole class of row is missing from it.
+
+    Paging is explicit rather than a bare limit=10000. The old cap would have started
+    truncating silently, with no signal in the file or the response.
+    """
     from app.repositories.memory_repo import list_memories as lm
     from fastapi.responses import Response
 
-    items = lm(chat_id=chat_id, character_id=character_id, limit=10000).items
+    items = []
+    offset = 0
+    while True:
+        page = lm(
+            chat_id=chat_id,
+            character_id=character_id,
+            limit=EXPORT_PAGE_SIZE,
+            offset=offset,
+            include_trackers=True,
+        )
+        items.extend(page.items)
+        offset += EXPORT_PAGE_SIZE
+        if offset >= page.total or not page.items:
+            break
+
     lines = []
     for item in items:
-        lines.append(json.dumps({
+        record = {
             "id": item.id,
             "chat_id": item.chat_id,
             "character_id": item.character_id,
@@ -737,7 +763,12 @@ def ui_export_memories(
             "pinned": item.pinned,
             "entities": item.metadata.entities,
             "keywords": item.metadata.keywords,
-        }, ensure_ascii=False))
+        }
+        if item.type == "tracker":
+            # Without this a tracker can't be told apart from any other row on the
+            # way back in - tracker_type is its identity, not decoration.
+            record["tracker_type"] = item.metadata.tracker_type
+        lines.append(json.dumps(record, ensure_ascii=False))
 
     body = "\n".join(lines)
     filename = f"memories_{chat_id or 'all'}.jsonl"
