@@ -415,3 +415,42 @@ class StoreEndpointWiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SceneExtractionTimeoutTests(unittest.TestCase):
+    """Scene extraction sends a whole scene and asks for 6000 tokens of schema'd
+    JSON, but inherited the 30s default sized for short calls. Measured over
+    data/server.log on 2026-08-01: 568 fallbacks against 1583 successes, with
+    ReadTimeout the single largest cause."""
+
+    def test_scene_extraction_uses_its_own_timeout_not_the_short_call_default(self) -> None:
+        from app.config import config
+        from app.services import llm_extractor
+
+        self.assertGreater(config.SCENE_LLM_TIMEOUT, config.LLM_TIMEOUT)
+
+        messages = [
+            ChatMessageItem(
+                id=f"m{i}",
+                chat_id="c",
+                character_id="7",
+                role="user" if i % 2 == 0 else "assistant",
+                text=f"Реплика {i}.",
+                created_at="2026-08-01T00:00:00+00:00",
+                sequence_index=i,
+            )
+            for i in range(4)
+        ]
+
+        with (
+            patch("app.services.llm_extractor.is_llm_enabled", return_value=True),
+            patch(
+                "app.services.llm_extractor.chat_completion",
+                return_value='{"facts": []}',
+            ) as completion,
+        ):
+            llm_extractor.extract_scene_facts(messages)
+
+        self.assertEqual(
+            completion.call_args.kwargs["timeout"], config.SCENE_LLM_TIMEOUT
+        )

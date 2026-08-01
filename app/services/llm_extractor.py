@@ -2,6 +2,7 @@ import json
 import sys
 import traceback
 
+from app.config import config
 from app.schemas import ChatMessageItem
 from app.services.llm_client import chat_completion, is_llm_enabled
 
@@ -61,6 +62,9 @@ def extract_with_llm(messages_text: str, *, model: str | None = None) -> dict | 
             model=model,
             max_tokens=500,
             temperature=0.3,
+            # Smaller budget, but still a whole scene in the prompt - same class of
+            # call, same timeout.
+            timeout=config.SCENE_LLM_TIMEOUT,
             response_format={"type": "json_schema", "json_schema": EXTRACTION_SCHEMA},
         )
         return json.loads(response)
@@ -200,6 +204,10 @@ def extract_scene_facts(
             # json.loads() on every call. Raised to give reasoning headroom.
             max_tokens=6000,
             temperature=0.2,
+            # A 6000-token request was running on the 30s default meant for short
+            # calls, which is what most of the ReadTimeouts behind the 26.4%
+            # fallback rate were.
+            timeout=config.SCENE_LLM_TIMEOUT,
             response_format={"type": "json_schema", "json_schema": SCENE_FACTS_SCHEMA},
         )
         parsed = json.loads(response)

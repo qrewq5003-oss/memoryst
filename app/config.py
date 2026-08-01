@@ -54,6 +54,14 @@ class Config:
     # 15-35s on one - right at the 30s default, which produced ReadTimeouts that looked
     # like the model rejecting the schema. Sized with headroom, and retried once, since
     # the observed failures were transient rather than deterministic.
+    # Scene extraction reads a whole scene and asks for schema'd JSON with a 6000-token
+    # budget, but inherited the 30s default meant for short calls. Measured over
+    # data/server.log on 2026-08-01: 568 fallbacks against 1583 successes - 26.4% of
+    # extractions degraded to the rule-based path - with 200 ReadTimeouts as the single
+    # largest cause. Sized like TRACKER_LLM_TIMEOUT, for the same reason: the budget has
+    # to match the size of the call, not the average of all calls.
+    SCENE_LLM_TIMEOUT: int = int(os.getenv("SCENE_LLM_TIMEOUT", "90"))
+
     TRACKER_LLM_TIMEOUT: int = int(os.getenv("TRACKER_LLM_TIMEOUT", "120"))
     TRACKER_LLM_MAX_TOKENS: int = int(os.getenv("TRACKER_LLM_MAX_TOKENS", "10000"))
     TRACKER_LLM_RETRIES: int = int(os.getenv("TRACKER_LLM_RETRIES", "1"))
