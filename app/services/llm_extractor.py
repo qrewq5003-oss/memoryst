@@ -108,6 +108,37 @@ Rules:
 - keywords: specific nouns, names, places, concepts. entities: character/person names.
 - If nothing in the scene is worth remembering, return an empty "facts" list."""
 
+# Appended to the prompt when the caller knows who the participants are.
+#
+# Without it the model has only roles to go on and writes "Девушка положила телефон" /
+# "Пользователь выразил радость", putting `девушка` and `пользователь` into `entities`
+# as well. Those phrasings are permanent once stored, and a query never contains them,
+# so the entity signal is spent on words that match nothing. Measured on a fresh chat:
+# 64% of memories opened with a generic noun and the character's name appeared in
+# entities zero times, against 0-10% generic in chats where the name had come up in
+# dialogue early.
+SCENE_FACTS_NAMES_TEMPLATE = """
+
+The participants in this scene are:
+- assistant / the character: {character_name}
+- user: {user_name}
+
+Always refer to them by these names in "content", "keywords" and "entities". Never
+write "девушка", "пользователь", "the girl", "the user" or any other role word where
+a name belongs, even if the scene itself does not say the name aloud."""
+
+
+def build_scene_facts_prompt(
+    character_name: str | None = None, user_name: str | None = None
+) -> str:
+    """Scene extraction prompt, naming the participants when they are known."""
+    if not character_name and not user_name:
+        return SCENE_FACTS_PROMPT
+    return SCENE_FACTS_PROMPT + SCENE_FACTS_NAMES_TEMPLATE.format(
+        character_name=character_name or "unknown",
+        user_name=user_name or "unknown",
+    )
+
 SCENE_FACTS_SCHEMA = {
     "name": "scene_fact_extraction",
     "strict": True,
@@ -170,7 +201,11 @@ def build_indexed_scene_text(
 
 
 def extract_scene_facts(
-    messages: list[ChatMessageItem], *, model: str | None = None
+    messages: list[ChatMessageItem],
+    *,
+    model: str | None = None,
+    character_name: str | None = None,
+    user_name: str | None = None,
 ) -> list[dict] | None:
     """
     Use the LLM to extract structured facts from a whole scene at once (Stage 3).
@@ -189,7 +224,10 @@ def extract_scene_facts(
         return None
 
     llm_messages = [
-        {"role": "system", "content": SCENE_FACTS_PROMPT},
+        {
+            "role": "system",
+            "content": build_scene_facts_prompt(character_name, user_name),
+        },
         {"role": "user", "content": f"Scene to analyze:\n\n{scene_text}"},
     ]
 

@@ -139,6 +139,8 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         character_id=request.character_id,
         messages=buffered_messages,
         model=request.model,
+        character_name=request.character_name,
+        user_name=request.user_name,
     )
 
     stored_items: list[MemoryItem] = []

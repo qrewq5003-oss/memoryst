@@ -298,7 +298,7 @@ class StoreEndpointWiringTests(unittest.TestCase):
     def test_store_assigns_stable_ids_and_extraction_sees_buffered_messages(self) -> None:
         captured_messages = {}
 
-        def fake_extract(chat_id, character_id, messages, model=None):
+        def fake_extract(chat_id, character_id, messages, model=None, **kwargs):
             captured_messages["messages"] = messages
             return [], None
 
@@ -324,7 +324,7 @@ class StoreEndpointWiringTests(unittest.TestCase):
     def test_store_filters_ooc_before_extraction(self) -> None:
         captured_messages = {}
 
-        def fake_extract(chat_id, character_id, messages, model=None):
+        def fake_extract(chat_id, character_id, messages, model=None, **kwargs):
             captured_messages["messages"] = messages
             return [], None
 
@@ -344,7 +344,7 @@ class StoreEndpointWiringTests(unittest.TestCase):
         self.assertEqual([m.text for m in messages], ["Regular in-character line"])
 
     def test_end_to_end_llm_fact_is_stored_with_source_message_ids(self) -> None:
-        def fake_facts(messages, *, model=None):
+        def fake_facts(messages, *, model=None, **kwargs):
             return [
                 {
                     "content": "Алиса работает врачом в Риме.",
@@ -394,7 +394,7 @@ class StoreEndpointWiringTests(unittest.TestCase):
     def test_store_request_model_override_reaches_extract_scene_facts(self) -> None:
         captured = {}
 
-        def fake_facts(messages, *, model=None):
+        def fake_facts(messages, *, model=None, **kwargs):
             captured["model"] = model
             return []
 

@@ -35,17 +35,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=1db0fb1';
+} from './audit.mjs?v=3f93dcb';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=1db0fb1';
-import { mountSettingsUi } from './settings-ui.mjs?v=1db0fb1';
-import { resolveEffectiveScope } from './scope.mjs?v=1db0fb1';
+} from './settings.mjs?v=3f93dcb';
+import { mountSettingsUi } from './settings-ui.mjs?v=3f93dcb';
+import { resolveEffectiveScope } from './scope.mjs?v=3f93dcb';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=1db0fb1';
+} from './lore-anchors.mjs?v=3f93dcb';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -53,12 +53,12 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=1db0fb1';
+} from './trackers.mjs?v=3f93dcb';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=1db0fb1';
+} from './version.mjs?v=3f93dcb';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -393,6 +393,13 @@ async function storeMemories() {
             messages: messages,
             debug: settings.auditEnabled,
         };
+        // Optional on the backend, so an older service simply ignores them.
+        if (chatContext.characterName) {
+            body.character_name = chatContext.characterName;
+        }
+        if (chatContext.userName) {
+            body.user_name = chatContext.userName;
+        }
         if (settings.sceneExtractionModel) {
             body.model = settings.sceneExtractionModel;
         }

@@ -40,6 +40,8 @@ def extract_scene_memories(
     character_id: str,
     messages: list[ChatMessageItem],
     model: str | None = None,
+    character_name: str | None = None,
+    user_name: str | None = None,
 ) -> tuple[list[CreateMemoryRequest], ExtractionMethod | None]:
     """
     Stage 3 entry point: extract memory candidates from a whole scene at once.
@@ -97,7 +99,9 @@ def extract_scene_memories(
         )
         return candidates, "regex_fallback"
 
-    facts = llm_extractor.extract_scene_facts(messages, model=model)
+    facts = llm_extractor.extract_scene_facts(
+        messages, model=model, character_name=character_name, user_name=user_name
+    )
     if facts is None:
         candidates = _rule_based_fallback(chat_id, character_id, messages)
         print(

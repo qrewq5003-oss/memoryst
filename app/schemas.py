@@ -158,6 +158,12 @@ class StoreMemoryRequest(BaseModel):
     chat_id: str = Field(..., min_length=1, max_length=200)
     character_id: str = Field(..., min_length=1, max_length=200)
     messages: list[MessageInput]
+    # Display names of the two participants, used only to tell scene extraction who it is
+    # writing about. Optional so an older extension keeps working: without them the model
+    # falls back to roles, which is what produced "Девушка"/"Пользователь" as stored facts
+    # and entities - phrasings a query never matches.
+    character_name: str | None = Field(default=None, max_length=100)
+    user_name: str | None = Field(default=None, max_length=100)
     debug: bool = False
     # Overrides the active provider's default model for scene extraction only
     # (see sillytavern-extension's "Scene Extraction Model" setting). None keeps
