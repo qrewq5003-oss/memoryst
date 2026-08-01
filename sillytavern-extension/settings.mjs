@@ -135,10 +135,16 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         // ignored here even if still present on disk - connection.* is the only
         // source of truth, so a stale flat value can never silently win again.
         memoryServiceUrl: connection.memoryServiceUrl,
-        apiKey: rawSettings.apiKey ?? connection.apiKey,
+        // `||`, not `??`, for the text fields below. `??` only falls through on
+        // null/undefined, so a legacy flat key left on disk as an empty string counted
+        // as "configured" and beat the nested value - an empty apiKey or model name
+        // silently winning over a real one. memoryServiceUrl was already guarded this
+        // way; its siblings were not, which made the same stale-settings.json that has
+        // bitten before behave differently field by field.
+        apiKey: rawSettings.apiKey || connection.apiKey,
         retrieveLimit: rawSettings.retrieveLimit ?? retrieval.retrieveLimit,
         recentMessagesCount: rawSettings.recentMessagesCount ?? retrieval.recentMessagesCount,
-        sceneExtractionModel: rawSettings.sceneExtractionModel ?? extraction.sceneExtractionModel,
+        sceneExtractionModel: rawSettings.sceneExtractionModel || extraction.sceneExtractionModel,
         maxPromptMemories: rawSettings.maxPromptMemories ?? promptBudget.maxPromptMemories,
         maxPromptChars: rawSettings.maxPromptChars ?? promptBudget.maxPromptChars,
         maxSummaryItems: rawSettings.maxSummaryItems ?? promptBudget.maxSummaryItems,
@@ -176,14 +182,14 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
         connection: {
             enabled: settings.enabled ?? DEFAULT_CONNECTION_SETTINGS.enabled,
             memoryServiceUrl: settings.memoryServiceUrl || DEFAULT_CONNECTION_SETTINGS.memoryServiceUrl,
-            apiKey: settings.apiKey ?? DEFAULT_CONNECTION_SETTINGS.apiKey,
+            apiKey: settings.apiKey || DEFAULT_CONNECTION_SETTINGS.apiKey,
         },
         retrieval: {
             retrieveLimit: settings.retrieveLimit ?? DEFAULT_RETRIEVAL_SETTINGS.retrieveLimit,
             recentMessagesCount: settings.recentMessagesCount ?? DEFAULT_RETRIEVAL_SETTINGS.recentMessagesCount,
         },
         extraction: {
-            sceneExtractionModel: settings.sceneExtractionModel ?? DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel,
+            sceneExtractionModel: settings.sceneExtractionModel || DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel,
         },
         promptBudget: {
             maxPromptMemories: settings.maxPromptMemories ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptMemories,

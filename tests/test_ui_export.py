@@ -102,5 +102,63 @@ class UiExportTests(unittest.TestCase):
         )
 
 
+class BackfillIgnoredLineReportingTests(unittest.TestCase):
+    """A file in an unexpected shape used to yield "0 messages" and nothing else -
+    indistinguishable from an empty file, and offering nothing to act on."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.original_db_path = config.DATABASE_PATH
+        config.DATABASE_PATH = str(Path(self.temp_dir.name) / "test.db")
+        self.addCleanup(self._restore_db_path)
+        init_schema()
+        self.client = TestClient(app)
+
+    def _restore_db_path(self) -> None:
+        config.DATABASE_PATH = self.original_db_path
+
+    def _post(self, body: str) -> str:
+        response = self.client.post(
+            "/ui/backfill-file",
+            data={"chat_id": "backfill", "character_id": "backfill"},
+            files={"file": ("chat.jsonl", body.encode("utf-8"), "application/jsonl")},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 303)
+        return response.headers["location"]
+
+    def test_unparsable_and_unrecognized_lines_are_counted_separately(self) -> None:
+        location = self._post(
+            "\n".join([
+                "not json at all",
+                '{"totally": "different"}',
+                '{"mes": "Привет.", "is_user": true}',
+            ])
+        )
+
+        self.assertIn("unparsable_lines=1", location)
+        self.assertIn("unrecognized_lines=1", location)
+        self.assertIn("total_messages=1", location)
+
+    def test_a_clean_file_reports_nothing_ignored(self) -> None:
+        location = self._post('{"mes": "Привет.", "is_user": true}')
+
+        self.assertIn("unparsable_lines=0", location)
+        self.assertIn("unrecognized_lines=0", location)
+
+    def test_the_metadata_header_line_is_not_reported_as_ignored(self) -> None:
+        """The first line of a SillyTavern export is chat metadata, not a message.
+        Counting it would cry wolf on every well-formed file."""
+        location = self._post(
+            "\n".join([
+                '{"chat_metadata": {}, "world_info": "Paris1775"}',
+                '{"mes": "Привет.", "is_user": true}',
+            ])
+        )
+
+        self.assertIn("unrecognized_lines=0", location)
+
+
 if __name__ == "__main__":
     unittest.main()

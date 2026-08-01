@@ -151,3 +151,60 @@ test('applyRecommendedBaselineSettings preserves an already-normalized memorySer
     assert.equal(withBaseline.memoryServiceUrl, 'http://127.0.0.1:8001');
     assert.equal(withBaseline.retrieveLimit, LONG_CHAT_RECOMMENDED_BASELINE.retrieveLimit);
 });
+
+test('an empty legacy flat text field does not beat a configured nested one', () => {
+    // `??` only falls through on null/undefined, so an empty string left behind by an
+    // older settings.json counted as "configured" and won. memoryServiceUrl was already
+    // guarded this way; apiKey and sceneExtractionModel were not, so the same stale file
+    // behaved differently field by field.
+    const normalized = normalizeExtensionSettings({
+        apiKey: '',
+        sceneExtractionModel: '',
+        connection: { memoryServiceUrl: 'http://127.0.0.1:8001', apiKey: 'real-key' },
+        extraction: { sceneExtractionModel: 'deepseek/deepseek-v4-pro' },
+    });
+
+    assert.equal(normalized.apiKey, 'real-key');
+    assert.equal(normalized.sceneExtractionModel, 'deepseek/deepseek-v4-pro');
+});
+
+test('a real legacy flat text field still wins over the default', () => {
+    const normalized = normalizeExtensionSettings({
+        apiKey: 'legacy-key',
+        sceneExtractionModel: 'openai/gpt-4o-mini',
+    });
+
+    assert.equal(normalized.apiKey, 'legacy-key');
+    assert.equal(normalized.sceneExtractionModel, 'openai/gpt-4o-mini');
+});
+
+test('numeric and boolean settings keep ?? so that 0 and false survive', () => {
+    // The mirror image of the bug above: `||` would treat a deliberate 0 or false as
+    // unset and silently restore the default, so these fields must NOT be converted.
+    const normalized = normalizeExtensionSettings({
+        promptBudget: { maxPromptChars: 0, maxEpisodicItems: 0 },
+        trackers: { trackerInjectionEnabled: false },
+        audit: { auditEnabled: false },
+        connection: { enabled: false },
+    });
+
+    assert.equal(normalized.maxPromptChars, 0);
+    assert.equal(normalized.maxEpisodicItems, 0);
+    assert.equal(normalized.trackerInjectionEnabled, false);
+    assert.equal(normalized.auditEnabled, false);
+    assert.equal(normalized.enabled, false);
+});
+
+test('serialization applies the same empty-string rule on the way out', () => {
+    const serialized = serializeExtensionSettings({
+        ...DEFAULT_SETTINGS,
+        apiKey: '',
+        sceneExtractionModel: '',
+    });
+
+    assert.equal(serialized.connection.apiKey, DEFAULT_CONNECTION_SETTINGS.apiKey);
+    assert.equal(
+        serialized.extraction.sceneExtractionModel,
+        DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel,
+    );
+});

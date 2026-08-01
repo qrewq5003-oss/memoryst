@@ -637,8 +637,17 @@ export function renderSettingsUi({
     const backfillStatus = panel.querySelector('#memory-service-backfill-status');
     const deleteChatBtn = panel.querySelector('#memory-service-delete-chat-btn');
 
+    /**
+     * Parse a .jsonl export into messages, counting what it had to ignore.
+     *
+     * Skipped lines used to vanish silently, so a file in an unexpected shape gave
+     * "No valid messages in .jsonl file" - indistinguishable from an empty file, and
+     * offering the reader nothing to act on.
+     */
     function parseJsonl(raw) {
         const messages = [];
+        let unparsable = 0;
+        let unrecognized = 0;
         for (const line of raw.split('\n')) {
             const trimmed = line.trim();
             if (!trimmed) continue;
@@ -654,11 +663,23 @@ export function renderSettingsUi({
                 else if (obj.role && obj.content) {
                     messages.push({ role: obj.role, text: obj.content });
                 }
+                // The first line of a SillyTavern export is chat metadata, not a
+                // message - expected, so it isn't reported as ignored.
+                else if (!obj.chat_metadata) {
+                    unrecognized += 1;
+                }
             } catch (e) {
-                // not JSON, skip
+                unparsable += 1;
             }
         }
-        return messages;
+        return { messages, unparsable, unrecognized };
+    }
+
+    function describeIgnoredLines({ unparsable, unrecognized }) {
+        const parts = [];
+        if (unparsable) parts.push(`${unparsable} not valid JSON`);
+        if (unrecognized) parts.push(`${unrecognized} in an unrecognized shape`);
+        return parts.length ? ` Ignored ${parts.join(', ')}.` : '';
     }
 
     function parseTextFormat(raw) {
@@ -702,13 +723,17 @@ export function renderSettingsUi({
                 backfillStatus.textContent = 'Reading file...';
                 try {
                     const raw = await backfillFile.files[0].text();
-                    const messages = parseJsonl(raw);
+                    const parsed = parseJsonl(raw);
+                    const messages = parsed.messages;
+                    const ignored = describeIgnoredLines(parsed);
                     if (messages.length === 0) {
-                        backfillStatus.textContent = 'No valid messages in .jsonl file.';
+                        backfillStatus.textContent = ignored
+                            ? `No usable messages in .jsonl file.${ignored} Expected SillyTavern (mes/is_user) or role/content lines.`
+                            : 'No valid messages in .jsonl file.';
                         backfillBtn.disabled = false;
                         return;
                     }
-                    backfillStatus.textContent = `Processing ${messages.length} messages from file...`;
+                    backfillStatus.textContent = `Processing ${messages.length} messages from file...${ignored}`;
                     await runBackfill(messages);
                 } catch (e) {
                     backfillStatus.textContent = `Error: ${e.message}`;

@@ -653,6 +653,12 @@ def ui_backfill_file(
         else:
             detected_chat_id = fname.strip()
 
+    # Counted rather than swallowed. A file in an unexpected shape used to produce
+    # "0 messages" with nothing to distinguish it from an empty file - the reader
+    # could not tell a wrong file from a wrong parser.
+    unparsable_lines = 0
+    unrecognized_lines = 0
+
     for line in content.split("\n"):
         line = line.strip()
         if not line:
@@ -660,6 +666,7 @@ def ui_backfill_file(
         try:
             obj = json.loads(line)
             if not isinstance(obj, dict):
+                unrecognized_lines += 1
                 continue
 
             # Extract chat_id from metadata (first line)
@@ -683,8 +690,10 @@ def ui_backfill_file(
             # Standard format: {role, content}
             elif "role" in obj and "content" in obj:
                 messages.append(MessageInput(role=obj["role"], text=obj["content"]))
+            elif "chat_metadata" not in obj:
+                unrecognized_lines += 1
         except (json.JSONDecodeError, KeyError):
-            pass
+            unparsable_lines += 1
 
     # Use detected IDs if form didn't provide specific ones
     if chat_id == "backfill" and detected_chat_id:
@@ -711,7 +720,12 @@ def ui_backfill_file(
             vs.add_memory(created.id, created.content, {"chat_id": created.chat_id, "character_id": created.character_id})
             stored += 1
 
-    result = f"backfill_done&stored={stored}&skipped={skipped}&duplicates={duplicates}&total_messages={len(messages)}&detected_chat={chat_id}&detected_char={character_id}"
+    result = (
+        f"backfill_done&stored={stored}&skipped={skipped}&duplicates={duplicates}"
+        f"&total_messages={len(messages)}&unparsable_lines={unparsable_lines}"
+        f"&unrecognized_lines={unrecognized_lines}"
+        f"&detected_chat={chat_id}&detected_char={character_id}"
+    )
     return RedirectResponse(url=f"/ui?{result}", status_code=303)
 
 
