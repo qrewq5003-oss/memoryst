@@ -474,6 +474,30 @@ class TrackerTypeValidationTests(TrackerTestCase):
 
         self.assertEqual(len(list_trackers(CHAT_ID, CHARACTER_ID)), len(TRACKER_TYPES))
 
+    def test_tracker_type_is_still_the_only_constrained_field_inside_metadata(self) -> None:
+        """A tripwire, not a proof.
+
+        Constrained values stored as *columns* - type, source, layer, pinned, archived -
+        are covered by SQLite CHECK constraints, so a bad one fails loudly at the write.
+        Nothing guards the inside of metadata_json, which is why tracker_type was the one
+        field that could be written happily and then break every read of the chat.
+
+        It is currently the only Literal-typed field in MemoryMetadata. A new one needs
+        its own write-side validation, and this test is where that gets noticed.
+        """
+        constrained = {
+            name
+            for name, field in MemoryMetadata.model_fields.items()
+            if "Literal" in str(field.annotation)
+        }
+
+        self.assertEqual(
+            constrained,
+            {"tracker_type"},
+            "new constrained field in MemoryMetadata - json_set and model_copy(update=) "
+            "both skip validation, so give it a guard at the write like upsert_tracker's",
+        )
+
     def test_the_runtime_list_cannot_drift_from_the_schema(self) -> None:
         """TRACKER_TYPES and TrackerType were two independent literals saying the same
         thing. A value added to one and not the other would pass the service layer and
