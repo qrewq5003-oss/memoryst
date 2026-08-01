@@ -19,16 +19,27 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Validate security config, initialize database schema, and snapshot a
-    backup on startup."""
+    """Validate security config, snapshot a backup, then initialize the schema.
+
+    The backup deliberately runs *before* init_schema(). init_schema is the only
+    place that rewrites the memories table - _run_summary_migration and
+    _run_tracker_migration rename, copy and DROP it - so a snapshot taken after it
+    captures the already-migrated state. If a migration ever loses rows, backing up
+    afterwards would overwrite the last good copy with the damaged one, at exactly
+    the moment it is needed. The savepoints inside those migrations protect against
+    a failed transaction, not against a migration that succeeds and is wrong.
+
+    On a first run there is no database yet, create_backup() returns None, and
+    init_schema() creates it - the order costs nothing there.
+    """
     validate_security()
-    init_schema()
     try:
         run_backup()
     except Exception:
         # A backup failure (e.g. disk full) must not block the server from
         # starting - the live db is unaffected either way.
         logger.exception("Startup database backup failed")
+    init_schema()
     yield
 
 

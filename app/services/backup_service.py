@@ -46,25 +46,73 @@ def create_backup(db_path: str | None = None, backup_dir: Path | None = None) ->
     return target_path
 
 
-def rotate_backups(backup_dir: Path | None = None, keep: int | None = None) -> list[Path]:
-    """Delete all but the `keep` most recent backups in backup_dir.
+def _backup_day(path: Path) -> str | None:
+    """Extract the YYYYMMDD day from a backup filename, or None if it doesn't parse.
 
-    Backup filenames embed a sortable UTC timestamp, so lexicographic sort
-    order matches chronological order. Returns the paths that were deleted.
+    Anything unparseable is treated as "unknown age" by the caller and kept, since
+    deleting a file whose date we can't establish is the one irreversible mistake
+    rotation can make.
+    """
+    stem = path.name[len(BACKUP_FILENAME_PREFIX):-len(BACKUP_FILENAME_SUFFIX)]
+    day = stem.split("_", 1)[0]
+    if len(day) != 8 or not day.isdigit():
+        return None
+    return day
+
+
+def rotate_backups(
+    backup_dir: Path | None = None,
+    keep_days: int | None = None,
+    keep_recent: int | None = None,
+) -> list[Path]:
+    """Prune backups generationally: newest-per-day plus the newest few overall.
+
+    A backup survives if it is either
+      - the newest backup of its day, and its day is among the `keep_days` most
+        recent days that have any backup at all, or
+      - among the `keep_recent` newest backups overall.
+
+    The per-day rule is what makes restart churn harmless: backups are written on
+    every server start as well as nightly from cron, so a flat "keep the N newest
+    files" rule let one evening of restarts evict every older day. The recent rule
+    covers the opposite case - a snapshot taken just before a risky migration must
+    not be dropped by the next restart on the same day.
+
+    Filenames embed a sortable UTC timestamp, so lexicographic order is chronological.
+    Returns the paths that were deleted.
     """
     target_dir = backup_dir if backup_dir is not None else _backup_dir()
-    keep_count = config.BACKUP_KEEP if keep is None else keep
+    days_to_keep = config.BACKUP_KEEP_DAYS if keep_days is None else keep_days
+    recent_to_keep = config.BACKUP_KEEP_RECENT if keep_recent is None else keep_recent
 
     backups = sorted(target_dir.glob(f"{BACKUP_FILENAME_PREFIX}*{BACKUP_FILENAME_SUFFIX}"))
-    to_delete = backups[:-keep_count] if keep_count > 0 else backups
+    if not backups:
+        return []
 
+    newest_per_day: dict[str, Path] = {}
+    undatable: set[Path] = set()
+    for path in backups:
+        day = _backup_day(path)
+        if day is None:
+            undatable.add(path)
+            continue
+        # `backups` is ascending, so the last write for a day wins.
+        newest_per_day[day] = path
+
+    kept_days = sorted(newest_per_day, reverse=True)[:days_to_keep] if days_to_keep > 0 else []
+    protected = {newest_per_day[day] for day in kept_days}
+    protected |= undatable
+    if recent_to_keep > 0:
+        protected |= set(backups[-recent_to_keep:])
+
+    to_delete = [path for path in backups if path not in protected]
     for path in to_delete:
         path.unlink()
     return to_delete
 
 
 def run_backup() -> Path | None:
-    """Create a new backup and rotate old ones down to the configured limit.
+    """Create a new backup and prune old ones to the configured retention.
 
     Intended to run on every server startup (cheap - a no-op copy takes a
     fraction of a second even for a multi-MB db) and/or from cron via

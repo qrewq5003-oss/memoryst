@@ -22,7 +22,8 @@ Environment variables:
 | `APP_PORT` | `8001` | Port to bind the server |
 | `DATABASE_PATH` | `data/memory.db` | Path to SQLite database |
 | `BACKUP_DIR` | `data/backups` | Directory for timestamped database backups |
-| `BACKUP_KEEP` | `14` | Number of backups to retain (oldest are deleted first) |
+| `BACKUP_KEEP_DAYS` | `14` | How many days keep a backup (the newest of each day survives). Falls back to the legacy `BACKUP_KEEP` if that is set |
+| `BACKUP_KEEP_RECENT` | `3` | How many of the newest backups are kept regardless of day |
 | `API_KEY` | `` | API key for the `/memory` API (empty = auth disabled). Sent as the `X-API-Key` header. |
 | `DEBUG` | `false` | Enable debug mode (auto-reload) |
 
@@ -90,7 +91,16 @@ the device means losing all memories unless a backup exists.
 
 A timestamped, consistent snapshot (via SQLite's online backup API, safe to
 take while the server is running) is written to `data/backups/` automatically
-every time the server starts, keeping the `BACKUP_KEEP` most recent copies.
+every time the server starts — before the schema migrations run, so the last
+good copy survives a migration that succeeds but is wrong.
+
+Retention is generational rather than a flat file count: the newest backup of
+each of the last `BACKUP_KEEP_DAYS` days is kept, plus the `BACKUP_KEEP_RECENT`
+newest backups regardless of day. A flat count was unsafe here, because
+snapshots are taken on every server start as well as nightly — an evening of
+14 restarts would fill all 14 slots with same-day copies and silently destroy
+the entire daily history. Backups whose filename can't be parsed as a date are
+never deleted.
 
 To also get a backup on days the server never restarts, run it from cron
 (Termux: `pkg install cronie`, then `crontab -e`):

@@ -23,7 +23,16 @@ class Config:
     APP_PORT: int = _parse_port(os.getenv("APP_PORT", "8001"))
     DATABASE_PATH: str = os.getenv("DATABASE_PATH", "data/memory.db")
     BACKUP_DIR: str = os.getenv("BACKUP_DIR", "data/backups")
-    BACKUP_KEEP: int = int(os.getenv("BACKUP_KEEP", "14"))
+    # Retention is generational, not a flat file count. BACKUP_KEEP_DAYS is how many
+    # *days* keep a backup; BACKUP_KEEP_RECENT is how many of the newest backups stay
+    # regardless of day. A flat count alone was unsafe: backups are taken on every
+    # server start as well as from cron, so an evening of 14 restarts would fill all
+    # 14 slots with same-day copies and evict the entire daily history. Keeping the
+    # newest backup per day defends against that; keeping the few newest overall
+    # defends the other direction, so a pre-migration snapshot isn't immediately
+    # replaced by a post-migration one taken the same day.
+    BACKUP_KEEP_DAYS: int = int(os.getenv("BACKUP_KEEP_DAYS", os.getenv("BACKUP_KEEP", "14")))
+    BACKUP_KEEP_RECENT: int = int(os.getenv("BACKUP_KEEP_RECENT", "3"))
     API_KEY: str = os.getenv("API_KEY", "")
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
