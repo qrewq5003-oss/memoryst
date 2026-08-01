@@ -279,9 +279,74 @@ def _normalize_russian_word(word: str) -> str:
         return word
 
 
+PROPER_NOUN_TAGS = ("Name", "Surn", "Patr", "Geox", "Orgn")
+
+# A capitalised word, plus whether anything other than whitespace precedes it inside its
+# sentence. Sentence-initial position carries no information about proper-nounhood, so the
+# two cases have to be told apart before deciding.
+_CAPITALIZED_RE = re.compile(r"\b([A-ZА-Я][a-zа-яё]+)\b")
+_SENTENCE_START_RE = re.compile(r"(?:^|[.!?…]\s*|\n\s*)$")
+
+
+def _is_proper_noun_ru(word: str) -> bool:
+    """Ask pymorphy3 whether any reading of this word is a name, place or organisation.
+
+    Every parse is considered, not just the best one: for a given name the proper-noun
+    reading is often not the top-scoring parse (Тиффани scores 0.10, Анри 0.04), while a
+    plain common noun like `девушка` or `пользователь` has no such reading at all.
+    """
+    try:
+        for parse in _get_morph().parse(word):
+            if any(tag in parse.tag for tag in PROPER_NOUN_TAGS):
+                return True
+    except Exception:
+        # Same reasoning as _normalize_russian_word: a morphology failure must not take
+        # retrieval down. Falling back to "not a proper noun" only drops entities, which
+        # scores worse - it cannot invent a match.
+        return False
+    return False
+
+
+def _collect_entity_candidates(text: str) -> list[str]:
+    """Capitalised words that are actually evidence of a proper noun.
+
+    Capitalisation alone is not that evidence. The previous rule tried to skip
+    sentence-initial words with a `(?<![.!?]\\s)` lookbehind and got both directions
+    wrong: the first word of a text has no preceding period, so third-person phrasing
+    made "Девушка" and "Пользователь" entities and every imperative query contributed a
+    phantom one ("Расскажи про чай" -> ["Рассказать"]) that no memory could ever match -
+    and since entity_overlap divides by the number of *query* entities, that phantom
+    halved the score of a genuine name standing next to it. Meanwhile a real name in the
+    second sentence *did* have a preceding period and was discarded, so the same two
+    facts produced different entities depending on sentence order.
+
+    Three rules replace it:
+      - capitalised mid-sentence -> a proper noun in either alphabet, accept;
+      - sentence-initial and Russian -> accept only on morphological evidence;
+      - sentence-initial and Latin -> accept, because no morphology is available to do
+        better and the two errors are not symmetric. A phantom entity only dilutes
+        entity_overlap; dropping a real name removes the signal outright. A query like
+        "Elena project" leads with the name, so rejecting sentence-initial Latin would
+        leave it with no entity at all - two existing tests caught exactly that. The
+        residual cost is an English imperative contributing "Tell"; a stoplist would
+        cover it, but that treats the symptom and belongs with the other deferred work.
+    """
+    candidates: list[str] = []
+    for match in _CAPITALIZED_RE.finditer(text):
+        word = match.group(1)
+        sentence_initial = bool(_SENTENCE_START_RE.search(text[: match.start()]))
+
+        if not sentence_initial or not _is_russian_word(word):
+            candidates.append(word)
+        elif _is_proper_noun_ru(word):
+            candidates.append(word)
+
+    return candidates
+
+
 def extract_entities(text: str) -> list[str]:
     """Extract deduplicated entities with Russian normalization when applicable."""
-    words = re.findall(r"(?<![.!?]\s)\b([A-ZА-Я][a-zа-яё]+)\b", text)
+    words = _collect_entity_candidates(text)
     seen = set()
     entities = []
 
