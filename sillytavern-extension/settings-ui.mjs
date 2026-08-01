@@ -1,7 +1,7 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=eaaf989';
+} from './settings.mjs?v=2be31be';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -19,13 +19,13 @@ export const SETTINGS_UI_FIELDS = [
         fields: [
             {
                 key: 'enabled',
-                label: 'Enable Memory Service',
+                label: 'Enable memoryst',
                 help: 'Turn live retrieve/store integration on for the current SillyTavern session.',
                 type: 'checkbox',
             },
             {
                 key: 'memoryServiceUrl',
-                label: 'Memory Service URL',
+                label: 'memoryst URL',
                 help: 'Base URL for the backend API.',
                 type: 'text',
                 placeholder: 'http://localhost:8001',
@@ -306,7 +306,7 @@ export function buildCompatibilityBannerMarkup(compatibility = null) {
     }
 
     return buildWarningBannerMarkup({
-        title: 'Memory Service version mismatch',
+        title: 'memoryst version mismatch',
         message: compatibility.message,
         details,
         status: compatibility.status,
@@ -467,7 +467,7 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                     font-size: 0.85em;
                 }
             </style>
-            <h3>Memory Service</h3>
+            <h3>memoryst</h3>
             <p class="memory-service-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
             ${buildCompatibilityBannerMarkup(compatibility)}
             <div class="memory-service-settings-baseline">

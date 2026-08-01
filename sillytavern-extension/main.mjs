@@ -1,5 +1,5 @@
 /**
- * Memory Service Extension for SillyTavern
+ * memoryst Extension for SillyTavern
  * 
  * Current timing policy:
  * - retrieve happens before generation for current-turn prompt injection
@@ -27,17 +27,17 @@ import {
     finalizeIntegrationAuditRecord,
     pushAuditRecord,
     resolvePreGenerationHookNames,
-} from './audit.mjs?v=eaaf989';
+} from './audit.mjs?v=2be31be';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=eaaf989';
-import { mountSettingsUi } from './settings-ui.mjs?v=eaaf989';
-import { resolveEffectiveScope } from './scope.mjs?v=eaaf989';
+} from './settings.mjs?v=2be31be';
+import { mountSettingsUi } from './settings-ui.mjs?v=2be31be';
+import { resolveEffectiveScope } from './scope.mjs?v=2be31be';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=eaaf989';
+} from './lore-anchors.mjs?v=2be31be';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -45,12 +45,12 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=eaaf989';
+} from './trackers.mjs?v=2be31be';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=eaaf989';
+} from './version.mjs?v=2be31be';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -167,18 +167,33 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
     record.applied_to_current_turn = anyBlock;
 }
 
+// The extension was renamed to memoryst everywhere the name is read by a human -
+// the ST panel label, the console prefix, the directory. This key is the one
+// deliberate exception, and it must NOT be "tidied up" to match.
+//
+// It is where SillyTavern persists every configured value plus runtime state:
+// the tuned prompt budget, tracker thresholds, lastTrackerToastAt for every chat,
+// and the recent audit records. Nothing derives it from the directory name, so
+// renaming the directory leaves it working; renaming *this string* would orphan
+// all of it in place, and ST would silently start from defaults - back to
+// enabled:false and localhost:8001 - with no error to explain why.
+//
+// If it ever does need to move, it takes a read-side fallback, not a rewrite:
+//     extension_settings['memoryst'] ?? extension_settings['memory-service']
+const SETTINGS_KEY = 'memory-service';
+
 /**
  * Load extension settings from SillyTavern extension_settings
  */
 function loadSettings() {
-    settings = normalizeExtensionSettings(extension_settings['memory-service'] || {});
+    settings = normalizeExtensionSettings(extension_settings[SETTINGS_KEY] || {});
 }
 
 /**
  * Save extension settings to SillyTavern extension_settings
  */
 function saveSettings() {
-    extension_settings['memory-service'] = serializeExtensionSettings(settings);
+    extension_settings[SETTINGS_KEY] = serializeExtensionSettings(settings);
     saveSettingsDebounced();
 }
 
@@ -255,7 +270,7 @@ async function checkBackendCompatibility() {
         }
     } catch (error) {
         reachable = false;
-        console.warn('[Memory Service] Version check request failed:', error?.message || error);
+        console.warn('[memoryst] Version check request failed:', error?.message || error);
     }
 
     currentCompatibility = compareVersions({
@@ -265,10 +280,10 @@ async function checkBackendCompatibility() {
     });
 
     if (currentCompatibility.warn) {
-        console.warn('[Memory Service]', currentCompatibility.message);
+        console.warn('[memoryst]', currentCompatibility.message);
     } else if (currentCompatibility.status === 'ok') {
         console.log(
-            '[Memory Service] Backend compatible (protocol v%s, %s)',
+            '[memoryst] Backend compatible (protocol v%s, %s)',
             currentCompatibility.backendProtocol,
             currentCompatibility.backendGitCommit || currentCompatibility.backendServiceVersion || 'unknown build',
         );
@@ -336,7 +351,7 @@ function getRecentMessagesForRetrieve(count) {
 }
 
 /**
- * Call Memory Service /memory/store endpoint
+ * Call memoryst /memory/store endpoint
  */
 async function storeMemories() {
     if (!settings.enabled) {
@@ -381,14 +396,14 @@ async function storeMemories() {
 
         if (response.ok) {
             const result = await response.json();
-            console.log('[Memory Service] Stored:', result.stored, 'Skipped:', result.skipped, 'Extraction method:', result.extraction_method);
+            console.log('[memoryst] Stored:', result.stored, 'Skipped:', result.skipped, 'Extraction method:', result.extraction_method);
             return {
                 called: true,
                 messages,
                 result,
             };
         } else {
-            console.error('[Memory Service] Store failed:', response.status);
+            console.error('[memoryst] Store failed:', response.status);
             return {
                 called: true,
                 messages,
@@ -396,7 +411,7 @@ async function storeMemories() {
             };
         }
     } catch (error) {
-        console.error('[Memory Service] Store error:', error);
+        console.error('[memoryst] Store error:', error);
         return {
             called: true,
             messages,
@@ -406,7 +421,7 @@ async function storeMemories() {
 }
 
 /**
- * Call Memory Service /memory/retrieve endpoint for current-turn injection.
+ * Call memoryst /memory/retrieve endpoint for current-turn injection.
  */
 async function retrieveMemories() {
     if (!settings.enabled) {
@@ -461,7 +476,7 @@ async function retrieveMemories() {
             });
             const injectedMemoryBlock = budgeted.memoryBlock || result.memory_block || '';
             console.log(
-                '[Memory Service] Retrieved:',
+                '[memoryst] Retrieved:',
                 retrievedItems.length,
                 'items; injected:',
                 budgeted.injectedItemCount,
@@ -471,7 +486,7 @@ async function retrieveMemories() {
 
             if (injectedMemoryBlock) {
                 setMemoryPrompt(injectedMemoryBlock);
-                console.log('[Memory Service] Budgeted memory block set for CURRENT generation');
+                console.log('[memoryst] Budgeted memory block set for CURRENT generation');
             } else {
                 clearMemoryPrompt();
             }
@@ -487,7 +502,7 @@ async function retrieveMemories() {
                 promptApplied: Boolean(injectedMemoryBlock),
             };
         } else {
-            console.error('[Memory Service] Retrieve failed:', response.status);
+            console.error('[memoryst] Retrieve failed:', response.status);
             clearMemoryPrompt();
             return {
                 called: true,
@@ -499,7 +514,7 @@ async function retrieveMemories() {
             };
         }
     } catch (error) {
-        console.error('[Memory Service] Retrieve error:', error);
+        console.error('[memoryst] Retrieve error:', error);
         clearMemoryPrompt();
         return {
             called: true,
@@ -549,7 +564,7 @@ async function refreshTrackersFor(characterId) {
             status: detail === 'trackers_http_404' ? 'unsupported' : 'error',
             detail,
         });
-        console.warn('[Memory Service] Tracker fetch failed:', detail);
+        console.warn('[memoryst] Tracker fetch failed:', detail);
     } finally {
         pendingTrackerFetches.delete(fetchKey);
     }
@@ -639,7 +654,7 @@ function onWorldInfoActivated(entries = []) {
             entryCount: (entries || []).length,
             error: detail,
         };
-        console.error('[Memory Service] Tracker injection threw:', error);
+        console.error('[memoryst] Tracker injection threw:', error);
     }
 
     refreshPromptInsertionAudit();
@@ -688,7 +703,7 @@ function injectTrackersFor(entries = []) {
     };
 
     if (unresolved.length) {
-        console.warn('[Memory Service] Unresolved tracker markers:', unresolved,
+        console.warn('[memoryst] Unresolved tracker markers:', unresolved,
             `(character roster: ${roster.length})`);
     }
 
@@ -722,7 +737,7 @@ function injectTrackersFor(entries = []) {
     currentTrackerInfo = { ...trackerInfo, ...diagnostics };
     setTrackerPrompt(trackerInfo.trackerBlock);
     console.log(
-        '[Memory Service] Tracker block injected for',
+        '[memoryst] Tracker block injected for',
         trackerInfo.includedCharacters.map(item => item.characterName || item.characterId).join(', '),
         `(${trackerInfo.trackerCharCount} chars)`,
     );
@@ -756,7 +771,7 @@ function notifyStaleTrackers(storeResult) {
     saveSettings();
 
     for (const toast of toasts) {
-        globalThis.toastr?.info?.(toast.message, 'Memory Service');
+        globalThis.toastr?.info?.(toast.message, 'memoryst');
     }
 }
 
@@ -768,7 +783,7 @@ function persistIntegrationAudit(record) {
     const finalized = finalizeIntegrationAuditRecord(record);
     pushAuditRecord(settings, finalized);
     saveSettings();
-    console.log('[Memory Service][Audit]', finalized);
+    console.log('[memoryst][Audit]', finalized);
 }
 
 function exposeAuditHelpers() {
@@ -974,7 +989,7 @@ function onChatChanged() {
  * Initialize extension
  */
 function init() {
-    console.log('[Memory Service] Extension initializing...');
+    console.log('[memoryst] Extension initializing...');
 
     loadSettings();
 
@@ -1000,10 +1015,10 @@ function init() {
     // incompatible or stale pairing, without blocking initialization.
     checkBackendCompatibility();
 
-    console.log('[Memory Service] Extension initialized, build', MEMORY_EXTENSION_BUILD);
-    console.log('[Memory Service] Current-turn pattern: retrieve happens before generation, store after render');
+    console.log('[memoryst] Extension initialized, build', MEMORY_EXTENSION_BUILD);
+    console.log('[memoryst] Current-turn pattern: retrieve happens before generation, store after render');
     if (settings.auditEnabled) {
-        console.log('[Memory Service] Integration audit mode enabled');
+        console.log('[memoryst] Integration audit mode enabled');
     }
 }
 

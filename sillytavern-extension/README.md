@@ -1,4 +1,4 @@
-# Memory Service Extension for SillyTavern
+# memoryst Extension for SillyTavern
 
 External memory service integration for long-term context in roleplay chats.
 
@@ -12,9 +12,9 @@ External memory service integration for long-term context in roleplay chats.
 2. Enable the extension in SillyTavern:
    - Open SillyTavern
    - Go to Extensions menu (puzzle piece icon)
-   - Find "Memory Service" and enable it
+   - Find "memoryst" and enable it
 
-3. Configure settings from the native Memory Service panel inside SillyTavern Extensions.
+3. Configure settings from the native memoryst panel inside SillyTavern Extensions.
 
 The extension keeps ST-facing settings grouped logically in storage:
 - `connection`
@@ -34,7 +34,7 @@ This layer is:
 
 - triggered by Lorebook / World Info activation
 - injected only for the current turn
-- never stored in the Memory Service database
+- never stored in the memoryst database
 - never summarized into rolling summary
 - never consolidated into stable or episodic memory
 
@@ -181,7 +181,7 @@ This keeps retrieval, store, and rolling summaries scoped per chat/character pai
 
 ## Settings UI
 
-The extension now exposes a native SillyTavern settings panel for the Memory Service extension. It shows the current values, saves them back into `extension_settings`, and keeps backward compatibility with older flat or grouped saved configs.
+The extension now exposes a native SillyTavern settings panel for the memoryst extension. It shows the current values, saves them back into `extension_settings`, and keeps backward compatibility with older flat or grouped saved configs.
 
 The panel is grouped as:
 
@@ -201,7 +201,7 @@ The runtime still uses simple flat fields internally, but persisted settings are
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `enabled` | `false` | Enable or disable the extension |
-| `memoryServiceUrl` | `http://localhost:8001` | Memory Service endpoint |
+| `memoryServiceUrl` | `http://localhost:8001` | memoryst endpoint |
 | `apiKey` | `''` | API key sent as `X-API-Key` |
 
 ### Retrieval
@@ -300,7 +300,7 @@ This is intentionally opt-in and meant for local debugging, not always-on teleme
 
 ### Manual verification in SillyTavern
 
-1. Enable `Audit > Enable Audit` in the native Memory Service settings panel.
+1. Enable `Audit > Enable Audit` in the native memoryst settings panel.
 2. Open a Russian chat with existing stored memories.
 3. Send a user message that should clearly retrieve one of them.
 4. Before or immediately after the reply, inspect:
@@ -323,7 +323,7 @@ If current-turn injection fails, the audit record should make that visible via `
 
 ## Requirements
 
-- Memory Service running and accessible
+- memoryst running and accessible
 - SillyTavern with extension support
 
 ## API Compatibility
@@ -343,7 +343,7 @@ This extension uses the following SillyTavern APIs:
 ## Troubleshooting
 
 1. **Extension not working:**
-   - Check Memory Service is running: `curl http://localhost:8001/health`
+   - Check memoryst is running: `curl http://localhost:8001/health`
    - Verify URL in settings
    - Check browser console for errors
 
@@ -357,4 +357,4 @@ This extension uses the following SillyTavern APIs:
 
 ## License
 
-Same as Memory Service project.
+Same as memoryst project.
