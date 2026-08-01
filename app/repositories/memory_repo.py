@@ -242,6 +242,23 @@ def list_chat_group_summaries(
     """
     Lightweight query for the chat sidebar: returns one row per (chat_id, character_id)
     with counts and last_updated, without loading full memory rows.
+
+    Trackers are excluded from every count, but not from the grouping. The distinction
+    matters in both directions:
+
+      - counting them was the bug. Trackers carry layer='stable', so each one inflated
+        total_count and stable_count in the sidebar. It survived because the UI tests
+        mock this function out and rebuild the aggregation in Python, where no tracker
+        exists to be miscounted.
+      - filtering them out of the FROM clause instead looks equivalent and is not: a
+        chat whose only rows are trackers would stop appearing in the sidebar
+        entirely, and its trackers would become unreachable in the UI, since the
+        trackers section only renders for a selected chat. An existing test caught
+        exactly that.
+
+    So a tracker-only chat still lists, with zero counts, and tracker_count says why.
+    last_updated deliberately spans trackers too - a tracker rewrite is activity in
+    that chat even though it isn't a memory.
     """
     where_clauses: list[str] = []
     params: list[object] = []
@@ -273,10 +290,17 @@ def list_chat_group_summaries(
             SELECT
                 chat_id,
                 character_id,
-                COUNT(*) AS total_count,
-                SUM(CASE WHEN type = 'summary' OR json_extract(metadata_json, '$.is_summary') = 1 THEN 1 ELSE 0 END) AS summary_count,
-                SUM(CASE WHEN layer = 'stable' AND type != 'summary' AND json_extract(metadata_json, '$.is_summary') != 1 THEN 1 ELSE 0 END) AS stable_count,
-                SUM(CASE WHEN layer = 'episodic' AND type != 'summary' AND json_extract(metadata_json, '$.is_summary') != 1 THEN 1 ELSE 0 END) AS episodic_count,
+                SUM(CASE WHEN type != 'tracker' THEN 1 ELSE 0 END) AS total_count,
+                SUM(CASE WHEN type = 'tracker' THEN 1 ELSE 0 END) AS tracker_count,
+                -- COALESCE, because json_extract returns NULL for a row whose metadata
+                -- has no is_summary key, and in SQL `NULL != 1` is NULL rather than
+                -- true: such a row would be counted in total_count but silently fall
+                -- out of both stable_count and episodic_count. Every row written
+                -- through pydantic carries the key today, so this is a guard against
+                -- the counts quietly disagreeing with the total, not a live bug.
+                SUM(CASE WHEN type != 'tracker' AND (type = 'summary' OR COALESCE(json_extract(metadata_json, '$.is_summary'), 0) = 1) THEN 1 ELSE 0 END) AS summary_count,
+                SUM(CASE WHEN type NOT IN ('tracker', 'summary') AND layer = 'stable' AND COALESCE(json_extract(metadata_json, '$.is_summary'), 0) != 1 THEN 1 ELSE 0 END) AS stable_count,
+                SUM(CASE WHEN type NOT IN ('tracker', 'summary') AND layer = 'episodic' AND COALESCE(json_extract(metadata_json, '$.is_summary'), 0) != 1 THEN 1 ELSE 0 END) AS episodic_count,
                 MAX(updated_at) AS last_updated
             FROM memories
             {where_sql}
