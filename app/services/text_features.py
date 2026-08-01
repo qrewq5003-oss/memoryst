@@ -344,6 +344,112 @@ def _collect_entity_candidates(text: str) -> list[str]:
     return candidates
 
 
+# Words that name a *role*, not a person, plus artefacts of the chat transcript itself.
+#
+# An entity like `пользователь` sits in 231 stored memories and `user` in 377, so it does
+# not distinguish anything: matching on it lifts every one of those rows equally, which
+# promotes the irrelevant alongside the relevant. On the query side it is worse than
+# useless, because entity_overlap divides by the number of query entities - a query
+# resolving to ["пользователь", "Валерия"] scores a genuine Валерия match 1/2 instead of
+# 1/1, the same arithmetic that the phantom "Напомнить" used to cause.
+#
+# `time` is not a role word: it comes from the "[ 🕰️ 2:03 PM ]" headers some characters
+# prefix their replies with, and reached 248 occurrences that way.
+ENTITY_STOPWORDS = {
+    # roles, Russian
+    "пользователь", "юзер", "девушка", "девушки", "парень", "мужчина", "женщина",
+    "собеседник", "собеседница", "персонаж", "партнер", "партнёр", "герой", "героиня",
+    "человек", "рассказчик", "автор",
+    # roles, English
+    "user", "character", "assistant", "narrator", "partner", "girl", "boy", "man",
+    "woman", "person", "someone", "narrator",
+    # transcript artefacts
+    "time", "date", "system", "ooc",
+}
+
+
+def filter_entities(entities: list[str]) -> list[str]:
+    """Drop role words and duplicates, preserving order and original spelling.
+
+    Applied to every source of entities - the rule-based extractor, the facts the LLM
+    returns, and the query - because a stoplist enforced on only one side removes half
+    the effect: the noisy word simply stops matching from the other direction.
+    """
+    seen: set[str] = set()
+    kept: list[str] = []
+    for entity in entities:
+        cleaned = (entity or "").strip()
+        lowered = cleaned.lower()
+        if not cleaned or lowered in ENTITY_STOPWORDS or lowered in seen:
+            continue
+        seen.add(lowered)
+        kept.append(cleaned)
+    return kept
+
+
+# Deliberately lossy transliteration, tuned for matching names rather than for producing
+# readable Latin. The endings are what matter: `валерия` has to reach the same key as
+# `Valeria`, so `ия` becomes `ia` rather than the more correct `iya`.
+_TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh",
+    "з": "z", "и": "i", "й": "i", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "c",
+    "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "u",
+    "я": "a",
+}
+_DOUBLED_RE = re.compile(r"(.)\1+")
+_ENTITY_SPLIT_RE = re.compile(r"[\s\-–—_,./]+")
+
+
+def entity_match_keys(entity: str) -> set[str]:
+    """Canonical keys under which this entity should be considered the same as another.
+
+    Used only for comparison - the stored value keeps its original spelling, so a wrong
+    merge changes a score and never the data.
+
+    Three things are collapsed, each measured on the live corpus:
+      - alphabet. `валерия` (445 rows) and `Valeria` (237) are one person whose variants
+        never matched, and 1527 of 11793 entity occurrences sit in groups like it. A
+        Russian query therefore could not see a third of that character's memories.
+      - doubled letters, so SillyTavern's `Allina` reaches the same key as `Алина`.
+      - multi-word names, split into tokens, so the full name extraction now writes
+        ("Алина Волкова") still matches a query that says just "Алина". Without this the
+        naming fix would have made matching *worse* than before it.
+
+    Tokens shorter than three characters are dropped: they carry no identity and would
+    collide freely.
+    """
+    keys: set[str] = set()
+    for token in _ENTITY_SPLIT_RE.split((entity or "").lower()):
+        if not token:
+            continue
+        latin = "".join(_TRANSLIT.get(char, char) for char in token)
+        # `Wanted` and `Вантед` are the same persona; w/v is the one Latin-side
+        # substitution needed to bring transliterated pairs together.
+        latin = latin.replace("w", "v")
+        latin = _DOUBLED_RE.sub(r"\1", latin)
+        if len(latin) >= 3:
+            keys.add(latin)
+    return keys
+
+
+def entity_overlap_ratio(memory_entities: list[str], input_entities: list[str]) -> float:
+    """Share of the query's entities that the memory also carries.
+
+    Counted per entity rather than per key, so a two-word name stays one entity and does
+    not quietly double the denominator the way a naive key-set intersection would.
+    """
+    if not input_entities:
+        return 0.0
+
+    memory_keys: set[str] = set()
+    for entity in memory_entities:
+        memory_keys |= entity_match_keys(entity)
+
+    matched = sum(1 for entity in input_entities if entity_match_keys(entity) & memory_keys)
+    return matched / len(input_entities)
+
+
 def extract_entities(text: str) -> list[str]:
     """Extract deduplicated entities with Russian normalization when applicable."""
     words = _collect_entity_candidates(text)
@@ -370,7 +476,7 @@ def extract_entities(text: str) -> list[str]:
             seen.add(normalized_lower)
             entities.append(normalized)
 
-    return entities[:10]
+    return filter_entities(entities)[:10]
 
 
 def extract_keywords(text: str) -> list[str]:

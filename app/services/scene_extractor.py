@@ -2,7 +2,7 @@ import sys
 from typing import Literal
 
 from app.schemas import ChatMessageItem, CreateMemoryRequest, MemoryMetadata, MessageInput
-from app.services import llm_extractor
+from app.services import llm_extractor, text_features
 from app.services.extractor import (
     extract_memories,
     get_importance_for_type,
@@ -139,7 +139,10 @@ def extract_scene_memories(
                 pinned=False,
                 archived=False,
                 metadata=MemoryMetadata(
-                    entities=fact.get("entities", []),
+                    # Same stoplist as the rule-based path: the LLM is told to name the
+                    # participants, but still returns "пользователь" when a fact is
+                    # genuinely about the user, and that word matches 377 other rows.
+                    entities=text_features.filter_entities(fact.get("entities", [])),
                     keywords=fact.get("keywords", []),
                     source_message_ids=fact.get("source_message_ids", []),
                 ),

@@ -78,13 +78,14 @@ def _compute_score_details(
     else:
         keyword_overlap = 0.0
 
-    # Entity overlap
-    memory_entities = set(e.lower() for e in memory.metadata.entities)
-    input_ent_set = set(e.lower() for e in input_entities)
-    if len(input_ent_set) > 0:
-        entity_overlap = len(memory_entities & input_ent_set) / len(input_ent_set)
-    else:
-        entity_overlap = 0.0
+    # Entity overlap. Compared through canonical keys rather than lowercased strings:
+    # `Валерия` and `Valeria` are one person written two ways, and 1527 of 11793 stored
+    # entity occurrences sit in groups like that, invisible to each other. Splitting
+    # multi-word names matters just as much now that extraction writes the full name -
+    # otherwise "Алина Волкова" would stop matching a query that says "Алина".
+    entity_overlap = text_features.entity_overlap_ratio(
+        memory.metadata.entities, input_entities
+    )
 
     # Auxiliary cue overlap only exists for the explicitly gated Russian
     # relationship/general-state query family. It supports wording variation,
