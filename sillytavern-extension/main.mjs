@@ -27,17 +27,17 @@ import {
     finalizeIntegrationAuditRecord,
     pushAuditRecord,
     resolvePreGenerationHookNames,
-} from './audit.mjs?v=d0c00e2';
+} from './audit.mjs?v=eaaf989';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=d0c00e2';
-import { mountSettingsUi } from './settings-ui.mjs?v=d0c00e2';
-import { resolveEffectiveScope } from './scope.mjs?v=d0c00e2';
+} from './settings.mjs?v=eaaf989';
+import { mountSettingsUi } from './settings-ui.mjs?v=eaaf989';
+import { resolveEffectiveScope } from './scope.mjs?v=eaaf989';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=d0c00e2';
+} from './lore-anchors.mjs?v=eaaf989';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -45,12 +45,12 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=d0c00e2';
+} from './trackers.mjs?v=eaaf989';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=d0c00e2';
+} from './version.mjs?v=eaaf989';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
