@@ -354,6 +354,15 @@ export function buildPromptInsertionAuditSection({
     };
 }
 
+// Stages that are known to land before SillyTavern assembles the prompt, and therefore
+// still affect the generation the record is about. Both belong here: 'pre_generation'
+// serves turns that append no user message (swipe/regenerate/continue/impersonate), and
+// 'user_message_sent' serves the normal turn, one step later but still ahead of prompt
+// assembly. This was a single hardcoded 'pre_generation' check, so once the normal turn
+// moved to MESSAGE_SENT every healthy turn was flagged twice - and a diagnostic that
+// cries wolf on correct behaviour stops being read at all.
+const CURRENT_TURN_STAGES = new Set(['pre_generation', 'user_message_sent']);
+
 export function finalizeIntegrationAuditRecord(record) {
     const notes = [...(record.notes || [])];
 
@@ -366,10 +375,10 @@ export function finalizeIntegrationAuditRecord(record) {
     if (!record.prompt_insertion_observed) {
         notes.push('prompt_insertion_not_observed');
     }
-    if (record.retrieve_stage !== 'pre_generation') {
-        notes.push('retrieve_not_confirmed_pre_generation');
+    if (!CURRENT_TURN_STAGES.has(record.retrieve_stage)) {
+        notes.push('retrieve_not_confirmed_current_turn');
     }
-    if (record.prompt_injection_stage !== 'pre_generation') {
+    if (!CURRENT_TURN_STAGES.has(record.prompt_injection_stage)) {
         notes.push('prompt_not_confirmed_current_turn');
     }
     if (record.retrieve && record.retrieve.memory_block_length === 0) {

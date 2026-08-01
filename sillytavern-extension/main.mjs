@@ -35,17 +35,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=7e2a6b5';
+} from './audit.mjs?v=1db0fb1';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=7e2a6b5';
-import { mountSettingsUi } from './settings-ui.mjs?v=7e2a6b5';
-import { resolveEffectiveScope } from './scope.mjs?v=7e2a6b5';
+} from './settings.mjs?v=1db0fb1';
+import { mountSettingsUi } from './settings-ui.mjs?v=1db0fb1';
+import { resolveEffectiveScope } from './scope.mjs?v=1db0fb1';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=7e2a6b5';
+} from './lore-anchors.mjs?v=1db0fb1';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -53,12 +53,12 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=7e2a6b5';
+} from './trackers.mjs?v=1db0fb1';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=7e2a6b5';
+} from './version.mjs?v=1db0fb1';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:

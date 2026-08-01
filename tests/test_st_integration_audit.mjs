@@ -226,3 +226,54 @@ test('the turn key is stable once built from the real current message', () => {
     const fromPreGeneration = buildTurnKey({ chatId: 'c', characterId: '4', userInput: 'Привет' });
     assert.equal(fromMessageSent, fromPreGeneration);
 });
+
+test('a turn served by MESSAGE_SENT is not flagged as missing the current turn', () => {
+    // Regression: the stage check was hardcoded to 'pre_generation', so once the normal
+    // turn moved to MESSAGE_SENT every healthy turn collected two false warnings. A
+    // diagnostic that cries wolf on correct behaviour stops being read.
+    const record = createIntegrationAuditRecord({ chatId: 'c', characterId: '4', recentMessagesCount: 8 });
+    record.store_called = true;
+    record.retrieve_called = true;
+    record.prompt_insertion_observed = true;
+    record.retrieve_stage = 'user_message_sent';
+    record.prompt_injection_stage = 'user_message_sent';
+    record.retrieve = buildRetrieveAuditSection({
+        userInput: 'Да, я интроверт',
+        recentMessages: [],
+        result: { items: [{ id: 'm1' }], total_candidates: 3, memory_block: '[Relevant Memory]\n- x' },
+        stage: 'user_message_sent',
+    });
+    record.prompt_insertion = buildPromptInsertionAuditSection({
+        memoryBlock: '[Relevant Memory]\n- x',
+        applied: true,
+        reason: 'ok',
+        stage: 'user_message_sent',
+    });
+
+    const notes = finalizeIntegrationAuditRecord(record).notes.join(',');
+
+    assert.doesNotMatch(notes, /retrieve_not_confirmed/);
+    assert.doesNotMatch(notes, /prompt_not_confirmed/);
+});
+
+test('pre_generation stays a confirmed stage, for turns that append no message', () => {
+    const record = createIntegrationAuditRecord({ chatId: 'c', characterId: '4', recentMessagesCount: 8 });
+    record.retrieve_stage = 'pre_generation';
+    record.prompt_injection_stage = 'pre_generation';
+
+    const notes = finalizeIntegrationAuditRecord(record).notes.join(',');
+
+    assert.doesNotMatch(notes, /retrieve_not_confirmed/);
+    assert.doesNotMatch(notes, /prompt_not_confirmed/);
+});
+
+test('a stage that lands after prompt assembly is still flagged', () => {
+    const record = createIntegrationAuditRecord({ chatId: 'c', characterId: '4', recentMessagesCount: 8 });
+    record.retrieve_stage = 'post_render';
+    record.prompt_injection_stage = 'post_render';
+
+    const notes = finalizeIntegrationAuditRecord(record).notes.join(',');
+
+    assert.match(notes, /retrieve_not_confirmed_current_turn/);
+    assert.match(notes, /prompt_not_confirmed_current_turn/);
+});
