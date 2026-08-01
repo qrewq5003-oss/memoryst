@@ -133,6 +133,29 @@ def get_hot_buffer(chat_id: str, character_id: str) -> list[ChatMessageItem]:
     return list(_buffers.get(_buffer_key(chat_id, character_id), []))
 
 
+def drop_chat_buffer(chat_id: str, character_id: str | None = None) -> None:
+    """Forget the hot buffer (and sequence counter) for a deleted chat.
+
+    Deleting a chat's rows is not enough on its own: up to HOT_BUFFER_SIZE messages
+    live only in memory at any moment, and the next message would cool them straight
+    back into the table the delete just emptied. The sequence counter goes too, so a
+    chat re-created under the same id starts from zero instead of resuming where the
+    deleted one stopped.
+
+    character_id is optional to match the delete-chat endpoints, where omitting it
+    means "every character in this chat".
+    """
+    # Union of both dicts: a chat can hold a sequence counter with no live buffer
+    # (every buffered message already cooled), and that counter must go too.
+    for key in [
+        key
+        for key in set(_buffers) | set(_next_sequence)
+        if key[0] == chat_id and (character_id is None or key[1] == character_id)
+    ]:
+        _buffers.pop(key, None)
+        _next_sequence.pop(key, None)
+
+
 def reset_all_buffers() -> None:
     """Clear all in-memory buffer state. Intended for test isolation."""
     _buffers.clear()

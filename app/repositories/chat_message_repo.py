@@ -99,6 +99,34 @@ def get_chat_message_by_id(message_id: str) -> ChatMessageItem | None:
         return _row_to_chat_message(dict(row))
 
 
+def delete_chat_messages(chat_id: str, character_id: str | None = None) -> int:
+    """Delete the raw messages of a chat. Returns how many rows were removed.
+
+    Until this existed there was no way to remove a raw message at all: deleting a
+    chat removed the facts extracted from it while the underlying text stayed in the
+    database and remained reachable through retrieval's FTS fallback, so "delete all
+    memories for this chat" quietly wasn't one.
+
+    The chat_messages_fts index is kept in step by the AFTER DELETE trigger, so
+    nothing extra is needed here - but that is exactly why deletion must go through
+    SQL DELETE rather than a table rewrite.
+
+    character_id is optional to match the delete-chat endpoints, where it is an
+    optional narrowing filter rather than part of the key.
+    """
+    params: list[object] = [chat_id]
+    sql = "DELETE FROM chat_messages WHERE chat_id = ?"
+    if character_id is not None:
+        sql += " AND character_id = ?"
+        params.append(character_id)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        conn.commit()
+        return cursor.rowcount
+
+
 def list_chat_messages(
     chat_id: str,
     character_id: str,

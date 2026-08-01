@@ -436,20 +436,21 @@ def scene_extract_endpoint(request: SceneExtractRequest) -> SceneExtractResponse
 
 class DeleteChatResponse(BaseModel):
     deleted: int
+    deleted_trackers: int
+    deleted_raw_messages: int
 
 
 @router.delete("/chat/{chat_id}", response_model=DeleteChatResponse)
 def delete_chat_endpoint(chat_id: str, character_id: str = Query(None)) -> DeleteChatResponse:
-    """Delete all memories for a chat (optionally filtered by character)."""
-    from app.repositories.memory_repo import list_memories
+    """Delete everything a chat owns: memories, trackers and raw messages."""
+    from app.services.chat_cleanup_service import delete_chat_data
 
-    all_items = list_memories(chat_id=chat_id, character_id=character_id, limit=10000).items
-    deleted = 0
-    for item in all_items:
-        if delete_memory(item.id):
-            vector_store.delete_memory(item.id)
-            deleted += 1
-    return DeleteChatResponse(deleted=deleted)
+    result = delete_chat_data(chat_id=chat_id, character_id=character_id)
+    return DeleteChatResponse(
+        deleted=result.deleted_memories,
+        deleted_trackers=result.deleted_trackers,
+        deleted_raw_messages=result.deleted_raw_messages,
+    )
 
 
 @router.get("/models")
