@@ -1,7 +1,7 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=2be31be';
+} from './settings.mjs?v=7e2a6b5';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -53,7 +53,7 @@ export const SETTINGS_UI_FIELDS = [
             {
                 key: 'recentMessagesCount',
                 label: 'Recent Messages Count',
-                help: 'How many recent chat messages are sent to store extraction.',
+                help: 'How many recent chat messages are sent as context, for both retrieval and store extraction.',
                 type: 'number',
                 min: 1,
             },

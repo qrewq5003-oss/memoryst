@@ -10,8 +10,10 @@ import {
     buildStoreAuditSection,
     createIntegrationAuditRecord,
     finalizeIntegrationAuditRecord,
+    isDryRun,
     pushAuditRecord,
     resolvePreGenerationHookNames,
+    willAppendUserMessage,
 } from '../sillytavern-extension/audit.mjs';
 
 test('store audit section captures message previews and result summary', () => {
@@ -170,4 +172,57 @@ test('the turn key is stable while SillyTavern grows the chat mid-generation', (
         buildTurnKey({ chatId: 'c', characterId: '20', userInput: 'другой ввод' }),
         'a different user input is still a different turn',
     );
+});
+
+// --- Which entry point serves a turn -----------------------------------------
+//
+// The bug these encode: inside one SillyTavern Generate() call, GENERATION_STARTED
+// (script.js:4240) and GENERATION_AFTER_COMMANDS (4262) are emitted BEFORE
+// sendMessageAsUser() (4394) puts the new message into `chat`. Retrieving from those
+// hooks queried the previous turn's text on every normal turn, and the audit's
+// user_input_preview showing an old message was the symptom, not a preview bug.
+//
+// MESSAGE_SENT fires from inside sendMessageAsUser and is awaited by Generate, so it
+// sits after the message lands and before prompt assembly (5073+) - the only window
+// that is correct on both sides.
+
+test('a normal turn defers to MESSAGE_SENT, because its message does not exist yet', () => {
+    // How SillyTavern emits a plain user turn: type is undefined.
+    assert.equal(willAppendUserMessage([undefined, {}, false]), true);
+    assert.equal(willAppendUserMessage(['normal', {}, false]), true);
+    // Options object absent entirely.
+    assert.equal(willAppendUserMessage([undefined]), true);
+});
+
+test('generation types that append nothing keep retrieving at pre-generation', () => {
+    // For these the last message in `chat` is already the right one, so the old path
+    // is correct and must not be deferred - deferring would leave them with no
+    // retrieval at all, since MESSAGE_SENT never fires.
+    for (const type of ['swipe', 'regenerate', 'continue', 'impersonate', 'quiet']) {
+        assert.equal(willAppendUserMessage([type, {}, false]), false, type);
+    }
+});
+
+test('an unrecognised generation type degrades to the old behaviour, not to silence', () => {
+    assert.equal(willAppendUserMessage(['some_future_type', {}, false]), false);
+});
+
+test('an automatic trigger appends no user message', () => {
+    assert.equal(willAppendUserMessage([undefined, { automatic_trigger: true }, false]), false);
+});
+
+test('dry runs are still ignored by both entry points', () => {
+    assert.equal(isDryRun([undefined, {}, true]), true);
+    assert.equal(isDryRun(['swipe', {}, true]), true);
+    assert.equal(isDryRun([undefined, {}, false]), false);
+    // MESSAGE_SENT carries a single argument and is never a dry run.
+    assert.equal(isDryRun([3]), false);
+});
+
+test('the turn key is stable once built from the real current message', () => {
+    // Both entry points build the key the same way, so a turn served by MESSAGE_SENT
+    // cannot be re-served by a later hook seeing the same input.
+    const fromMessageSent = buildTurnKey({ chatId: 'c', characterId: '4', userInput: 'Привет' });
+    const fromPreGeneration = buildTurnKey({ chatId: 'c', characterId: '4', userInput: 'Привет' });
+    assert.equal(fromMessageSent, fromPreGeneration);
 });

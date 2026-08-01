@@ -2,17 +2,23 @@
  * memoryst Extension for SillyTavern
  * 
  * Current timing policy:
- * - retrieve happens before generation for current-turn prompt injection
+ * - retrieve happens before the prompt is assembled, for current-turn injection
  * - store happens after CHARACTER_MESSAGE_RENDERED for the completed exchange
- * 
- * Flow:
+ *
+ * Flow on a normal turn:
  * 1. User sends message
- * 2. Pre-generation hook fires
- * 3. Extension calls /memory/retrieve
- * 4. Retrieved memory_block is set via setExtensionPrompt() for CURRENT generation
- * 5. Assistant generates and renders response
- * 6. CHARACTER_MESSAGE_RENDERED fires
- * 7. Extension calls /memory/store to save the completed exchange
+ * 2. Pre-generation hooks fire - and defer, because SillyTavern has not appended the
+ *    message yet (script.js: hooks at 4240/4262, sendMessageAsUser at 4394)
+ * 3. MESSAGE_SENT fires from inside sendMessageAsUser: the message is now in `chat`,
+ *    Generate() awaits this handler, and the prompt is not assembled until 5073+
+ * 4. Extension calls /memory/retrieve with the message the user actually just sent
+ * 5. Retrieved memory_block is set via setExtensionPrompt() for CURRENT generation
+ * 6. Assistant generates and renders response
+ * 7. CHARACTER_MESSAGE_RENDERED fires
+ * 8. Extension calls /memory/store to save the completed exchange
+ *
+ * Swipe, regenerate, continue and impersonate append no message, so for them the
+ * pre-generation hooks are already correct and step 2 does the retrieval instead.
  */
 
 import { getContext, extension_settings } from '../../../extensions.js';
@@ -25,19 +31,21 @@ import {
     buildTurnKey,
     createIntegrationAuditRecord,
     finalizeIntegrationAuditRecord,
+    isDryRun,
     pushAuditRecord,
     resolvePreGenerationHookNames,
-} from './audit.mjs?v=2be31be';
+    willAppendUserMessage,
+} from './audit.mjs?v=7e2a6b5';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=2be31be';
-import { mountSettingsUi } from './settings-ui.mjs?v=2be31be';
-import { resolveEffectiveScope } from './scope.mjs?v=2be31be';
+} from './settings.mjs?v=7e2a6b5';
+import { mountSettingsUi } from './settings-ui.mjs?v=7e2a6b5';
+import { resolveEffectiveScope } from './scope.mjs?v=7e2a6b5';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=2be31be';
+} from './lore-anchors.mjs?v=7e2a6b5';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -45,12 +53,12 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=2be31be';
+} from './trackers.mjs?v=7e2a6b5';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=2be31be';
+} from './version.mjs?v=7e2a6b5';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -146,7 +154,8 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
             ? 'budgeted_memory_block_or_lore_anchor_or_tracker_set_for_current_turn'
             : 'empty_or_missing_memory_block',
         previewChars: settings.auditPreviewChars,
-        stage: 'pre_generation',
+        // Whichever entry point served this turn; set when the record was created.
+        stage: record.prompt_injection_stage || 'pre_generation',
         appliedToCurrentTurn: true,
         budget: currentRetrieveBudget,
         loreAnchorBlock: currentLoreAnchorInfo?.anchorBlock || '',
@@ -438,7 +447,10 @@ async function retrieveMemories() {
         return { called: false, reason: 'no_last_user_message', memoryBlock: '' };
     }
 
-    const recent_messages = getRecentMessagesForRetrieve(3);
+    // Was a hardcoded 3, which made the configured Recent Messages Count apply to store
+    // extraction only - while the audit still reported the configured value next to a
+    // retrieve that had ignored it.
+    const recent_messages = getRecentMessagesForRetrieve(settings.recentMessagesCount);
 
     try {
         const headers = {
@@ -819,25 +831,13 @@ function exposeAuditHelpers() {
 }
 
 /**
- * Retrieve and inject memories before the current generation starts.
- */
-/**
- * SillyTavern runs a dry-run generation pass (for token counting) before the real one, and
- * emits the same pre-generation hooks for it - with dryRun=true as the third argument of
- * GENERATION_STARTED / GENERATION_AFTER_COMMANDS. Two things go wrong if we treat it as a
- * real turn, and both did:
+ * Retrieve and inject memories for the current generation.
  *
- *  - the dry run's chat state does not yet hold the new user message, so the turn key is
- *    built from the *previous* one. The real pass then looks like a different turn, sails
- *    past the de-dupe guard, and calls clearTrackerPrompt() - wiping the tracker block that
- *    WORLD_INFO_ACTIVATED had just set (the lorebook does not fire on dry runs, so this
- *    always lands after it). That is what kept trackers out of the prompt.
- *  - /memory/retrieve was issued for the dry run too, querying with the stale user message.
+ * Two entry points, because SillyTavern gives no single hook that is both after the
+ * user's message lands in `chat` and before the prompt is assembled for every
+ * generation type. isDryRun/willAppendUserMessage decide which one serves a turn;
+ * both live in audit.mjs so they can be tested without SillyTavern's modules.
  */
-function isDryRun(hookArgs) {
-    return hookArgs.length >= 3 && hookArgs[2] === true;
-}
-
 async function onBeforeGeneration(hookName, ...hookArgs) {
     if (isDryRun(hookArgs)) {
         trace(`dryrun:${hookName}`);
@@ -850,6 +850,31 @@ async function onBeforeGeneration(hookName, ...hookArgs) {
         return;
     }
 
+    if (willAppendUserMessage(hookArgs)) {
+        // The message this turn is about does not exist yet. MESSAGE_SENT fires a few
+        // lines later, still inside Generate() and still well before the prompt is
+        // assembled (getCombinedPrompt/prepareOpenAIMessages at 5073+), and Generate
+        // awaits it - so the retrieval lands in time for this very generation.
+        trace('pregen_defer_to_message_sent');
+        return;
+    }
+
+    await runRetrievalForTurn('pre_generation');
+}
+
+/**
+ * The normal-turn entry point: the user's message is now in `chat`.
+ */
+async function onUserMessageSent() {
+    trace('message_sent');
+    if (!settings.enabled || isRetrieveProcessing) {
+        trace('sent_skip_busy');
+        return;
+    }
+    await runRetrievalForTurn('user_message_sent');
+}
+
+async function runRetrievalForTurn(stage) {
     const chatContext = getChatContext();
     const userInput = getLastUserMessage();
     const turnKey = buildTurnKey({
@@ -859,16 +884,17 @@ async function onBeforeGeneration(hookName, ...hookArgs) {
     });
 
     if (pendingTurnKey === turnKey && pendingInteractionAudit?.retrieve_called) {
-        trace('pregen_skip_guard');
+        trace(`${stage}_skip_guard`);
         return;
     }
-    trace('pregen_work');
+    trace(`${stage}_work`);
 
     // Clearing the previous turn's lore-anchor/tracker blocks happens only on the first
-    // pre-generation hook of a turn, i.e. after the turn-key guard above. Three candidate
-    // hooks are registered and several fire per turn; WORLD_INFO_ACTIVATED fires between
-    // them, so clearing before the guard let a later hook wipe the block that the lorebook
-    // handler had just set for this very generation.
+    // hook of a turn that gets past the guard above. Several hooks fire per turn and
+    // WORLD_INFO_ACTIVATED lands between them, so clearing before the guard let a later
+    // hook wipe the block the lorebook handler had just set for this very generation.
+    // Still true from MESSAGE_SENT: world info is resolved during prompt assembly, which
+    // comes after it.
     clearLoreAnchorPrompt();
     clearTrackerPrompt();
 
@@ -884,8 +910,11 @@ async function onBeforeGeneration(hookName, ...hookArgs) {
             recentMessagesCount: settings.recentMessagesCount,
             extensionBuild: MEMORY_EXTENSION_BUILD,
         });
-        auditRecord.retrieve_stage = 'pre_generation';
-        auditRecord.prompt_injection_stage = 'pre_generation';
+        // Recorded rather than assumed: the audit is how a live run shows which entry
+        // point served the turn, and therefore whether the user input it queried with
+        // was the current message or the previous one.
+        auditRecord.retrieve_stage = stage;
+        auditRecord.prompt_injection_stage = stage;
 
         const retrieveResult = await retrieveMemories();
         if (retrieveResult.called) {
@@ -896,7 +925,7 @@ async function onBeforeGeneration(hookName, ...hookArgs) {
                 result: retrieveResult.result || null,
                 error: retrieveResult.error || null,
                 previewChars: settings.auditPreviewChars,
-                stage: 'pre_generation',
+                stage,
                 budget: retrieveResult.budget || null,
             });
             auditRecord.prompt_insertion_observed = true;
@@ -1001,6 +1030,16 @@ function init() {
         } else {
             eventSource.on(hookName, handler);
         }
+    }
+
+    // The normal-turn retrieval trigger. Registered first so the retrieval is issued as
+    // early as possible inside the window this event opens - the message is in `chat` by
+    // now, and Generate() awaits this emit, so the prompt is not assembled until we are
+    // done. The pre-generation hooks above only serve turns that append no user message.
+    if (typeof eventSource.makeFirst === 'function') {
+        eventSource.makeFirst(event_types.MESSAGE_SENT, onUserMessageSent);
+    } else {
+        eventSource.on(event_types.MESSAGE_SENT, onUserMessageSent);
     }
 
     // Store happens after render because the assistant reply is only complete at this point.

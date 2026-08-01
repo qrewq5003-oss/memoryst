@@ -397,6 +397,49 @@ export function pushAuditRecord(settings, record) {
     settings.recentAudits = [record, ...recentAudits].slice(0, maxRecords);
 }
 
+/**
+ * SillyTavern runs a dry-run generation pass (for token counting) before the real one, and
+ * emits the same pre-generation hooks for it - with dryRun=true as the third argument of
+ * GENERATION_STARTED / GENERATION_AFTER_COMMANDS. Two things go wrong if we treat it as a
+ * real turn, and both did:
+ *
+ *  - the dry run's chat state does not yet hold the new user message, so the turn key is
+ *    built from the *previous* one. The real pass then looks like a different turn, sails
+ *    past the de-dupe guard, and calls clearTrackerPrompt() - wiping the tracker block that
+ *    WORLD_INFO_ACTIVATED had just set (the lorebook does not fire on dry runs, so this
+ *    always lands after it). That is what kept trackers out of the prompt.
+ *  - /memory/retrieve was issued for the dry run too, querying with the stale user message.
+ */
+export function isDryRun(hookArgs) {
+    return hookArgs.length >= 3 && hookArgs[2] === true;
+}
+
+/**
+ * Does this generation still have to append the user's new message?
+ *
+ * Verified against SillyTavern's script.js: inside one Generate() call,
+ * GENERATION_STARTED (4240) and GENERATION_AFTER_COMMANDS (4262) are both emitted
+ * *before* sendMessageAsUser() (4394) puts the new message into `chat`. So on a normal
+ * turn the pre-generation hooks see the *previous* message as the last one, and
+ * retrieving there queries the wrong text - every turn, silently. Answering true means
+ * "wait for MESSAGE_SENT instead", which fires from inside sendMessageAsUser and is
+ * awaited by Generate, still ahead of prompt assembly (5073+).
+ *
+ * Deliberately conservative: only the well-understood normal turn defers. Swipe,
+ * regenerate, continue and impersonate append nothing, so the last message in `chat`
+ * is already the right one and the pre-generation path stays correct for them.
+ * Anything unrecognised also retrieves at pre-generation - degrading to the old
+ * behaviour beats degrading to no memory at all.
+ */
+export function willAppendUserMessage(hookArgs) {
+    const type = hookArgs[0];
+    const options = hookArgs[1] || {};
+    if (options.automatic_trigger) {
+        return false;
+    }
+    return type === undefined || type === null || type === 'normal';
+}
+
 export function resolvePreGenerationHookNames(eventTypes = {}) {
     const resolved = new Set();
     for (const name of PRE_GENERATION_HOOK_CANDIDATES) {
