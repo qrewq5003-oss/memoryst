@@ -18,6 +18,11 @@ from app.services.text_utils import get_utc_now
 CONSOLIDATED_REVIEW_STATUS = "consolidated"
 
 ROLLING_SUMMARY_KIND = "rolling_v1"
+# Upper bound for "read the whole candidate pool of one chat". Mirrors ui.py's
+# UI_SEARCH_SCAN_LIMIT, and for the same reason: an unbounded read is a footgun on a
+# phone, but a *small* bound silently changes the answer. The largest live chat holds
+# 414 memories, so this is roughly 5x headroom rather than a working limit.
+CONSOLIDATION_SCAN_LIMIT = 2000
 DEFAULT_SUMMARY_WINDOW = 8
 MIN_SUMMARY_INPUTS = 3
 MIN_NEW_MEMORIES_FOR_REFRESH = 3
@@ -197,13 +202,22 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
 
 
 def _list_existing_summary(chat_id: str, character_id: str) -> MemoryItem | None:
+    """Find this chat's rolling summary, if it already has one.
+
+    Was limited to 50 rows. list_memories orders by updated_at DESC and live chats
+    hold 100-414 memories, so an existing summary that hadn't been touched recently
+    fell off the page - and generate_rolling_summary would then create a *second*
+    summary instead of refreshing the first. _is_rolling_summary matches two shapes
+    (type='summary', or is_summary metadata carrying the rolling kind), so this can't
+    be narrowed to a single SQL type filter; it scans the pool instead.
+    """
     existing_summaries = [
         memory
         for memory in list_memories(
             chat_id=chat_id,
             character_id=character_id,
             archived=False,
-            limit=50,
+            limit=CONSOLIDATION_SCAN_LIMIT,
             offset=0,
         ).items
         if _is_rolling_summary(memory)
@@ -378,6 +392,36 @@ def _truncate_to_content_limit(text: str, max_length: int = CONSOLIDATION_CONTEN
     return window.rstrip()
 
 
+def _resolve_explicit_sources(
+    chat_id: str,
+    character_id: str,
+    source_ids: list[str],
+) -> list[MemoryItem]:
+    """Resolve caller-supplied source ids directly, without paging through the chat.
+
+    The previous shape - fetch the first 1000 memories of the chat, then keep the ones
+    whose id was asked for - silently dropped any source that fell outside that page.
+    Fetching by id has no window at all.
+
+    The tracker and scope filters that the list query used to provide implicitly now
+    have to be explicit: a tracker is never a valid consolidation source (folding a
+    live document into a summary would then mark it superseded), and an id from another
+    chat must not be consolidated into this one.
+    """
+    resolved: list[MemoryItem] = []
+    for memory_id in dict.fromkeys(source_ids):
+        memory = get_memory_by_id(memory_id)
+        if memory is None or memory.type == "tracker":
+            continue
+        if memory.chat_id != chat_id or memory.character_id != character_id:
+            continue
+        resolved.append(memory)
+    # list_memories ordered by updated_at DESC; keep that so the prompt and the
+    # resulting source_memory_ids don't depend on the caller's argument order.
+    resolved.sort(key=lambda m: m.updated_at, reverse=True)
+    return resolved
+
+
 def generate_tiered_consolidation(
     chat_id: str,
     character_id: str,
@@ -401,15 +445,19 @@ def generate_tiered_consolidation(
 
     # Get source memories
     if source_ids:
-        all_items = list_memories(chat_id=chat_id, character_id=character_id, limit=1000).items
-        source_memories = [m for m in all_items if m.id in set(source_ids)]
+        source_memories = _resolve_explicit_sources(chat_id, character_id, source_ids)
     else:
         filters = {"chat_id": chat_id, "character_id": character_id, "archived": False}
         if tier_config["source_layer"]:
             filters["layer"] = tier_config["source_layer"]
         if tier_config["source_type"]:
             filters["memory_type"] = tier_config["source_type"]
-        source_memories = list_memories(limit=50, **filters).items
+        # Was limit=50. Live chats hold 100-414 memories, and list_memories orders by
+        # updated_at DESC, so "consolidate the arc" silently consolidated the 50 most
+        # recently touched facts and ignored the rest of the history. Same class of bug
+        # as the UI consolidation checkboxes, fixed the same way: scan the whole pool
+        # and report it when the scan limit is actually reached.
+        source_memories = list_memories(limit=CONSOLIDATION_SCAN_LIMIT, **filters).items
 
     if len(source_memories) < tier_config["min_inputs"]:
         return RollingSummaryResult(
