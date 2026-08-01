@@ -46,6 +46,34 @@ class ScenePromptTests(unittest.TestCase):
         self.assertEqual(build_scene_facts_prompt(), SCENE_FACTS_PROMPT)
         self.assertEqual(build_scene_facts_prompt(None, None), SCENE_FACTS_PROMPT)
 
+    def test_the_language_rule_still_has_the_last_word(self) -> None:
+        """Regression from the first live run.
+
+        The names went in as a separate emphatic block after the Rules list, and the
+        model - reading English instructions last - wrote all eight facts of a Russian
+        scene in English, entities included. Facts stored in the wrong language cannot
+        match a query's keywords, which is worse than the role words this was fixing.
+        The names now sit inside the Rules and the language requirement closes the
+        prompt.
+        """
+        prompt = build_scene_facts_prompt("Аллина Волкова", "Wanteda")
+
+        names_at = prompt.index("Аллина Волкова")
+        language_at = prompt.rindex("SAME LANGUAGE")
+        self.assertGreater(
+            language_at,
+            names_at,
+            "the language requirement must come after the names, or the model follows "
+            "the English instruction it read last",
+        )
+        self.assertTrue(prompt.rstrip().endswith("whatever language these instructions are written in."))
+
+    def test_the_names_are_rules_not_a_trailing_block(self) -> None:
+        prompt = build_scene_facts_prompt("Аллина Волкова", "Wanteda")
+        line = next(l for l in prompt.splitlines() if "The participants are" in l)
+
+        self.assertTrue(line.lstrip().startswith("- "), "must read as one more rule")
+
     def test_one_known_name_is_still_worth_sending(self) -> None:
         prompt = build_scene_facts_prompt("Аллина Волкова", None)
 

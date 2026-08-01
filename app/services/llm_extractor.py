@@ -108,24 +108,30 @@ Rules:
 - keywords: specific nouns, names, places, concepts. entities: character/person names.
 - If nothing in the scene is worth remembering, return an empty "facts" list."""
 
-# Appended to the prompt when the caller knows who the participants are.
+# Extra rules appended to the Rules list when the caller knows who the participants are.
 #
-# Without it the model has only roles to go on and writes "Девушка положила телефон" /
+# Without them the model has only roles to go on and writes "Девушка положила телефон" /
 # "Пользователь выразил радость", putting `девушка` and `пользователь` into `entities`
 # as well. Those phrasings are permanent once stored, and a query never contains them,
 # so the entity signal is spent on words that match nothing. Measured on a fresh chat:
 # 64% of memories opened with a generic noun and the character's name appeared in
 # entities zero times, against 0-10% generic in chats where the name had come up in
 # dialogue early.
+#
+# The language rule is restated here on purpose. The first live run put these lines in a
+# separate emphatic block after the Rules, and the model - reading English instructions
+# last - wrote all eight facts of a Russian scene in English, entities included. Facts
+# stored in the wrong language cannot match a query's keywords, which is worse than the
+# role words this was meant to fix. Keeping the block inside the Rules list and ending on
+# the language requirement is what stopped it.
 SCENE_FACTS_NAMES_TEMPLATE = """
-
-The participants in this scene are:
-- assistant / the character: {character_name}
-- user: {user_name}
-
-Always refer to them by these names in "content", "keywords" and "entities". Never
-write "девушка", "пользователь", "the girl", "the user" or any other role word where
-a name belongs, even if the scene itself does not say the name aloud."""
+- The participants are: the character is {character_name}, the user is {user_name}.
+  Name them in "content", "keywords" and "entities" instead of writing a role word
+  ("девушка", "пользователь", "the girl", "the user"), even when the scene does not
+  say the name aloud. Use the form of the name that fits the language of the fact.
+- Repeating the first rule because it outranks the one above: each fact's "content"
+  MUST be in the SAME LANGUAGE as the scene. A Russian scene produces Russian facts,
+  whatever language these instructions are written in."""
 
 
 def build_scene_facts_prompt(
