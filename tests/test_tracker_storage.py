@@ -413,5 +413,78 @@ class TrackerIsolationTests(TrackerTestCase):
         self.assertFalse(after.archived)
 
 
+class TrackerTypeValidationTests(TrackerTestCase):
+    """An unknown tracker_type used to be written and only fail on the way back out.
+
+    upsert_tracker forces metadata.tracker_type through model_copy(), which does not
+    validate, so the bad value reached SQLite intact. MemoryMetadata then rejected it on
+    read, and since _row_to_memory_item validates every row, one poisoned write broke
+    every subsequent read of that whole chat - list_memories included - with a pydantic
+    error naming the field but neither the row nor the writer.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        init_schema()
+
+    def test_unknown_tracker_type_is_rejected_at_the_write(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            upsert_tracker(
+                chat_id=CHAT_ID,
+                character_id=CHARACTER_ID,
+                tracker_type="relationships",  # plural: the real typo that found this
+                content="- something",
+                metadata=MemoryMetadata(),
+            )
+
+        message = str(caught.exception)
+        self.assertIn("relationships", message)
+        self.assertIn("relationship", message)
+
+    def test_a_rejected_write_leaves_the_chat_readable(self) -> None:
+        self._make_memory("She likes espresso.")
+        with self.assertRaises(ValueError):
+            upsert_tracker(
+                chat_id=CHAT_ID,
+                character_id=CHARACTER_ID,
+                tracker_type="not_a_tracker",
+                content="- something",
+                metadata=MemoryMetadata(),
+            )
+
+        # The whole point: the failed write must not have landed, so reads still work.
+        listing = list_memories(chat_id=CHAT_ID, character_id=CHARACTER_ID, include_trackers=True)
+        self.assertEqual([i.content for i in listing.items], ["She likes espresso."])
+        self.assertEqual(list_trackers(CHAT_ID, CHARACTER_ID), [])
+
+    def test_every_declared_tracker_type_is_accepted(self) -> None:
+        from app.services.tracker_prompts import TRACKER_TYPES
+
+        for tracker_type in TRACKER_TYPES:
+            with self.subTest(tracker_type=tracker_type):
+                item, created = upsert_tracker(
+                    chat_id=CHAT_ID,
+                    character_id=CHARACTER_ID,
+                    tracker_type=tracker_type,
+                    content=f"- {tracker_type} content",
+                    metadata=MemoryMetadata(),
+                )
+                self.assertTrue(created)
+                self.assertEqual(item.metadata.tracker_type, tracker_type)
+
+        self.assertEqual(len(list_trackers(CHAT_ID, CHARACTER_ID)), len(TRACKER_TYPES))
+
+    def test_the_runtime_list_cannot_drift_from_the_schema(self) -> None:
+        """TRACKER_TYPES and TrackerType were two independent literals saying the same
+        thing. A value added to one and not the other would pass the service layer and
+        then fail every read of the chat it was written to."""
+        from typing import get_args
+
+        from app.schemas import TrackerType
+        from app.services.tracker_prompts import TRACKER_TYPES
+
+        self.assertEqual(tuple(TRACKER_TYPES), get_args(TrackerType))
+
+
 if __name__ == "__main__":
     unittest.main()

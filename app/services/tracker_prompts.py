@@ -12,6 +12,9 @@ narrative flow.
 
 import re
 from datetime import date, time
+from typing import get_args
+
+from app.schemas import TrackerType
 
 # Shared across all four prompts. Without it every update grows the lists by a few
 # items forever, and the character budget (see the extension's maxTrackerChars) starts
@@ -21,7 +24,12 @@ GUARDRAIL = (
     "сначала проверь, можно ли слить с уже существующим пунктом."
 )
 
-TRACKER_TYPES = ("timeline", "relationship", "npc_whoswho", "character_pov_notes")
+# Derived from the schema rather than restated, so the runtime list and the type that
+# validates stored rows cannot drift apart. They were two independent literals saying the
+# same thing; a value added to one and not the other would pass the service and then fail
+# every read of that chat, because MemoryMetadata rejects it on the way back out.
+# get_args preserves the declaration order, which is also the UI's display order.
+TRACKER_TYPES = get_args(TrackerType)
 
 # The relationship document's size limits. Stated in the prompt AND enforced in
 # _clamp_relationship - the prompt keeps the model from getting close, the clamp

@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import get_args
 
 from app.db import get_connection
 from app.schemas import (
@@ -9,6 +10,7 @@ from app.schemas import (
     MemoryItem,
     MemoryMetadata,
     PinMemoryRequest,
+    TrackerType,
     UpdateMemoryRequest,
 )
 from app.services.text_utils import get_utc_now, normalize_content as _normalize_content
@@ -686,7 +688,20 @@ def upsert_tracker(
 
     metadata.tracker_type is forced to match the tracker_type argument, so the row can't
     disagree with the unique index that keys on it.
+
+    Raises ValueError on an unknown tracker_type. The forcing above goes through
+    model_copy(), which does not validate, so an unknown value used to be written happily
+    and only blow up on the way back out - MemoryMetadata rejects it, and _row_to_memory_item
+    raises for that row. One bad write therefore poisoned every subsequent read of the
+    whole chat, including list_memories, with a pydantic error that named the field but
+    not the row or the writer. Failing at the write keeps the blast radius at one call.
     """
+    allowed = get_args(TrackerType)
+    if tracker_type not in allowed:
+        raise ValueError(
+            f"unknown tracker_type {tracker_type!r}; expected one of {', '.join(allowed)}"
+        )
+
     metadata = metadata.model_copy(update={"tracker_type": tracker_type})
     now = get_utc_now()
     existing = get_tracker(chat_id, character_id, tracker_type)
