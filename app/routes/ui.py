@@ -495,6 +495,83 @@ RESET_CACHE_PAGE = """<!DOCTYPE html>
 </script></body></html>"""
 
 
+DIAG_PAGE = """<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>memoryst — диагностика стилей</title>
+<link rel="stylesheet" href="/static/styles.css?v=__V__">
+<style>
+ body{font:16px/1.5 system-ui,-apple-system,Roboto,sans-serif;margin:0;padding:20px;background:#fff}
+ table{border-collapse:collapse;width:100%;font-size:14px;margin-top:12px}
+ td{border-bottom:1px solid #ddd;padding:8px 6px;vertical-align:top}
+ td:first-child{color:#555;width:46%}
+ b.ok{color:#0B6E75} b.bad{color:#B3261E}
+ a.button{display:block;min-height:44px;line-height:44px;text-align:center;
+   margin-top:20px;background:#0B6E75;color:#fff;text-decoration:none;border-radius:8px}
+</style></head><body>
+<h1 style="font-size:20px;margin:0">Что дошло до браузера</h1>
+<table id="t"><tbody></tbody></table>
+<a class="button" href="/ui">К интерфейсу</a>
+<div id="probe" class="memory-card layer-stable" style="position:absolute;left:-9999px">
+  <div class="actions-cell"><form><button type="button">x</button></form></div>
+</div>
+<script>
+(async () => {
+  const tb = document.querySelector('#t tbody');
+  const row = (k, v, ok) => {
+    const tr = document.createElement('tr');
+    const a = document.createElement('td'); a.textContent = k;
+    const b = document.createElement('td');
+    const strong = document.createElement('b');
+    if (ok !== undefined) strong.className = ok ? 'ok' : 'bad';
+    strong.textContent = v; b.appendChild(strong); tr.append(a, b); tb.appendChild(tr);
+  };
+
+  const link = document.querySelector('link[rel=stylesheet]');
+  row('адрес стилей в DOM', link ? link.getAttribute('href') : 'нет');
+  row('страницу отдаёт service worker', navigator.serviceWorker && navigator.serviceWorker.controller ? 'да' : 'нет',
+      !(navigator.serviceWorker && navigator.serviceWorker.controller));
+
+  try {
+    const r = await fetch(link.getAttribute('href'), { cache: 'no-store' });
+    const text = await r.text();
+    row('CSS: код ответа', String(r.status), r.status === 200);
+    row('CSS: размер', text.length + ' символов');
+    row('CSS: есть новый акцент', text.includes('#0B6E75') ? 'да' : 'НЕТ', text.includes('#0B6E75'));
+    row('CSS: есть 44px', text.includes('min-height: 44px') ? 'да' : 'НЕТ', text.includes('min-height: 44px'));
+  } catch (e) { row('CSS: загрузка', 'ошибка ' + e.message, false); }
+
+  const probe = document.getElementById('probe');
+  const btn = probe.querySelector('button');
+  const h = getComputedStyle(btn).minHeight;
+  row('применилось: высота кнопки', h, h === '44px');
+  const stripe = getComputedStyle(probe, '::before').backgroundColor;
+  row('применилось: полоса слоя', stripe || '(нет)', /rgb/.test(stripe || ''));
+  const body = getComputedStyle(document.body).fontFamily;
+  row('шрифт body', body.slice(0, 40));
+})();
+</script></body></html>"""
+
+
+@router.get("/ui/diag")
+def ui_diag() -> Any:
+    """Report what stylesheet the device actually received and applied.
+
+    Reachability and correctness on the server were both established, and the
+    page still looked unchanged - which leaves only what happens between the two,
+    and a phone has no console to inspect it with. This fetches the stylesheet
+    the page is really linking, checks it for markers of the current build, and
+    reads getComputedStyle on a probe element so "delivered" and "applied" are
+    answered separately.
+    """
+    from fastapi.responses import HTMLResponse
+
+    return HTMLResponse(
+        DIAG_PAGE.replace("__V__", get_asset_version()),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/ui/reset-cache")
 def ui_reset_cache() -> Any:
     """One-tap escape hatch for a stale service worker.

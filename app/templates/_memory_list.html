@@ -69,20 +69,6 @@
                                 {% endif %}
                             </div>
                         </div>
-                        <div class="actions-cell">
-                            <form method="POST" action="/ui/{{ item["id"] }}/pin" class="form-inline">
-                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
-                                <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
-                            </form>
-                            <form method="POST" action="/ui/{{ item["id"] }}/archive" class="form-inline">
-                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
-                                <button type="submit">{% if item["archived"] %}Unarchive{% else %}Archive{% endif %}</button>
-                            </form>
-                            <form method="POST" action="/ui/{{ item["id"] }}/delete" class="form-inline" onsubmit="return confirm('Delete this memory?');">
-                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
-                                <button type="submit" class="danger">Delete</button>
-                            </form>
-                        </div>
                     </div>
 
                     <div class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</div>
@@ -249,6 +235,21 @@
                             <button type="submit">Save Changes</button>
                         </form>
                     </details>
+                
+<div class="actions-cell">
+                            <form method="POST" action="/ui/{{ item["id"] }}/pin" class="form-inline">
+                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                                <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
+                            </form>
+                            <form method="POST" action="/ui/{{ item["id"] }}/archive" class="form-inline">
+                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                                <button type="submit">{% if item["archived"] %}Unarchive{% else %}Archive{% endif %}</button>
+                            </form>
+                            <form method="POST" action="/ui/{{ item["id"] }}/delete" class="form-inline" onsubmit="return confirm('Delete this memory?');">
+                                <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+                                <button type="submit" class="danger">Delete</button>
+                            </form>
+                    </div>
                 </article>
                 {% endfor %}
             </div>
