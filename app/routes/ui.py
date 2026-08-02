@@ -25,6 +25,7 @@ from app.schemas import (
     UpdateMemoryRequest,
 )
 from app.services.conflict_resolver import SUPERSEDED_REVIEW_STATUS
+from app.version import get_asset_version
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
 from app.services.summary_service import CONSOLIDATED_REVIEW_STATUS
@@ -403,6 +404,7 @@ def _render_memories_page(
         request,
         "memories.html",
         {
+            "asset_version": get_asset_version(),
             "memories": memories.model_dump(),
             "memory_cards": memory_cards,
             "chat_groups": chat_groups,

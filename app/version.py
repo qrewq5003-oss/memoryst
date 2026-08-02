@@ -17,6 +17,7 @@ extension hard-codes the same number and compares. `git_commit` and
 shown in the UI - they are not what drives the compatibility warning.
 """
 
+import hashlib
 from pathlib import Path
 
 # Human-facing release version of the backend service. Independent of the
@@ -103,3 +104,29 @@ def get_version_info() -> dict:
         "protocol_version": PROTOCOL_VERSION,
         "git_commit": _read_git_commit(),
     }
+
+
+def get_asset_version() -> str:
+    """Short fingerprint of the static assets, for cache-busting their URLs.
+
+    The stylesheet is fetched through a service worker whose static strategy was
+    cache-first with no revalidation, so a stylesheet already in the cache was
+    served from it for good: a CSS change never reached the phone at all.
+    Putting a fingerprint in the URL makes an edited file a different resource,
+    which no cache can already hold.
+
+    Hashed from content, not from size and mtime. mtime changes when the file is
+    merely touched or checked out, which would bust the cache for an identical
+    file; content does not. The file is ~19KB, so hashing it per render is not
+    measurable against rendering the page around it.
+    """
+    digest = hashlib.sha1()
+    static_dir = _REPO_ROOT / "app" / "static"
+    for name in ("styles.css",):
+        try:
+            digest.update((static_dir / name).read_bytes())
+        except OSError:
+            # A missing asset must not take the page down - the URL just falls
+            # back to a stable fingerprint for "nothing there".
+            digest.update(b"")
+    return digest.hexdigest()[:8]
