@@ -5,7 +5,7 @@ from fastapi import Request
 
 from app.routes.ui import ui_memories_page
 from app.schemas import ListMemoriesResponse, MemoryItem, MemoryMetadata
-from tests.conftest_helpers import build_group_summaries
+from tests.conftest_helpers import build_group_summaries, render_with_details
 
 
 def _request(path: str = "/ui") -> Request:
@@ -89,7 +89,7 @@ class UiMemoryListUxTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request())
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), memories.items)
         self.assertIn("All Chats", body)
         self.assertIn("Chat New", body)
         self.assertIn("Chat Old", body)
@@ -137,7 +137,7 @@ class UiMemoryListUxTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request(), search="rome")
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), scoped_memories.items)
         self.assertIn("Alice planned the Rome museum trip.", body)
         self.assertNotIn("Bob fixed the Paris calendar.", body)
         self.assertIn('name="search" value="rome"', body)
@@ -176,7 +176,7 @@ class UiMemoryListUxTests(unittest.TestCase):
                 limit=25,
             )
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), memories.items)
         self.assertIn('name="selected_chat_id" value="chat-1"', body)
         self.assertIn('name="selected_character_id" value="char-1"', body)
         self.assertIn('name="search" value="elena"', body)
@@ -195,7 +195,7 @@ class UiMemoryListUxTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request())
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), empty.items)
         self.assertIn('href="/ui"', body)
         self.assertIn('name="search" value=""', body)
 
@@ -225,7 +225,7 @@ class UiMemoryListUxTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request())
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), memories.items)
         self.assertIn("Inspect Details", body)
         self.assertIn("Pinned", body)
         self.assertIn("Archived", body)

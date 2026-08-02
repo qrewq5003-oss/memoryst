@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Memory {{ item["id"][:8] }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Memory</h1>
+        <p class="page-subtitle"><code class="memory-id">{{ item["id"] }}</code></p>
+    </div>
+</div>
+
+<section>
+    <p class="memory-preview">{{ item["content"] }}</p>
+    <div class="memory-meta">
+        <span class="chip chip-layer">{% if item["type"] == 'summary' or item["metadata"]["is_summary"] %}summary{% else %}{{ item["layer"] }}{% endif %}</span>
+        <span class="chip">{{ item["type"] }}</span>
+        <span class="chip chip-num">{{ "%.2f"|format(item["importance"]) }}</span>
+        <span class="chip chip-num">{{ item["access_count"] }}&times;</span>
+    </div>
+</section>
+
+<section>
+    {% include "_memory_details.html" %}
+</section>
+
+<p><a class="button secondary" href="/ui">Back to memories</a></p>
+{% endblock %}

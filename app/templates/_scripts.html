@@ -383,4 +383,32 @@ document.querySelectorAll('.tracker-update-btn').forEach(btn => {
         }
     });
 });
+
+// Inspect Details is fetched the first time a card is expanded. A collapsed
+// <details> still ships everything inside it, and across the list that was 202KB
+// of a 366KB page - 55% of the bytes, none of them looked at until opened.
+// Without JavaScript the placeholder is a link to the same content on its own
+// page, so expanding a card keeps working either way.
+document.addEventListener('toggle', async (event) => {
+    const details = event.target;
+    if (!(details instanceof HTMLDetailsElement)) return;
+    if (!details.open || !details.dataset.memoryId || details.dataset.loaded) return;
+
+    const body = details.querySelector('.details-body');
+    if (!body) return;
+
+    details.dataset.loaded = 'pending';
+    body.textContent = 'Загружаю…';
+    try {
+        const response = await fetch(`/ui/memory/${encodeURIComponent(details.dataset.memoryId)}/fragment`);
+        if (!response.ok) throw new Error(String(response.status));
+        body.innerHTML = await response.text();
+        details.dataset.loaded = 'done';
+    } catch (error) {
+        // Leave the fallback link in place: a failed fetch must not strand the
+        // user with an empty disclosure.
+        details.dataset.loaded = '';
+        body.innerHTML = `<a href="/ui/memory/${encodeURIComponent(details.dataset.memoryId)}">Открыть подробности</a>`;
+    }
+}, true);
 </script>

@@ -29,3 +29,41 @@ def build_group_summaries(memories: ListMemoriesResponse) -> list[dict[str, obje
         if item.updated_at > str(g["last_updated"]):
             g["last_updated"] = item.updated_at
     return sorted(groups.values(), key=lambda g: str(g["last_updated"]), reverse=True)
+
+
+def render_with_details(body: str, memories: list) -> str:
+    """List-page HTML plus every card's Inspect Details fragment.
+
+    Inspect Details is fetched when a card is expanded rather than shipped with
+    the list - a collapsed <details> still sends everything inside it, and across
+    the list that was 202KB of a 366KB page. The content is still reachable, so
+    tests that assert "this data reaches the UI" stay meaningful; they just have
+    to look where it now lives.
+    """
+    from unittest.mock import patch
+
+    from app.routes.ui import ui_memory_details_fragment
+
+    parts = [body]
+    for memory in memories:
+        with patch("app.routes.ui.get_memory_by_id", return_value=memory):
+            fragment = ui_memory_details_fragment(_details_request(), memory.id)
+        parts.append(fragment.body.decode())
+    return "\n".join(parts)
+
+
+def _details_request():
+    from fastapi import Request
+
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/ui/memory/x/fragment",
+            "headers": [],
+            "query_string": b"",
+            "server": ("testserver", 80),
+            "client": ("testclient", 123),
+            "scheme": "http",
+        }
+    )

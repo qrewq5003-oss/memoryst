@@ -5,7 +5,7 @@ from fastapi import Request
 
 from app.routes.ui import ui_consolidate_memory, ui_memories_page
 from app.schemas import ConsolidationHistoryEntry, ListMemoriesResponse, MemoryItem, MemoryMetadata
-from tests.conftest_helpers import build_group_summaries
+from tests.conftest_helpers import build_group_summaries, render_with_details
 
 
 def _request(path: str) -> Request:
@@ -95,7 +95,7 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         self.assertEqual(len(payload.metadata.consolidation_history), 1)
         self.assertEqual(payload.metadata.consolidation_history[0].action, "mark_consolidated_archive")
         self.assertEqual(payload.metadata.consolidation_history[0].note, "merged into stable fact")
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), re_render_memories.items)
         self.assertIn("Candidate archived for consolidation review.", body)
         self.assertIn("Archived", body)
         self.assertIn("merged into stable fact", body)
@@ -145,7 +145,7 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         self.assertEqual(len(payload.metadata.consolidation_history), 1)
         self.assertEqual(payload.metadata.consolidation_history[0].action, "link_to_related_memory")
         self.assertEqual(payload.metadata.consolidation_history[0].related_memory_id, "memory-2")
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), re_render_memories.items)
         self.assertIn("Candidate linked to related memory.", body)
         self.assertIn("memory-2", body)
         self.assertIn("same topic as profile memory", body)
@@ -216,7 +216,7 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         self.assertEqual(len(payload.metadata.consolidation_history), 2)
         self.assertEqual(payload.metadata.consolidation_history[0].action, "link_to_related_memory")
         self.assertEqual(payload.metadata.consolidation_history[1].action, "mark_reviewed_keep")
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), re_render_memories.items)
         self.assertIn("Consolidation History", body)
         self.assertIn("link_to_related_memory", body)
         self.assertIn("mark_reviewed_keep", body)
@@ -255,7 +255,7 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request("/ui"))
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), render_memories.items)
         self.assertIn("Consolidation History", body)
         self.assertNotIn("Showing last 3 of", body)
         self.assertNotIn("Show full history", body)
@@ -289,7 +289,7 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request("/ui"))
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), render_memories.items)
         self.assertIn("Showing last 3 of 5", body)
         self.assertIn("Show full history", body)
         self.assertIn("action_0", body)
@@ -322,7 +322,7 @@ class UiManualConsolidationWorkflowTests(unittest.TestCase):
         ):
             response = ui_memories_page(_request("/ui"))
 
-        body = response.body.decode()
+        body = render_with_details(response.body.decode(), render_memories.items)
         self.assertIn("keep for manual context", body)
         self.assertIn("reviewed_keep", body)
         self.assertIn("Consolidation History", body)

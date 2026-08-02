@@ -572,6 +572,60 @@ def ui_diag() -> Any:
     )
 
 
+def _memory_card_context(memory_id: str) -> dict[str, Any] | None:
+    """Everything a details fragment needs for one memory, or None if it is gone."""
+    memory = get_memory_by_id(memory_id)
+    if memory is None:
+        return None
+    card = build_memory_card(memory)
+    candidate_map, _ = build_consolidation_data([memory])
+    card["consolidation_candidates"] = candidate_map.get(memory.id, [])
+    card["is_consolidation_candidate"] = bool(card["consolidation_candidates"])
+    return card
+
+
+@router.get("/ui/memory/{memory_id}/fragment")
+def ui_memory_details_fragment(request: Request, memory_id: str) -> Any:
+    """The Inspect Details body for one memory, fetched when a card is expanded.
+
+    A collapsed <details> still ships everything inside it, and across the list
+    that was 202KB of a 366KB page - 55% of the bytes, invisible until opened.
+    """
+    card = _memory_card_context(memory_id)
+    if card is None:
+        from fastapi.responses import HTMLResponse
+
+        return HTMLResponse('<p class="empty-value">Memory not found.</p>', status_code=404)
+
+    return templates.TemplateResponse(
+        request,
+        "_memory_details.html",
+        {"item": card, "filters": {"redirect_query": ""}},
+    )
+
+
+@router.get("/ui/memory/{memory_id}")
+def ui_memory_details_page(request: Request, memory_id: str) -> Any:
+    """Standalone page for one memory's details.
+
+    The fallback the disclosure links to, so expanding a card still works with
+    JavaScript off - the rest of this UI does.
+    """
+    card = _memory_card_context(memory_id)
+    if card is None:
+        return RedirectResponse(url="/ui", status_code=303)
+
+    return templates.TemplateResponse(
+        request,
+        "memory_detail.html",
+        {
+            "asset_version": get_asset_version(),
+            "item": card,
+            "filters": {"redirect_query": ""},
+        },
+    )
+
+
 @router.get("/ui/reset-cache")
 def ui_reset_cache() -> Any:
     """One-tap escape hatch for a stale service worker.

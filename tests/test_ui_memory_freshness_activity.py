@@ -7,7 +7,7 @@ from fastapi import Request
 from app.routes.ui import ui_memories_page
 from app.ui_helpers.classifiers import get_activity_bucket, get_freshness_bucket
 from app.schemas import ListMemoriesResponse, MemoryItem, MemoryMetadata
-from tests.conftest_helpers import build_group_summaries
+from tests.conftest_helpers import build_group_summaries, render_with_details
 
 
 def _request(path: str = "/ui") -> Request:
@@ -131,8 +131,8 @@ class UiMemoryFreshnessActivityTests(unittest.TestCase):
             patch("app.ui_helpers.classifiers.utc_now", return_value=self.now),
         ):
             response = ui_memories_page(_request(), sort="access_count_desc")
+            body = render_with_details(response.body.decode(), memories.items)
 
-        body = response.body.decode()
         self.assertIn("badge-freshness-fresh", body)
         self.assertIn("badge-activity-active", body)
         self.assertIn("Recently accessed 1d ago", body)
