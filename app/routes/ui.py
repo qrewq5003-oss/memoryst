@@ -399,6 +399,9 @@ def _render_memories_page(
         ),
         "redirect_query": redirect_query,
         "clear_filters_url": clear_filters_url,
+        # Base query for the filter chips: they have to stay inside the current
+        # scope, or tapping "Stable" would silently jump to every chat.
+        "scope_query": clear_filters_query,
     }
 
     response = templates.TemplateResponse(

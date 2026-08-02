@@ -1,5 +1,29 @@
         <section class="filters">
-            <h2>Filters</h2>
+            {#- A sticky bar with the scope and the counts, then the filters people
+                actually reach for as a scrolling row of links. The full form is still
+                here, one tap away, but it no longer occupies the first screen: eleven
+                selects stacked above the list meant the memories started below the
+                fold on a phone.
+
+                Chips are links, not scripted controls, so this keeps working with
+                JavaScript off - as the rest of this page does. -#}
+            <div class="filter-bar">
+                <div class="filter-bar-scope">
+                    <span class="filter-bar-title">{{ scope_title }}</span>
+                    <span class="filter-bar-count">{{ memories["total"] if memories["total"] else 0 }}</span>
+                </div>
+                <div class="chiprow">
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}" {% if not filters["layer"] and not filters["pinned"] and not filters["archived"] %}aria-current="true"{% endif %}>Все</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;layer=stable" {% if filters["layer"] == 'stable' %}aria-current="true"{% endif %}>Stable</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;layer=episodic" {% if filters["layer"] == 'episodic' %}aria-current="true"{% endif %}>Episodic</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;pinned=true" {% if filters["pinned"] == 'true' %}aria-current="true"{% endif %}>Закреплённые</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;freshness=stale" {% if filters["freshness"] == 'stale' %}aria-current="true"{% endif %}>Устаревшие</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;archived=true" {% if filters["archived"] == 'true' %}aria-current="true"{% endif %}>Архив</a>
+                </div>
+            </div>
+
+            <details class="filter-details">
+                <summary>Все фильтры</summary>
             <form method="GET" action="/ui" class="filter-form">
                 {% if filters["view"] == "all" %}
                 <input type="hidden" name="view" value="all">
@@ -98,4 +122,5 @@
                     <button type="submit">Apply Filters</button>
                 </div>
             </form>
+            </details>
         </section>

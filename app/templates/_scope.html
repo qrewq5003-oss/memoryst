@@ -1,31 +1,31 @@
-        <section class="scope-summary">
-            <div>
-                <div class="scope-title-row">
-                    <h2>{{ scope_title }}</h2>
-                    {% if not scope_is_all_chats %}
-                    <span class="scope-pill scope-pill-header">Current scope</span>
-                    {% endif %}
-                </div>
-                {% if scope_subtitle %}
-                <div class="scope-subtitle">{{ scope_subtitle }}</div>
-                {% endif %}
-                {% if scope_meta %}
-                <div class="scope-meta-list">
-                    {% for item in scope_meta %}
-                    <span class="scope-meta-item">{{ item["label"] }}: <code>{{ item["value"] }}</code></span>
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </div>
-            <div class="scope-actions">
-                <a href="{{ filters["clear_filters_url"] }}" class="button secondary">Clear Filters</a>
-                {% if not scope_is_all_chats and filters["selected_chat_id"] %}
-                <form method="POST" action="/ui/delete-chat" class="form-inline" onsubmit="return confirm('Delete this chat\'s memories, trackers and raw message history? This cannot be undone.');">
-                    <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] }}">
-                    <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or '' }}">
-                    <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
-                    <button type="submit" class="button button-danger-outline">Delete Chat</button>
-                </form>
-                {% endif %}
-            </div>
-        </section>
+{#- The scope title and count moved into the sticky filter bar, so this section
+    keeps only what is not shown elsewhere: the scope's identifiers and the two
+    destructive-ish actions. It sits below the list rather than above it - "Delete
+    Chat" is not something to put under a thumb that is scrolling. -#}
+<section class="scope-summary scope-summary-footer">
+    {% if scope_subtitle or scope_meta %}
+    <div>
+        {% if scope_subtitle %}
+        <div class="scope-subtitle">{{ scope_subtitle }}</div>
+        {% endif %}
+        {% if scope_meta %}
+        <div class="scope-meta-list">
+            {% for item in scope_meta %}
+            <span class="scope-meta-item">{{ item["label"] }}: <code>{{ item["value"] }}</code></span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    <div class="scope-actions">
+        <a href="{{ filters["clear_filters_url"] }}" class="button secondary">Clear Filters</a>
+        {% if not scope_is_all_chats and filters["selected_chat_id"] %}
+        <form method="POST" action="/ui/delete-chat" class="form-inline" onsubmit="return confirm('Delete this chat\'s memories, trackers and raw message history? This cannot be undone.');">
+            <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] }}">
+            <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or '' }}">
+            <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+            <button type="submit" class="button button-danger-outline">Delete Chat</button>
+        </form>
+        {% endif %}
+    </div>
+</section>

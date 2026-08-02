@@ -1127,3 +1127,92 @@ summary {
     display: inline-flex;
     align-items: center;
 }
+
+/* === Filter bar ============================================================
+   Eleven selects used to sit above the list, so on a phone the memories began
+   below the fold. The bar keeps the scope, the count and the filters people
+   actually reach for; the full form is one tap away behind a disclosure.
+   Chips are links rather than scripted controls, so this works with scripts off
+   like the rest of the page.
+   ========================================================================== */
+.filters {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+}
+
+.filter-bar-scope {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.filter-bar-title {
+    font-weight: 650;
+    font-size: var(--f2);
+}
+
+.filter-bar-count {
+    font-family: ui-monospace, "Roboto Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--f1);
+    color: var(--ink-3);
+}
+
+/* Horizontal scroll rather than wrapping: a wrapping row of six chips becomes
+   three lines on a narrow screen and pushes the list further down, which is the
+   problem this replaces. */
+.chiprow {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+.chiprow::-webkit-scrollbar {
+    display: none;
+}
+
+.chip-filter {
+    flex: 0 0 auto;
+    min-height: 36px;
+    text-decoration: none;
+    color: var(--ink-2);
+}
+
+.chip-filter[aria-current="true"] {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.filter-details {
+    margin-top: 10px;
+}
+
+.filter-details > summary {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    font-size: var(--f1);
+    color: var(--ink-3);
+    cursor: pointer;
+}
+
+/* Scope actions moved below the list: "Delete Chat" does not belong under a
+   thumb that is scrolling. */
+.scope-summary-footer {
+    margin-top: 16px;
+}
+
+.scope-summary-footer .button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}
