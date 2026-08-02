@@ -585,7 +585,7 @@ def _memory_card_context(memory_id: str) -> dict[str, Any] | None:
 
 
 @router.get("/ui/memory/{memory_id}/fragment")
-def ui_memory_details_fragment(request: Request, memory_id: str) -> Any:
+def ui_memory_details_fragment(request: Request, memory_id: str, part: str = "inspect") -> Any:
     """The Inspect Details body for one memory, fetched when a card is expanded.
 
     A collapsed <details> still ships everything inside it, and across the list
@@ -597,9 +597,10 @@ def ui_memory_details_fragment(request: Request, memory_id: str) -> Any:
 
         return HTMLResponse('<p class="empty-value">Memory not found.</p>', status_code=404)
 
+    template = "_memory_consolidation.html" if part == "consolidation" else "_memory_details.html"
     return templates.TemplateResponse(
         request,
-        "_memory_details.html",
+        template,
         {"item": card, "filters": {"redirect_query": ""}},
     )
 

@@ -1,0 +1,34 @@
+{#- Consolidation signals and the triage form, rendered on demand.
+    Same reason as the details body: a collapsed <details> ships everything
+    inside it. The summary stays in the list, because "this card is a
+    consolidation candidate" is the signal - the form behind it is not. -#}
+    <div class="feature-summary">
+        {% for candidate in item["consolidation_candidates"] %}
+        <div>
+            <span class="metric-chip">{{ candidate["type"] }}</span>
+            {{ candidate["reason"] }}
+            {% if candidate.get("related_id") %}
+            <code>{{ candidate["related_id"] }}</code>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    <form method="POST" action="/ui/{{ item["id"] }}/consolidate" class="consolidation-form">
+        <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
+        <div class="form-row">
+            <label>Action:
+                <select name="action">
+                    <option value="mark_consolidated_archive">Archive Candidate</option>
+                    <option value="mark_reviewed_keep">Reviewed Keep</option>
+                    <option value="link_to_related_memory">Link To Related</option>
+                </select>
+            </label>
+            <label>Related Memory ID:
+                <input type="text" name="related_memory_id" value="{{ item["metadata"]["related_memory_id"] or '' }}" placeholder="optional">
+            </label>
+        </div>
+        <label>Note:
+            <input type="text" name="note" value="{{ item["metadata"]["consolidation_note"] or '' }}" placeholder="optional consolidation note">
+        </label>
+        <button type="submit">Save Consolidation Action</button>
+    </form>

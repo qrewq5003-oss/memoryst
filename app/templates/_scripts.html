@@ -400,7 +400,8 @@ document.addEventListener('toggle', async (event) => {
     details.dataset.loaded = 'pending';
     body.textContent = 'Загружаю…';
     try {
-        const response = await fetch(`/ui/memory/${encodeURIComponent(details.dataset.memoryId)}/fragment`);
+        const part = details.dataset.part || 'inspect';
+        const response = await fetch(`/ui/memory/${encodeURIComponent(details.dataset.memoryId)}/fragment?part=${part}`);
         if (!response.ok) throw new Error(String(response.status));
         body.innerHTML = await response.text();
         details.dataset.loaded = 'done';

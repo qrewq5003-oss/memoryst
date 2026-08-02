@@ -18,6 +18,13 @@
     </div>
 </section>
 
+{% if item["consolidation_candidates"] %}
+<section>
+    <h2>Consolidation Signals</h2>
+    {% include "_memory_consolidation.html" %}
+</section>
+{% endif %}
+
 <section>
     {% include "_memory_details.html" %}
 </section>
