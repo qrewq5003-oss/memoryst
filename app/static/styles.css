@@ -10,47 +10,47 @@
    ========================================================================== */
 :root {
     /* text */
-    --ink:        #1f2937;   /* primary */
-    --ink-2:      #4b5563;   /* secondary - absorbed #374151, #445164, #526072 */
-    --ink-3:      #6b7280;   /* muted, and the secondary button fill */
+    --ink:        #0F1922;   /* primary */
+    --ink-2:      #47596A;   /* secondary - absorbed #374151, #445164, #526072 */
+    --ink-3:      #627485;   /* muted, and the secondary button fill */
 
     /* surfaces and rules */
-    --surface:    #ffffff;
-    --surface-2:  #f8f9fa;   /* absorbed #f8fafc */
-    --line:       #e5e7eb;   /* absorbed #ddd, #ccc, #e0e3e7, #dde3eb */
-    --line-soft:  #eef2f7;
+    --surface:    #FFFFFF;
+    --surface-2:  #F6F8FA;   /* absorbed #f8fafc */
+    --line:       #D6DEE5;   /* absorbed #ddd, #ccc, #e0e3e7, #dde3eb */
+    --line-soft:  #E7EDF2;
 
     /* page ground */
-    --paper-from: #eef4f7;
-    --paper-to:   #f7f3ea;
+    --paper-from: #EEF2F5;
+    --paper-to:   #E8EFF2;
 
     /* accent */
-    --accent:        #007bff;
-    --accent-hover:  #0056b3;
-    --accent-strong: #1d4ed8;
-    --accent-bg:     #dbeafe;
+    --accent:        #0B6E75;
+    --accent-hover:  #095A60;
+    --accent-strong: #0B6E75;
+    --accent-bg:     #DDEFF0;
 
     /* sidebar */
-    --sidebar-from: #17324d;
-    --sidebar-to:   #0f2236;
-    --sidebar-ink:  #eff6ff;
+    --sidebar-from: #17324D;
+    --sidebar-to:   #0F2236;
+    --sidebar-ink:  #EAF2F7;
 
     /* semantic */
-    --ok:            #166534;  --ok-bg:      #dcfce7;
-    --warn:          #92400e;  --warn-bg:    #fef3c7;
-    --danger:        #991b1b;  --danger-bg:  #fee2e2;
-    --danger-solid:  #dc3545;  --danger-solid-hover: #c82333;
-    --info:          #075985;  --info-bg:    #e0f2fe;
-    --violet:        #5b21b6;  --violet-bg:  #ede9fe;
+    --ok:            #1B6B4A;  --ok-bg:      #DCF0E6;
+    --warn:          #97580A;  --warn-bg:    #F8EEDF;
+    --danger:        #B3261E;  --danger-bg:  #FBE9E7;
+    --danger-solid:  #B3261E;  --danger-solid-hover: #8F1D17;
+    --info:          #2C63C9;  --info-bg:    #E2EBFB;
+    --violet:        #6A55C4;  --violet-bg:  #EBE7F8;
 
     /* type scale - names now, sizes revisited with the palette */
-    --f1: 12px;  --f2: 13px;  --f3: 14px;  --f4: 15px;  --f5: 24px;
+    --f1: 13px;  --f2: 15px;  --f3: 17px;  --f4: 21px;  --f5: 27px;
 
 
     /* selected chat in the sidebar */
-    --selected-ink:    #10263d;
-    --selected-line:   #93c5fd;
-    --selected-marker: #2563eb;
+    --selected-ink:    #0F2236;
+    --selected-line:   #54C7CE;
+    --selected-marker: #0B6E75;
 
     /* tinted panels */
     --panel-info-bg:   #eef6ff;  --panel-info-line: #cfe0f5;
@@ -237,7 +237,7 @@ section {
     align-items: center;
     padding: 3px 9px;
     border-radius: 999px;
-    font-size: 11px;
+    font-size: var(--f1);
     font-weight: 700;
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -418,7 +418,7 @@ summary {
     padding: 16px 20px;
     border-radius: 14px;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-    font-size: 1.1em;
+    font-size: var(--f3);
     font-weight: 600;
     color: var(--ink);
     list-style: none;
@@ -430,7 +430,7 @@ summary {
 
 .dev-tools-panel > summary::before {
     content: "▶ ";
-    font-size: 0.75em;
+    font-size: var(--f1);
     color: var(--ink-2);
 }
 
@@ -552,13 +552,13 @@ summary {
 
 .tracker-meta {
     margin-top: 6px;
-    font-size: 0.85em;
+    font-size: var(--f1);
     opacity: 0.7;
 }
 
 .tracker-status {
     margin-top: 6px;
-    font-size: 0.9em;
+    font-size: var(--f1);
     min-height: 1.2em;
 }
 
