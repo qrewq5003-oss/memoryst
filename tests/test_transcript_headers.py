@@ -13,7 +13,11 @@ that location regardless of what was said there.
 """
 import unittest
 
-from app.services.text_utils import strip_transcript_header
+from app.services.text_utils import (
+    clean_memory_text,
+    strip_scene_scaffolding,
+    strip_transcript_header,
+)
 
 
 class MarkedHeaderTests(unittest.TestCase):
@@ -95,6 +99,80 @@ class ExtractionIntegrationTests(unittest.TestCase):
         for candidate in candidates:
             self.assertNotIn("🕰️", candidate.content)
             self.assertNotIn("Time", candidate.metadata.entities)
+
+
+
+class SceneScaffoldingTests(unittest.TestCase):
+    """Model scaffolding leaks into replies in three shapes, and they need different
+    treatment - which is why stripping tags alone does not work.
+
+    Ten stored memories were nothing but these. Several had the real prose sitting
+    *after* the block, so dropping such a row wholesale would have thrown the fact away
+    along with the scaffolding.
+    """
+
+    def test_a_rendered_widget_goes_contents_and_all(self) -> None:
+        """The markup AND its text are presentation - "> ACCESS GRANTED" is not a fact."""
+        text = (
+            '<!-- GFX_START --> <div style="background: #1a1a1a;"> > ACCESS GRANTED </div> '
+            "<!-- GFX_END --> Твоя ладонь ложится на её макушку."
+        )
+
+        self.assertEqual(strip_scene_scaffolding(text), "Твоя ладонь ложится на её макушку.")
+
+    def test_a_widget_truncated_before_its_end_marker_takes_the_rest(self) -> None:
+        text = '<!-- GFX_START --> <div style="x"> > SUBJECT: TIFFANY (PLIANT'
+
+        self.assertEqual(strip_scene_scaffolding(text), "")
+
+    def test_the_models_own_thinking_goes_contents_and_all(self) -> None:
+        text = "<reasoning> Task 1: check banned constructs </reasoning> Она вошла."
+
+        self.assertEqual(strip_scene_scaffolding(text), "Она вошла.")
+
+    def test_an_unclosed_thinking_block_takes_the_rest(self) -> None:
+        """Truncation cuts a block before its closing tag often enough to matter: two of
+        the ten rows were an unclosed <reasoning> and <aside>, and matching only balanced
+        blocks left their contents behind as if they were prose."""
+        self.assertEqual(strip_scene_scaffolding("<reasoning> Task 1: check banned"), "")
+        self.assertEqual(strip_scene_scaffolding("<aside> <summary>Момент</summary> - Pressure: high"), "")
+
+    def test_a_wrapper_around_the_reply_keeps_its_contents(self) -> None:
+        """<output> is not meta - it wraps what the character actually said."""
+        text = "<output> **СЕЛИМ** — Мне не жалко масла. </output>"
+
+        self.assertEqual(strip_scene_scaffolding(text), "**СЕЛИМ** — Мне не жалко масла.")
+
+    def test_a_stray_closing_tag_left_by_truncation_is_dropped(self) -> None:
+        text = "</think> Слова достигли её сознания."
+
+        self.assertEqual(strip_scene_scaffolding(text), "Слова достигли её сознания.")
+
+    def test_prose_containing_angle_brackets_is_left_alone(self) -> None:
+        for text in ["Он сказал <и осёкся>", "*Валерия улыбается*", "Алина любит чай."]:
+            with self.subTest(text=text):
+                self.assertEqual(strip_scene_scaffolding(text), text)
+
+
+class CombinedCleaningTests(unittest.TestCase):
+    def test_widget_then_header_then_prose_leaves_the_prose(self) -> None:
+        """The real shape in the corpus: the header sits between the block and the
+        prose, and only becomes leading once the block is gone - which is why
+        scaffolding is stripped first."""
+        text = (
+            "<!-- GFX_START --> <div> > STATUS </div> <!-- GFX_END --> "
+            "[ 🕰️ Время 20:30 | 🗓️ Вторник | 📍 Милан ] Тиффани издаёт тихий вздох."
+        )
+
+        self.assertEqual(clean_memory_text(text), "Тиффани издаёт тихий вздох.")
+
+    def test_nothing_but_furniture_leaves_nothing(self) -> None:
+        text = '<!-- GFX_START --> <div style="x">📱 INSTAGRAM — 23m ago</div> <!-- GFX_END -->'
+
+        self.assertEqual(clean_memory_text(text), "")
+
+    def test_ordinary_text_passes_through_untouched(self) -> None:
+        self.assertEqual(clean_memory_text("Алина любит чай."), "Алина любит чай.")
 
 
 if __name__ == "__main__":

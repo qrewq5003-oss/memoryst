@@ -3,7 +3,7 @@ from typing import Literal
 
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
-from app.services.text_utils import is_ooc_text, strip_transcript_header, truncate_content
+from app.services.text_utils import clean_memory_text, is_ooc_text, truncate_content
 
 PREFERENCE_MARKERS_RU = [
     "мне нравится",
@@ -342,7 +342,7 @@ def extract_memories(
         # Stripped before anything else looks at it: this path stores the line close to
         # verbatim, so a status header ended up inside the memory itself - 287 rows
         # carrying 80-496 characters of clock and weather, 18 of them nothing but that.
-        text = strip_transcript_header(msg.text)
+        text = clean_memory_text(msg.text)
 
         if not _is_meaningful(text):
             continue

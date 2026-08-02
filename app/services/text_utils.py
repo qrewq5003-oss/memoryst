@@ -116,3 +116,67 @@ def strip_transcript_header(text: str) -> str:
     if not _looks_like_transcript_header(stripped[: end + 1]):
         return text
     return stripped[end + 1:].lstrip()
+
+
+# Model scaffolding that leaks into a reply and then into memory. Three shapes occur,
+# and they need different treatment - which is why stripping tags alone does not work.
+#
+#   <!-- GFX_START --> <div style=...> > STATUS: ... </div> <!-- GFX_END -->
+#       A rendered widget. The markup AND its contents are presentation, so the whole
+#       block goes.
+#   <reasoning> ... </reasoning>, <aside>, <anticipation_mode>
+#       The model thinking out loud. Contents are meta, so the whole block goes.
+#   <output> **СЕЛИМ** — Мне не жалко масла ... </output>
+#       A wrapper around the actual reply. Only the tags go; the contents stay.
+#
+# Ten stored memories were nothing but these, several with the real prose sitting after
+# the block - so dropping the row wholesale would have thrown away the fact along with
+# the scaffolding.
+_GFX_BLOCK_RE = re.compile(r"<!--\s*GFX_START\s*-->.*?<!--\s*GFX_END\s*-->", re.S | re.I)
+_GFX_OPEN_RE = re.compile(r"<!--\s*GFX_START\s*-->.*", re.S | re.I)
+_META_TAGS = (
+    "reasoning", "thinking", "think", "anticipation_mode", "aside", "summary",
+    "analysis", "plan", "scratchpad", "internal",
+)
+_META_BLOCK_RE = re.compile(
+    r"<(" + "|".join(_META_TAGS) + r")\b[^>]*>.*?</\1>", re.S | re.I
+)
+# Truncation cuts a block before its closing tag often enough to matter: two of the ten
+# stored rows were an unclosed <reasoning> and <aside>, and matching only balanced blocks
+# left their contents behind as if they were prose.
+_META_OPEN_RE = re.compile(r"<(?:" + "|".join(_META_TAGS) + r")\b[^>]*>.*", re.S | re.I)
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+_ANY_TAG_RE = re.compile(r"</?[a-zA-Z][^>]{0,300}>")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def strip_scene_scaffolding(text: str) -> str:
+    """Remove rendered widgets and the model's own thinking, keeping the reply.
+
+    Returns "" when nothing but scaffolding was there. Runs before
+    strip_transcript_header, because the header usually sits between the block and the
+    prose and only becomes leading once the block is gone.
+    """
+    if not text or "<" not in text:
+        return text
+
+    cleaned = _GFX_BLOCK_RE.sub(" ", text)
+    # A widget truncated before its GFX_END marker takes the rest of the text with it:
+    # everything after the opening marker is the widget.
+    cleaned = _GFX_OPEN_RE.sub(" ", cleaned)
+    cleaned = _META_BLOCK_RE.sub(" ", cleaned)
+    cleaned = _META_OPEN_RE.sub(" ", cleaned)
+    cleaned = _HTML_COMMENT_RE.sub(" ", cleaned)
+    # Whatever tags remain are wrappers around real content (<output>) or strays left by
+    # a truncated block (</think>), so drop the tags and keep the text.
+    cleaned = _ANY_TAG_RE.sub(" ", cleaned)
+    return _WHITESPACE_RE.sub(" ", cleaned).strip()
+
+
+def clean_memory_text(text: str) -> str:
+    """Strip everything that is transcript furniture rather than something said.
+
+    Returns "" when the whole text was furniture; callers treat that as "nothing worth
+    storing".
+    """
+    return strip_transcript_header(strip_scene_scaffolding(text))

@@ -35,10 +35,7 @@ if str(ROOT) not in sys.path:
 from app.db import get_connection, init_schema
 from app.services import text_features
 from app.services.backup_service import create_backup
-from app.services.text_utils import (
-    normalize_content,
-    strip_transcript_header,
-)
+from app.services.text_utils import clean_memory_text, normalize_content
 
 
 def _plan(cursor) -> tuple[list[tuple], list[str]]:
@@ -49,7 +46,7 @@ def _plan(cursor) -> tuple[list[tuple], list[str]]:
 
     for row in cursor.fetchall():
         original = row["content"]
-        stripped = strip_transcript_header(original)
+        stripped = clean_memory_text(original)
         if stripped == original:
             continue
         if not stripped.strip():
