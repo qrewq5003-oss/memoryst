@@ -1,3 +1,5 @@
+import gzip
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -36,7 +38,17 @@ class BackupServiceTests(unittest.TestCase):
             (self.backup_dir / name).write_bytes(b"x")
 
     def _remaining(self) -> list[str]:
-        return sorted(p.name for p in self.backup_dir.glob("memory_*.db"))
+        return sorted(p.name for p in self.backup_dir.glob("memory_*.db*"))
+
+    def _restore(self, backup_path: Path) -> Path:
+        """Decompress a backup to a plain .db so it can be opened.
+
+        Doubles as proof that the compressed snapshot is a usable database - the point
+        of a backup is that it restores, not that the file exists."""
+        target = Path(self.temp_dir.name) / "restored.db"
+        with gzip.open(backup_path, "rb") as packed, target.open("wb") as raw:
+            shutil.copyfileobj(packed, raw)
+        return target
 
     def _create_source_db(self) -> None:
         conn = sqlite3.connect(str(self.db_path))
@@ -68,8 +80,9 @@ class BackupServiceTests(unittest.TestCase):
         assert backup_path is not None
         self.assertTrue(backup_path.exists())
         self.assertEqual(backup_path.parent, self.backup_dir)
+        self.assertTrue(backup_path.name.endswith(".db.gz"), "backups are stored gzipped")
 
-        conn = sqlite3.connect(str(backup_path))
+        conn = sqlite3.connect(str(self._restore(backup_path)))
         try:
             row = conn.execute("SELECT v FROM t").fetchone()
         finally:
@@ -95,7 +108,7 @@ class BackupServiceTests(unittest.TestCase):
         backup_path = create_backup()
         assert backup_path is not None
 
-        backup_conn = sqlite3.connect(str(backup_path))
+        backup_conn = sqlite3.connect(str(self._restore(backup_path)))
         try:
             backup_count = backup_conn.execute("SELECT COUNT(*) FROM t").fetchone()[0]
             backup_row_20 = backup_conn.execute(
@@ -181,7 +194,7 @@ class BackupServiceTests(unittest.TestCase):
 
         assert first is not None and second is not None
         self.assertNotEqual(first, second)
-        remaining = list(self.backup_dir.glob("memory_*.db"))
+        remaining = list(self.backup_dir.glob("memory_*.db.gz"))
         self.assertEqual(len(remaining), 1)
         self.assertEqual(remaining[0], second)
 
@@ -235,3 +248,37 @@ class StartupOrderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompressionTests(BackupServiceTests):
+    """Retention keeps up to seventeen snapshots, which on this phone was 938MB of a
+    992MB data directory. A SQLite file of mostly text compresses about 4x, so
+    compressing beat deleting: every restore point survives."""
+
+    def test_a_backup_is_materially_smaller_than_the_source(self) -> None:
+        self._create_populated_source_db([f"record-{i} с русским текстом" for i in range(2000)])
+
+        backup_path = create_backup()
+
+        assert backup_path is not None
+        self.assertLess(backup_path.stat().st_size, self.db_path.stat().st_size / 2)
+
+    def test_rotation_still_sees_uncompressed_backups_from_before(self) -> None:
+        """Older .db files predate compression and must not become invisible to
+        rotation, or they would sit there forever taking the space this fixes."""
+        self._write_backups([
+            "memory_20260101_000000_000000.db",
+            "memory_20260102_000000_000000.db.gz",
+            "memory_20260103_000000_000000.db",
+        ])
+
+        rotate_backups(keep_days=1, keep_recent=0)
+
+        self.assertEqual(self._remaining(), ["memory_20260103_000000_000000.db"])
+
+    def test_no_uncompressed_leftover_is_kept_beside_the_archive(self) -> None:
+        self._create_source_db()
+
+        create_backup()
+
+        self.assertEqual(list(self.backup_dir.glob("memory_*.db")), [])

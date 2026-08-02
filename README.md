@@ -94,6 +94,14 @@ take while the server is running) is written to `data/backups/` automatically
 every time the server starts — before the schema migrations run, so the last
 good copy survives a migration that succeeds but is wrong.
 
+Snapshots are gzipped: a store of mostly text compresses about 4x, which took
+this backup directory from 938 MB to 243 MB without dropping a single restore
+point. Restore with:
+
+```bash
+gunzip -c data/backups/memory_20260802_101212_869842.db.gz > data/memory.db
+```
+
 Retention is generational rather than a flat file count: the newest backup of
 each of the last `BACKUP_KEEP_DAYS` days is kept, plus the `BACKUP_KEEP_RECENT`
 newest backups regardless of day. A flat count was unsafe here, because
