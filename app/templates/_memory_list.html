@@ -31,7 +31,7 @@
             {% if memories["items"] and memories["items"]|length > 0 %}
             <div class="memory-list">
                 {% for item in memory_cards %}
-                <article class="memory-card {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
+                <article class="memory-card layer-{% if item["type"] == 'summary' or item["metadata"]["is_summary"] %}summary{% else %}{{ item["layer"] }}{% endif %} {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
                     <div class="memory-card-header">
                         <div>
                             <div class="memory-id-row">

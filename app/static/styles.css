@@ -375,18 +375,64 @@ th {
     font-size: var(--f1);
 }
 
+/* Card actions.
+
+   These were 4px/8px buttons in a nowrap row - about 24px of height against the
+   44px both Apple and Google give as the minimum. On a phone that is a coin
+   toss, and two of the four targets are Archive and Delete.
+
+   They are now a full-width strip of equal segments separated by hairlines: the
+   target is as tall as a finger and as wide as a quarter of the card, and it is
+   obvious which segment belongs to which action. Delete is set apart by colour
+   as well as by position, since position alone is what a mis-tap ignores. */
 .actions-cell {
-    white-space: nowrap;
+    display: flex;
+    margin: 12px -16px -16px;
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 8px 8px;
+    overflow: hidden;
 }
 
 .actions-cell form {
-    display: inline;
+    display: flex;
+    flex: 1 1 0;
+    min-width: 0;
+    border-right: 1px solid var(--line);
+}
+
+.actions-cell form:last-child {
+    border-right: 0;
 }
 
 .actions-cell button {
-    padding: 4px 8px;
+    flex: 1;
+    min-height: 44px;
+    padding: 0 4px;
     font-size: var(--f1);
-    margin-right: 5px;
+    background: transparent;
+    color: var(--ink-2);
+    border: 0;
+    border-radius: 0;
+    margin: 0;
+}
+
+.actions-cell button:hover {
+    background: var(--surface-2);
+}
+
+.actions-cell button.danger {
+    background: transparent;
+    color: var(--danger);
+}
+
+.actions-cell button.danger:hover {
+    background: var(--danger-bg);
+}
+
+/* Keyboard focus has to stay visible now that the buttons have no fill. */
+.actions-cell button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
 }
 
 tr.pinned {
@@ -618,11 +664,30 @@ summary {
 }
 
 .memory-card {
+    position: relative;
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 16px;
-    background: var(--panel-plain-bg);
+    background: var(--surface);
+    overflow: hidden;
 }
+
+/* A 4px stripe encoding the memory layer, so the type of a card reads before
+   its text does. The layer colours are semantic and deliberately not the
+   accent - they carry data, not emphasis. */
+.memory-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--line);
+}
+
+.memory-card.layer-stable::before   { background: var(--info); }
+.memory-card.layer-episodic::before { background: var(--warn); }
+.memory-card.layer-summary::before  { background: var(--violet); }
 
 .memory-card-pinned {
     border-color: var(--panel-warn-line);
