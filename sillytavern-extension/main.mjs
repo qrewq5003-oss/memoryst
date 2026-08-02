@@ -35,17 +35,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=3f93dcb';
+} from './audit.mjs?v=ba96e73';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=3f93dcb';
-import { mountSettingsUi } from './settings-ui.mjs?v=3f93dcb';
-import { resolveEffectiveScope } from './scope.mjs?v=3f93dcb';
+} from './settings.mjs?v=ba96e73';
+import { mountSettingsUi } from './settings-ui.mjs?v=ba96e73';
+import { resolveEffectiveScope } from './scope.mjs?v=ba96e73';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=3f93dcb';
+} from './lore-anchors.mjs?v=ba96e73';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -53,12 +53,12 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=3f93dcb';
+} from './trackers.mjs?v=ba96e73';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=3f93dcb';
+} from './version.mjs?v=ba96e73';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -802,7 +802,37 @@ function persistIntegrationAudit(record) {
     const finalized = finalizeIntegrationAuditRecord(record);
     pushAuditRecord(settings, finalized);
     saveSettings();
+    sendAuditToBackend(finalized);
     console.log('[memoryst][Audit]', finalized);
+}
+
+/**
+ * Mirror the audit record to the backend, which writes it to data/audit.jsonl.
+ *
+ * settings.json turned out to be a fragile single home for the audit: records went
+ * missing - a turn stored memories, settings.json was rewritten by an unrelated save,
+ * and no audit row appeared for it. Reading the in-memory copy needs a browser console,
+ * which does not exist on a phone, so the diagnostic that had caught every regression
+ * here was unreadable exactly when it was needed.
+ *
+ * Fire-and-forget on purpose, and last in persistIntegrationAudit: an audit that fails
+ * must never disturb the turn it is describing. A backend that predates the endpoint
+ * answers 404 and the .catch() swallows it.
+ */
+function sendAuditToBackend(record) {
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (settings.apiKey) {
+            headers['X-API-Key'] = settings.apiKey;
+        }
+        fetch(`${settings.memoryServiceUrl}/memory/audit`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(record),
+        }).catch(() => {});
+    } catch (error) {
+        // Serialization or a malformed URL - nothing here is worth breaking a turn for.
+    }
 }
 
 function exposeAuditHelpers() {

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import require_api_key
@@ -361,6 +361,31 @@ class SceneExtractResponse(BaseModel):
     type: str | None = None
     keywords: list[str] = []
     mood: str | None = None
+
+
+class AuditIngestResponse(BaseModel):
+    stored: bool
+    total: int
+
+
+@router.post("/audit", response_model=AuditIngestResponse)
+def ingest_audit_endpoint(record: dict = Body(...)) -> AuditIngestResponse:
+    """Accept one integration audit record from the extension.
+
+    The audit used to live only in SillyTavern's settings.json, and that turned out to
+    be a bad single home for it: records went missing repeatedly - a turn would store
+    memories, settings.json would be rewritten by an unrelated save, and no audit row
+    appeared. Diagnosing that needed a browser console, which is not available on the
+    phone this runs on, so the one tool that had caught every regression in the codebase
+    was itself unreadable exactly when it mattered.
+
+    Writing here too costs nothing and is readable with `tail`. Deliberately
+    fire-and-forget on the client: an audit that fails must never disturb a turn.
+    """
+    from app.services.audit_sink import append_audit_record
+
+    total = append_audit_record(record)
+    return AuditIngestResponse(stored=True, total=total)
 
 
 @router.post("/scene", response_model=SceneExtractResponse)
