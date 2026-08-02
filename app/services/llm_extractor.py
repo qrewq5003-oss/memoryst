@@ -5,6 +5,7 @@ import traceback
 from app.config import config
 from app.schemas import ChatMessageItem
 from app.services.llm_client import chat_completion, is_llm_enabled
+from app.services.text_utils import strip_transcript_header
 
 EXTRACTION_PROMPT = """You are a memory extraction system for a roleplay conversation.
 
@@ -197,7 +198,11 @@ def build_indexed_scene_text(
     total = 0
     for message in messages:
         index = len(id_by_index)
-        line = f"[{index}][{message.role}]: {message.text}"
+        # The status header is scaffolding the model does not need, and feeding it in
+        # put `Time` and 📍 place names into the entities it returned - 248 occurrences
+        # of `Time` alone. Dropping it also buys back scene budget.
+        text = strip_transcript_header(message.text) or message.text
+        line = f"[{index}][{message.role}]: {text}"
         if total + len(line) > max_chars:
             break
         lines.append(line)
