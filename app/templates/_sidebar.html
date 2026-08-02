@@ -17,25 +17,32 @@
         {% if has_chat_groups %}
         <div class="chat-group-list">
             {% for group in chat_groups %}
-            <a href="{{ group["url"] }}" class="chat-group-link {% if group["is_selected"] %}chat-group-link-active{% endif %}" title="chat={{ group["chat_id"] }} | character={{ group["character_id"] }}">
+            {#- The raw chat id used to appear four times per entry: in the href, in a
+                title attribute, in the visible label and again on a "Raw chat ID" line.
+                With 63 chats that alone was most of a 63KB sidebar. The href keeps it
+                because it has to; everything else reads the label. The full id is shown
+                for the selected chat only, where it is actually useful. -#}
+            <a href="{{ group["url"] }}" class="chat-group-link {% if group["is_selected"] %}chat-group-link-active{% endif %}">
                 <span class="chat-group-title-row">
                     <span class="chat-group-title">{{ group["display_label"] }}</span>
                     {% if group["is_selected"] %}
                     <span class="scope-pill">Current scope</span>
                     {% endif %}
                 </span>
+                {%- if group["is_selected"] and group["has_friendly_label"] %}
+                <span class="chat-group-meta">Character: {{ group["display_character_label"] }} · <code>{{ group["chat_id"] }}</code></span>
+                {%- else %}
                 <span class="chat-group-meta">Character: {{ group["display_character_label"] }}</span>
-                {% if group["has_friendly_label"] %}
-                <span class="chat-group-meta">Raw chat ID: <code>{{ group["chat_id"] }}</code></span>
-                {% endif %}
+                {%- endif %}
+                {#- The labels stay. Four bare numbers would have saved ~5KB and cost the
+                    reader the meaning: a title attribute does not exist on touch, so
+                    "3 1 1 1" is unreadable on the device this runs on. -#}
                 <span class="chat-group-stats">
                     <span>{{ group["total_count"] }} total</span>
                     <span>{{ group["summary_count"] }} summary</span>
                     <span>{{ group["stable_count"] }} stable</span>
                     <span>{{ group["episodic_count"] }} episodic</span>
-                </span>
-                <span class="chat-group-meta">
-                    Updated {{ group["last_updated"][:10] }}{% if group["last_updated_days"] is not none %} · {{ group["last_updated_days"] }}d ago{% endif %}
+                    <span class="chat-group-age">{% if group["last_updated_days"] is not none %}{{ group["last_updated_days"] }}d{% else %}{{ group["last_updated"][:10] }}{% endif %}</span>
                 </span>
             </a>
             {% endfor %}

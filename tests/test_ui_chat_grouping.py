@@ -99,7 +99,11 @@ class UiChatGroupingTests(unittest.TestCase):
 
         body = response.body.decode()
         self.assertIn("Summer Trip Chat Room Alpha", body)
-        self.assertIn("Raw chat ID:", body)
+        # The raw id is shown for the selected chat only. It used to appear on every
+        # entry - four times per link counting the href, the title attribute, the
+        # label and its own line - which was most of a 63KB sidebar across 63 chats,
+        # 62 of them for chats nobody is looking at. It stays reachable in the link
+        # URL, and visible where it is actually used.
         self.assertIn("summer_trip/chat-room_alpha", body)
 
     def test_selected_scope_is_marked_in_sidebar_and_scope_header(self) -> None:

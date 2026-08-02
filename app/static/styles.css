@@ -1100,3 +1100,15 @@ summary {
 /* Only the states worth acting on are chipped, so they may carry weight. */
 .chip-freshness { background: var(--warn-bg);   color: var(--warn);   border-color: transparent; }
 .chip-activity  { background: var(--surface-2); color: var(--ink-3); }
+
+/* Sidebar counts read as a row of numbers: the four labels were identical on
+   every entry, so they distinguished nothing while costing a line each. */
+.chat-group-stats {
+    font-family: ui-monospace, "Roboto Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+}
+
+.chat-group-age {
+    margin-left: auto;
+}
