@@ -1006,3 +1006,97 @@ summary {
 .form-inline {
     display: inline;
 }
+
+/* === Memory card, compact form =============================================
+   The card carried 93 elements and 14 form fields: an id line, five badges, a
+   labelled consolidation checkbox, a timestamp line, a touch-state line, then
+   the text, then two disclosure blocks. Against that, a change of accent colour
+   is invisible - which is exactly what happened.
+
+   What stays above the fold is what tells one memory from another: the text
+   first, then a single row of chips. Everything else moved into Inspect
+   Details, which was already there and already collapsed.
+   ========================================================================== */
+.memory-preview {
+    margin: 0;
+    font-size: var(--f2);
+    color: var(--ink);
+}
+
+.memory-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink-2);
+    font-size: var(--f1);
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+/* Counts and scores line up when they are monospaced and tabular, which is what
+   makes a column of cards scannable rather than merely readable. */
+.chip-num {
+    font-family: ui-monospace, "Roboto Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-3);
+}
+
+.chip-layer {
+    font-weight: 600;
+    border-color: transparent;
+}
+
+.layer-stable   .chip-layer { background: var(--info-bg);    color: var(--info); }
+.layer-episodic .chip-layer { background: var(--warn-bg);    color: var(--warn); }
+.layer-summary  .chip-layer { background: var(--violet-bg);  color: var(--violet); }
+
+.chip-pinned   { background: var(--warn-bg);   color: var(--warn);   border-color: transparent; }
+.chip-archived { background: var(--surface-2); color: var(--ink-3); }
+
+/* The selection control keeps a full-height target even inside a chip row. */
+.chip-select {
+    cursor: pointer;
+    min-height: 32px;
+}
+
+.chip-select input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
+.chip-select-candidate {
+    background: var(--accent-bg);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Disclosures inside a card are secondary by definition - they should read as a
+   quiet line, not as another panel competing with the memory itself. */
+.memory-card > details > summary {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    font-size: var(--f1);
+    color: var(--ink-3);
+    cursor: pointer;
+}
+
+.memory-card > details {
+    margin-top: 8px;
+}
+
+/* Only the states worth acting on are chipped, so they may carry weight. */
+.chip-freshness { background: var(--warn-bg);   color: var(--warn);   border-color: transparent; }
+.chip-activity  { background: var(--surface-2); color: var(--ink-3); }

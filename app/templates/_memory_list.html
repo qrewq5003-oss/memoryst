@@ -32,49 +32,40 @@
             <div class="memory-list">
                 {% for item in memory_cards %}
                 <article class="memory-card layer-{% if item["type"] == 'summary' or item["metadata"]["is_summary"] %}summary{% else %}{{ item["layer"] }}{% endif %} {% if item["pinned"] %}memory-card-pinned{% endif %} {% if item["archived"] %}memory-card-archived{% endif %}">
-                    <div class="memory-card-header">
-                        <div>
-                            <div class="memory-id-row">
-                                <code class="memory-id">{{ item["id"] }}</code>
-                            </div>
-                            <div class="memory-badges">
-                                <span class="badge badge-type">{{ item["type"] }}</span>
-                                <span class="badge badge-source">{{ item["source"] }}</span>
-                                <span class="badge badge-layer">{{ item["layer"] }}</span>
-                                <span class="badge badge-freshness badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace('_', ' ') }}</span>
-                                <span class="badge badge-activity badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace('_', ' ') }}</span>
-                                {% if item["pinned"] %}
-                                <span class="badge badge-pinned">Pinned</span>
-                                {% endif %}
-                                {% if item["archived"] %}
-                                <span class="badge badge-archived">Archived</span>
-                                {% endif %}
-                            </div>
-                            <label class="consolidation-select {% if item["is_consolidation_candidate"] %}consolidation-select-candidate{% endif %}">
-                                <input type="checkbox" class="consolidate-checkbox" data-memory-id="{{ item["id"] }}" {% if item["is_consolidation_candidate"] %}checked{% endif %}>
-                                {% if item["is_consolidation_candidate"] %}Consolidation Candidate{% else %}Select for consolidation{% endif %}
-                            </label>
-                            <div class="memory-meta-line">
-                                Created {{ item["created_at"][:10] }} | Updated {{ item["updated_at"][:10] }}{% if item["updated_days"] is not none %} ({{ item["updated_days"] }}d ago){% endif %} | Importance {{ "%.2f"|format(item["importance"]) }} | Access {{ item["access_count"] }}
-                            </div>
-                            <div class="memory-touch-line">
-                                {% if item["touch_state"] == "recently_accessed" %}
-                                Recently accessed{% if item["accessed_days"] is not none %} {{ item["accessed_days"] }}d ago{% endif %}
-                                {% elif item["touch_state"] == "recently_updated" %}
-                                Recently updated
-                                {% elif item["touch_state"] == "stale_unused" %}
-                                Stale and unused
-                                {% else %}
-                                Quiet
-                                {% endif %}
-                            </div>
-                        </div>
+                    <p class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</p>
+
+                    {#- One compact row instead of the former five stacked blocks: the id,
+                        source, freshness/activity badges, timestamps and touch state moved
+                        into Inspect Details below. What stays is what distinguishes one
+                        memory from another at a glance. The consolidation checkbox stays
+                        visible on purpose - it drives a real selection workflow, and
+                        putting it behind a disclosure would mean opening every card to
+                        pick two. -#}
+                    <div class="memory-meta">
+                        <span class="chip chip-layer">{% if item["type"] == 'summary' or item["metadata"]["is_summary"] %}summary{% else %}{{ item["layer"] }}{% endif %}</span>
+                        <span class="chip">{{ item["type"] }}</span>
+                        <span class="chip chip-num">{{ "%.2f"|format(item["importance"]) }}</span>
+                        <span class="chip chip-num">{{ item["access_count"] }}&times;</span>
+                        {#- Freshness and activity show only in the states worth acting on.
+                            A chip reading "fresh" on a fresh memory carries no information;
+                            "stale" and "never used" do, and they are what the filters above
+                            are for. The full classification stays in Inspect Details. -#}
+                        {% if item["freshness"] == "stale" %}
+                        <span class="chip chip-freshness badge-freshness-{{ item["freshness"] }}">stale</span>
+                        {% endif %}
+                        {% if item["activity"] == "never_used" %}
+                        <span class="chip chip-activity badge-activity-{{ item["activity"] }}">never used</span>
+                        {% endif %}
+                        {% if item["pinned"] %}<span class="chip chip-pinned">pinned</span>{% endif %}
+                        {% if item["archived"] %}<span class="chip chip-archived">archived</span>{% endif %}
+                        <label class="chip chip-select {% if item["is_consolidation_candidate"] %}chip-select-candidate{% endif %}">
+                            <input type="checkbox" class="consolidate-checkbox" data-memory-id="{{ item["id"] }}" {% if item["is_consolidation_candidate"] %}checked{% endif %}>
+                            {% if item["is_consolidation_candidate"] %}candidate{% else %}select{% endif %}
+                        </label>
                     </div>
 
-                    <div class="memory-preview">{{ item["content"][:220] }}{% if item["content"]|length > 220 %}...{% endif %}</div>
-
                     {% if item["consolidation_candidates"] %}
-                    <details class="result-details consolidation-details" open>
+                    <details class="result-details consolidation-details">
                         <summary>Consolidation Signals</summary>
                         <div class="feature-summary">
                             {% for candidate in item["consolidation_candidates"] %}
@@ -112,12 +103,22 @@
                     <details class="result-details memory-inspect">
                         <summary>Inspect Details</summary>
                         <div class="memory-detail-grid">
+                            <div><strong>ID:</strong> <code class="memory-id">{{ item["id"] }}</code></div>
+                            <div><strong>Source:</strong> {{ item["source"] }}</div>
+                            <div><strong>Created:</strong> {{ item["created_at"][:10] }}</div>
+                            <div><strong>Updated:</strong> {{ item["updated_at"][:10] }}{% if item["updated_days"] is not none %} ({{ item["updated_days"] }}d ago){% endif %}</div>
+                            <div><strong>Touch state:</strong>
+                                {% if item["touch_state"] == "recently_accessed" %}Recently accessed{% if item["accessed_days"] is not none %} {{ item["accessed_days"] }}d ago{% endif %}
+                                {% elif item["touch_state"] == "recently_updated" %}Recently updated
+                                {% elif item["touch_state"] == "stale_unused" %}Stale and unused
+                                {% else %}Quiet{% endif %}
+                            </div>
                             <div><strong>Chat:</strong> <code>{{ item["chat_id"] }}</code></div>
                             <div><strong>Character:</strong> <code>{{ item["character_id"] }}</code></div>
                             <div><strong>Normalized:</strong> <code>{{ item["normalized_content"] }}</code></div>
                             <div><strong>Last Accessed:</strong> {{ item["last_accessed_at"] or "never" }}</div>
-                            <div><strong>Freshness:</strong> {{ item["freshness"] }}</div>
-                            <div><strong>Activity:</strong> {{ item["activity"] }}</div>
+                            <div><strong>Freshness:</strong> <span class="badge-freshness-{{ item["freshness"] }}">{{ item["freshness"]|replace("_", " ") }}</span></div>
+                            <div><strong>Activity:</strong> <span class="badge-activity-{{ item["activity"] }}">{{ item["activity"]|replace("_", " ") }}</span></div>
                             <div><strong>Review Status:</strong> {{ item["metadata"]["review_status"] or "none" }}</div>
                             <div><strong>Related Memory:</strong> {{ item["metadata"]["related_memory_id"] or "none" }}</div>
                         </div>
