@@ -400,7 +400,7 @@ def _render_memories_page(
         "clear_filters_url": clear_filters_url,
     }
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "memories.html",
         {
@@ -441,6 +441,75 @@ def _render_memories_page(
                 "debug": False,
             },
         },
+    )
+
+    # The page carries a fingerprinted stylesheet URL, so it must never itself be
+    # served from a stale copy - a cached page would keep pointing at the old
+    # fingerprint and the new stylesheet would never be requested. `no-cache`
+    # rather than `no-store`: revalidation is enough, and it keeps the service
+    # worker's offline fallback usable.
+    response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
+RESET_CACHE_PAGE = """<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>memoryst — сброс кэша</title>
+<style>
+ body{font:16px/1.5 system-ui,-apple-system,Roboto,sans-serif;margin:0;padding:24px;
+      background:#EEF2F5;color:#0F1922}
+ main{max-width:34rem;margin:0 auto}
+ h1{font-size:21px;margin:0 0 12px}
+ p{color:#47596A}
+ #log{font-family:ui-monospace,monospace;font-size:13px;background:#fff;
+      border:1px solid #D6DEE5;border-radius:10px;padding:12px;margin-top:16px;
+      white-space:pre-wrap}
+ a.button{display:block;min-height:44px;line-height:44px;text-align:center;
+      margin-top:16px;background:#0B6E75;color:#fff;text-decoration:none;border-radius:8px}
+</style></head><body><main>
+<h1>Сброс кэша интерфейса</h1>
+<p>Снимает service worker и очищает его хранилище. Нужно один раз: дальше
+адрес стилей содержит отпечаток содержимого, и кэш обновляется сам.</p>
+<div id="log">работаю…</div>
+<a class="button" href="/ui">Открыть интерфейс</a>
+</main><script>
+(async () => {
+  const log = document.getElementById('log');
+  const lines = [];
+  const say = (t) => { lines.push(t); log.textContent = lines.join('\n'); };
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    say('service worker: найдено ' + regs.length);
+    for (const r of regs) { await r.unregister(); }
+    if (regs.length) say('service worker: снят');
+  } catch (e) { say('service worker: недоступен (' + e.message + ')'); }
+  try {
+    const keys = await caches.keys();
+    say('хранилищ кэша: ' + keys.length + (keys.length ? ' — ' + keys.join(', ') : ''));
+    for (const k of keys) { await caches.delete(k); }
+    if (keys.length) say('кэш очищен');
+  } catch (e) { say('кэш: недоступен (' + e.message + ')'); }
+  say('готово — нажмите кнопку ниже');
+})();
+</script></body></html>"""
+
+
+@router.get("/ui/reset-cache")
+def ui_reset_cache() -> Any:
+    """One-tap escape hatch for a stale service worker.
+
+    The previous worker served /static/styles.css cache-first with no
+    revalidation under a cache name that never changed, so a device that had
+    once cached a stylesheet kept it for good. Fixing the worker does not help a
+    device already holding the old one - and a phone has no developer console to
+    unregister it by hand. This page does it in one visit.
+    """
+    from fastapi.responses import HTMLResponse
+
+    return HTMLResponse(
+        RESET_CACHE_PAGE,
+        headers={"Cache-Control": "no-store"},
     )
 
 
