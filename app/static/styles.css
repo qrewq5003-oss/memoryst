@@ -1112,3 +1112,18 @@ summary {
 .chat-group-age {
     margin-left: auto;
 }
+
+/* Page header carries navigation now that Tools is its own destination. */
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.page-nav .button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}

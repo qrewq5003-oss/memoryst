@@ -43,7 +43,7 @@ class UiHttpSmokeTests(unittest.TestCase):
         config.DATABASE_PATH = self.original_db_path
 
     def test_ui_root_renders(self) -> None:
-        response = self.client.get("/ui")
+        response = self.client.get("/ui/tools")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Consolidation", response.text)
         self.assertIn("Инструменты разработчика", response.text)

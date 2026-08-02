@@ -5,9 +5,12 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>Memory Service</h1>
+        <h1>memoryst</h1>
         <p class="page-subtitle">Chat-grouped memory browsing over the existing scoped store.</p>
     </div>
+    <nav class="page-nav">
+        <a class="button secondary" href="/ui/tools">Tools</a>
+    </nav>
 </div>
 
 {% if request.query_params.get("backfill_done") %}
@@ -46,6 +49,5 @@
     </div>
 </section>
 
-{% include '_tools.html' %}
 {% include '_scripts.html' %}
 {% endblock %}

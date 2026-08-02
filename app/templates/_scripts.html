@@ -1,11 +1,22 @@
 <script>
+// This script block now runs on two pages with different markup: the memory list
+// and Tools. A bare document.getElementById(...).addEventListener throws on the
+// page that lacks the element, and one throw kills every handler defined after
+// it - including the on-demand details loader at the bottom. `on` binds only when
+// the element is actually there.
+function on(id, event, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+}
 // Consolidation selection persists in localStorage (keyed by chat/character) rather
 // than living only in checkbox DOM state - the candidate pool can span more memories
 // than one page shows, and a page-only Set would silently drop anything selected on
 // a page the user has since navigated away from.
 function consolidateStorageKey() {
-    const chatId = document.getElementById('consolidate-chat-id').value;
-    const charId = document.getElementById('consolidate-char-id').value;
+    // Null-safe for the same reason as `on`: the memory list has no consolidation
+    // form, and this runs at load time on both pages.
+    const chatId = document.getElementById('consolidate-chat-id')?.value || '';
+    const charId = document.getElementById('consolidate-char-id')?.value || '';
     return `consolidate-selected::${chatId}::${charId}`;
 }
 
@@ -53,7 +64,7 @@ document.addEventListener('change', (e) => {
     updateConsolidateSelectedCount();
 });
 
-document.getElementById('consolidate-select-all').addEventListener('click', () => {
+on('consolidate-select-all', 'click', () => {
     let ids = [];
     try { ids = JSON.parse(document.getElementById('consolidate-all-candidates').textContent); } catch (e) {}
     const set = loadConsolidateSelection();
@@ -62,7 +73,7 @@ document.getElementById('consolidate-select-all').addEventListener('click', () =
     syncConsolidateCheckboxes();
 });
 
-document.getElementById('consolidate-clear-selection').addEventListener('click', () => {
+on('consolidate-clear-selection', 'click', () => {
     saveConsolidateSelection(new Set());
     syncConsolidateCheckboxes();
 });
@@ -70,7 +81,7 @@ document.getElementById('consolidate-clear-selection').addEventListener('click',
 syncConsolidateCheckboxes();
 
 // Consolidation handler
-document.getElementById('consolidate-form').addEventListener('submit', async (e) => {
+on('consolidate-form', 'submit', async (e) => {
     e.preventDefault();
     const chatId = document.getElementById('consolidate-chat-id').value;
     const charId = document.getElementById('consolidate-char-id').value;
@@ -117,7 +128,7 @@ document.getElementById('consolidate-form').addEventListener('submit', async (e)
 });
 
 // Clip handler
-document.getElementById('clip-form').addEventListener('submit', async (e) => {
+on('clip-form', 'submit', async (e) => {
     e.preventDefault();
     const text = document.getElementById('clip-text').value.trim();
     const chatId = document.getElementById('clip-chat-id').value || 'clip';
@@ -191,7 +202,7 @@ async function loadModels() {
 loadModels();
 
 // Provider switch handler
-document.getElementById('llm-provider-form').addEventListener('submit', async (e) => {
+on('llm-provider-form', 'submit', async (e) => {
     e.preventDefault();
     const provider = document.getElementById('llm-provider-select').value;
     const result = document.getElementById('llm-provider-result');
@@ -218,7 +229,7 @@ document.getElementById('llm-provider-form').addEventListener('submit', async (e
 });
 
 // Scene extraction handler
-document.getElementById('scene-extract-form').addEventListener('submit', async (e) => {
+on('scene-extract-form', 'submit', async (e) => {
     e.preventDefault();
     const text = document.getElementById('scene-text').value.trim();
     const chatId = document.getElementById('scene-chat-id').value || 'scene';

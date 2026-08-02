@@ -1,5 +1,5 @@
 """
-Stage C: /ui renders a Trackers section with a card per tracker type, each with an
+Stage C: /ui/tools renders a Trackers section with a card per tracker type, each with an
 "Обновить" button wired to POST /memory/tracker/update. These are HTTP-level render
 checks only (the button's fetch/DOM-update behavior lives in _scripts.html and is out
 of reach of a Python test) - see test_tracker_api.py for the error_detail contract the
@@ -62,7 +62,7 @@ class UiTrackersRenderTests(unittest.TestCase):
             params["selected_chat_id"] = chat_id
         if character_id:
             params["selected_character_id"] = character_id
-        return self.client.get("/ui", params=params)
+        return self.client.get("/ui/tools", params=params)
 
     def test_no_chat_selected_hides_the_tracker_cards(self) -> None:
         response = self._get(chat_id=None, character_id=None)
@@ -120,7 +120,7 @@ class UiTrackersRenderTests(unittest.TestCase):
     def test_all_chats_view_has_no_single_scope_for_trackers(self) -> None:
         self._seed_chat_group()
 
-        response = self.client.get("/ui", params={"view": "all"})
+        response = self.client.get("/ui/tools", params={"view": "all"})
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Select a single chat", response.text)

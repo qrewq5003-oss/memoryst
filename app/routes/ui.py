@@ -102,6 +102,7 @@ def _render_memories_page(
     consolidation_result: dict[str, Any] | None = None,
     store_form: dict[str, Any] | None = None,
     retrieve_form: dict[str, Any] | None = None,
+    template: str = "memories.html",
 ) -> Any:
     """Render the memories page with optional store/retrieve diagnostics sections."""
     legacy_chat_id = normalize_scope_value(chat_id)
@@ -402,7 +403,7 @@ def _render_memories_page(
 
     response = templates.TemplateResponse(
         request,
-        "memories.html",
+        template,
         {
             "asset_version": get_asset_version(),
             "memories": memories.model_dump(),
@@ -627,6 +628,32 @@ def ui_memory_details_page(request: Request, memory_id: str) -> Any:
     )
 
 
+@router.get("/ui/tools")
+def ui_tools_page(
+    request: Request,
+    selected_chat_id: str | None = None,
+    selected_character_id: str | None = None,
+    view: str | None = None,
+) -> Any:
+    """Tools on their own page.
+
+    They used to sit at the bottom of the memory list, where reaching them meant
+    scrolling past every card - they began at 94% of the page. They are a
+    different job from browsing memories and now have their own address.
+
+    Built from the same context as the list, because the tools are scoped: the
+    tracker panel and the consolidation pool both depend on which chat is
+    selected.
+    """
+    return _render_memories_page(
+        request,
+        selected_chat_id=selected_chat_id,
+        selected_character_id=selected_character_id,
+        view=view,
+        template="tools.html",
+    )
+
+
 @router.get("/ui/reset-cache")
 def ui_reset_cache() -> Any:
     """One-tap escape hatch for a stale service worker.
@@ -727,6 +754,10 @@ def ui_store_memories(
             "include_archived": False,
             "debug": False,
         },
+        # The store and retrieve forms live on Tools, so their results belong
+        # there too - returning the memory list would drop the user somewhere
+        # that has no place to show the breakdown they just asked for.
+        template="tools.html",
     )
 
 
@@ -772,6 +803,7 @@ def ui_retrieve_memories(
             "include_archived": include_archived,
             "debug": debug,
         },
+        template="tools.html",
     )
 
 
