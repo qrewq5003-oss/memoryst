@@ -6,6 +6,9 @@ data/memory.db
 data/backups/
 data/chromadb/
 data/*.log
+# Integration audit records mirrored from the extension. Runtime data like the log
+# next to it, and it carries user_input previews - real chat text.
+data/audit.jsonl
 data/google_keys.json
 .env
 .env.save
