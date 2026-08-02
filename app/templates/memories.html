@@ -11,7 +11,7 @@
 </div>
 
 {% if request.query_params.get("backfill_done") %}
-<div style="background:#1a3a1a;border:1px solid #2d5a2d;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+<div class="result-banner">
     <strong>Backfill complete:</strong>
     {{ request.query_params.get("stored", "0") }} stored,
     {{ request.query_params.get("duplicates", "0") }} duplicates,
@@ -20,7 +20,7 @@
     {% set unparsable = request.query_params.get("unparsable_lines", "0") | int %}
     {% set unrecognized = request.query_params.get("unrecognized_lines", "0") | int %}
     {% if unparsable or unrecognized %}
-    <br><span style="color:#e0b050;">Ignored:
+    <br><span class="result-banner-warn">Ignored:
         {% if unparsable %}{{ unparsable }} line(s) that weren't valid JSON{% endif %}
         {% if unparsable and unrecognized %}, {% endif %}
         {% if unrecognized %}{{ unrecognized }} line(s) in an unrecognized shape{% endif %}

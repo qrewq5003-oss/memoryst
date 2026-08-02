@@ -70,15 +70,15 @@
                             </div>
                         </div>
                         <div class="actions-cell">
-                            <form method="POST" action="/ui/{{ item["id"] }}/pin" style="display:inline;">
+                            <form method="POST" action="/ui/{{ item["id"] }}/pin" class="form-inline">
                                 <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
                                 <button type="submit">{% if item["pinned"] %}Unpin{% else %}Pin{% endif %}</button>
                             </form>
-                            <form method="POST" action="/ui/{{ item["id"] }}/archive" style="display:inline;">
+                            <form method="POST" action="/ui/{{ item["id"] }}/archive" class="form-inline">
                                 <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
                                 <button type="submit">{% if item["archived"] %}Unarchive{% else %}Archive{% endif %}</button>
                             </form>
-                            <form method="POST" action="/ui/{{ item["id"] }}/delete" style="display:inline;" onsubmit="return confirm('Delete this memory?');">
+                            <form method="POST" action="/ui/{{ item["id"] }}/delete" class="form-inline" onsubmit="return confirm('Delete this memory?');">
                                 <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
                                 <button type="submit" class="danger">Delete</button>
                             </form>

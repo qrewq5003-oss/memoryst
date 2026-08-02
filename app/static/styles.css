@@ -1,3 +1,76 @@
+/* === Design tokens ==========================================================
+   Values here are deliberately the ones the stylesheet already used: this pass
+   only gives them names. Changing how the UI looks is a separate commit, so a
+   palette that turns out wrong on the phone reverts as ~20 lines rather than as
+   a rewrite.
+
+   Before this there were 50 colour literals and no variables, which made a dark
+   theme impossible in principle and every palette change a find-and-replace.
+   Six greys did the work of three and are collapsed here.
+   ========================================================================== */
+:root {
+    /* text */
+    --ink:        #1f2937;   /* primary */
+    --ink-2:      #4b5563;   /* secondary - absorbed #374151, #445164, #526072 */
+    --ink-3:      #6b7280;   /* muted, and the secondary button fill */
+
+    /* surfaces and rules */
+    --surface:    #ffffff;
+    --surface-2:  #f8f9fa;   /* absorbed #f8fafc */
+    --line:       #e5e7eb;   /* absorbed #ddd, #ccc, #e0e3e7, #dde3eb */
+    --line-soft:  #eef2f7;
+
+    /* page ground */
+    --paper-from: #eef4f7;
+    --paper-to:   #f7f3ea;
+
+    /* accent */
+    --accent:        #007bff;
+    --accent-hover:  #0056b3;
+    --accent-strong: #1d4ed8;
+    --accent-bg:     #dbeafe;
+
+    /* sidebar */
+    --sidebar-from: #17324d;
+    --sidebar-to:   #0f2236;
+    --sidebar-ink:  #eff6ff;
+
+    /* semantic */
+    --ok:            #166534;  --ok-bg:      #dcfce7;
+    --warn:          #92400e;  --warn-bg:    #fef3c7;
+    --danger:        #991b1b;  --danger-bg:  #fee2e2;
+    --danger-solid:  #dc3545;  --danger-solid-hover: #c82333;
+    --info:          #075985;  --info-bg:    #e0f2fe;
+    --violet:        #5b21b6;  --violet-bg:  #ede9fe;
+
+    /* type scale - names now, sizes revisited with the palette */
+    --f1: 12px;  --f2: 13px;  --f3: 14px;  --f4: 15px;  --f5: 24px;
+
+
+    /* selected chat in the sidebar */
+    --selected-ink:    #10263d;
+    --selected-line:   #93c5fd;
+    --selected-marker: #2563eb;
+
+    /* tinted panels */
+    --panel-info-bg:   #eef6ff;  --panel-info-line: #cfe0f5;
+    --panel-warn-bg:   #fff8e1;  --panel-warn-line: #f0c36d;
+    --panel-note-bg:   #fff9ec;
+    --panel-quiet-bg:  #f4f7fb;  --panel-quiet-line: #d7e0ea;
+    --panel-plain-bg:  #fbfcfe;
+
+    /* code/console block */
+    --console-bg:   #0f172a;
+    --console-ink:  #e2e8f0;
+    --console-line: #2d3748;
+    --console-ok:   #4ade80;
+    --console-bad:  #f87171;
+
+    /* radii and elevation */
+    --r1: 4px;  --r2: 10px;  --r3: 14px;
+    --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
 * {
     box-sizing: border-box;
 }
@@ -7,8 +80,8 @@ body {
     line-height: 1.6;
     margin: 0;
     padding: 20px;
-    background: linear-gradient(180deg, #eef4f7 0%, #f7f3ea 100%);
-    color: #1f2937;
+    background: linear-gradient(180deg, var(--paper-from) 0%, var(--paper-to) 100%);
+    color: var(--ink);
 }
 
 .container {
@@ -34,7 +107,7 @@ section {
 
 .page-subtitle {
     margin: 0;
-    color: #526072;
+    color: var(--ink-2);
 }
 
 .memory-workspace {
@@ -47,8 +120,8 @@ section {
 .chat-sidebar {
     position: sticky;
     top: 20px;
-    background: linear-gradient(180deg, #17324d 0%, #0f2236 100%);
-    color: #eff6ff;
+    background: linear-gradient(180deg, var(--sidebar-from) 0%, var(--sidebar-to) 100%);
+    color: var(--sidebar-ink);
 }
 
 .chat-sidebar h2 {
@@ -84,10 +157,10 @@ section {
 }
 
 .chat-group-link-active {
-    background: #f8fafc;
-    color: #10263d;
-    border-color: #93c5fd;
-    box-shadow: inset 4px 0 0 #2563eb;
+    background: var(--surface-2);
+    color: var(--selected-ink);
+    border-color: var(--selected-line);
+    box-shadow: inset 4px 0 0 var(--selected-marker);
 }
 
 .chat-group-title-row {
@@ -103,7 +176,7 @@ section {
 }
 
 .chat-group-meta {
-    font-size: 13px;
+    font-size: var(--f2);
     color: inherit;
     opacity: 0.82;
 }
@@ -112,7 +185,7 @@ section {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    font-size: 12px;
+    font-size: var(--f1);
 }
 
 .memory-main {
@@ -139,7 +212,7 @@ section {
 
 .scope-subtitle {
     margin-top: 4px;
-    color: #526072;
+    color: var(--ink-2);
 }
 
 .scope-meta-list {
@@ -150,8 +223,8 @@ section {
 }
 
 .scope-meta-item {
-    font-size: 13px;
-    color: #445164;
+    font-size: var(--f2);
+    color: var(--ink-2);
 }
 
 .scope-actions {
@@ -174,13 +247,13 @@ section {
 }
 
 .chat-group-link-active .scope-pill {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--accent-bg);
+    color: var(--accent-strong);
 }
 
 .scope-pill-header {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--accent-bg);
+    color: var(--accent-strong);
 }
 
 .form-row {
@@ -201,9 +274,9 @@ input[type="number"],
 select,
 textarea {
     padding: 8px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--line);
     border-radius: 4px;
-    font-size: 14px;
+    font-size: var(--f3);
 }
 
 input[type="checkbox"] {
@@ -218,18 +291,18 @@ textarea {
 
 button, .button {
     padding: 8px 16px;
-    background: #007bff;
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     text-decoration: none;
     display: inline-block;
-    font-size: 14px;
+    font-size: var(--f3);
 }
 
 button:hover, .button:hover {
-    background: #0056b3;
+    background: var(--accent-hover);
 }
 
 button:disabled, .button:disabled {
@@ -238,19 +311,19 @@ button:disabled, .button:disabled {
 }
 
 .button.secondary {
-    background: #6b7280;
+    background: var(--ink-3);
 }
 
 .button.secondary:hover {
-    background: #4b5563;
+    background: var(--ink-2);
 }
 
 button.danger {
-    background: #dc3545;
+    background: var(--danger-solid);
 }
 
 button.danger:hover {
-    background: #c82333;
+    background: var(--danger-solid-hover);
 }
 
 .filters .form-row {
@@ -280,17 +353,17 @@ table {
 th, td {
     padding: 10px;
     text-align: left;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--line);
 }
 
 th {
-    background: #f8f9fa;
+    background: var(--surface-2);
     font-weight: 600;
 }
 
 .id-cell {
     font-family: monospace;
-    font-size: 12px;
+    font-size: var(--f1);
 }
 
 .content-cell {
@@ -299,7 +372,7 @@ th {
 }
 
 .date-cell {
-    font-size: 12px;
+    font-size: var(--f1);
 }
 
 .actions-cell {
@@ -312,12 +385,12 @@ th {
 
 .actions-cell button {
     padding: 4px 8px;
-    font-size: 12px;
+    font-size: var(--f1);
     margin-right: 5px;
 }
 
 tr.pinned {
-    background: #fff8e1;
+    background: var(--panel-warn-bg);
 }
 
 tr.archived {
@@ -330,9 +403,9 @@ details {
 
 summary {
     cursor: pointer;
-    color: #007bff;
+    color: var(--accent);
     padding: 4px 8px;
-    font-size: 12px;
+    font-size: var(--f1);
 }
 
 .dev-tools-panel {
@@ -347,7 +420,7 @@ summary {
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
     font-size: 1.1em;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--ink);
     list-style: none;
 }
 
@@ -358,7 +431,7 @@ summary {
 .dev-tools-panel > summary::before {
     content: "▶ ";
     font-size: 0.75em;
-    color: #526072;
+    color: var(--ink-2);
 }
 
 .dev-tools-panel[open] > summary {
@@ -377,7 +450,7 @@ summary {
 .edit-form {
     margin-top: 15px;
     padding: 15px;
-    background: #f8f9fa;
+    background: var(--surface-2);
     border-radius: 4px;
 }
 
@@ -407,8 +480,8 @@ summary {
 .result-summary {
     margin-top: 15px;
     padding: 10px 12px;
-    background: #eef6ff;
-    border: 1px solid #cfe0f5;
+    background: var(--panel-info-bg);
+    border: 1px solid var(--panel-info-line);
     border-radius: 6px;
 }
 
@@ -426,8 +499,8 @@ summary {
 
 .diagnostic-card {
     padding: 12px;
-    background: #f8f9fa;
-    border: 1px solid #e0e3e7;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
     border-radius: 6px;
 }
 
@@ -450,8 +523,8 @@ summary {
 .memory-block {
     margin-top: 12px;
     padding: 12px;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--console-bg);
+    color: var(--console-ink);
     border-radius: 6px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -466,7 +539,7 @@ summary {
 
 .tracker-card {
     padding: 12px;
-    border: 1px solid #2d3748;
+    border: 1px solid var(--console-line);
     border-radius: 8px;
 }
 
@@ -490,11 +563,11 @@ summary {
 }
 
 .tracker-status-ok {
-    color: #4ade80;
+    color: var(--console-ok);
 }
 
 .tracker-status-error {
-    color: #f87171;
+    color: var(--console-bad);
     font-weight: 600;
 }
 
@@ -512,19 +585,19 @@ summary {
 
 .summary-card {
     padding: 12px;
-    background: #f4f7fb;
-    border: 1px solid #d7e0ea;
+    background: var(--panel-quiet-bg);
+    border: 1px solid var(--panel-quiet-line);
     border-radius: 6px;
 }
 
 .summary-label {
-    color: #4b5563;
-    font-size: 13px;
+    color: var(--ink-2);
+    font-size: var(--f2);
     margin-bottom: 6px;
 }
 
 .summary-value {
-    font-size: 24px;
+    font-size: var(--f5);
     font-weight: 700;
     line-height: 1.1;
 }
@@ -533,9 +606,9 @@ summary {
     display: inline-block;
     margin: 4px 6px 0 0;
     padding: 3px 8px;
-    background: #eef2f7;
+    background: var(--line-soft);
     border-radius: 999px;
-    font-size: 12px;
+    font-size: var(--f1);
 }
 
 .memory-list {
@@ -545,15 +618,15 @@ summary {
 }
 
 .memory-card {
-    border: 1px solid #dde3eb;
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 16px;
-    background: #fbfcfe;
+    background: var(--panel-plain-bg);
 }
 
 .memory-card-pinned {
-    border-color: #f0c36d;
-    background: #fff9ec;
+    border-color: var(--panel-warn-line);
+    background: var(--panel-note-bg);
 }
 
 .memory-card-archived {
@@ -573,7 +646,7 @@ summary {
 }
 
 .memory-id {
-    font-size: 12px;
+    font-size: var(--f1);
     word-break: break-all;
 }
 
@@ -588,65 +661,65 @@ summary {
     display: inline-block;
     padding: 4px 8px;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: var(--f1);
     font-weight: 600;
     line-height: 1;
     text-transform: capitalize;
 }
 
 .badge-type {
-    background: #e0f2fe;
-    color: #075985;
+    background: var(--info-bg);
+    color: var(--info);
 }
 
 .badge-source {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--ok-bg);
+    color: var(--ok);
 }
 
 .badge-layer {
-    background: #ede9fe;
-    color: #5b21b6;
+    background: var(--violet-bg);
+    color: var(--violet);
 }
 
 .badge-pinned {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--warn-bg);
+    color: var(--warn);
 }
 
 .badge-archived {
-    background: #e5e7eb;
-    color: #374151;
+    background: var(--line);
+    color: var(--ink-2);
 }
 
 .badge-freshness-fresh {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--ok-bg);
+    color: var(--ok);
 }
 
 .badge-freshness-warm {
-    background: #fef3c7;
-    color: #92400e;
+    background: var(--warn-bg);
+    color: var(--warn);
 }
 
 .badge-freshness-stale {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--danger-bg);
+    color: var(--danger);
 }
 
 .badge-activity-never_used {
-    background: #e5e7eb;
-    color: #374151;
+    background: var(--line);
+    color: var(--ink-2);
 }
 
 .badge-activity-low_use {
-    background: #e0f2fe;
-    color: #075985;
+    background: var(--info-bg);
+    color: var(--info);
 }
 
 .badge-activity-active {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--accent-bg);
+    color: var(--accent-strong);
 }
 
 .consolidation-select {
@@ -654,29 +727,29 @@ summary {
     align-items: center;
     gap: 6px;
     margin-top: 6px;
-    font-size: 13px;
-    color: #4b5563;
+    font-size: var(--f2);
+    color: var(--ink-2);
 }
 
 .consolidation-select-candidate {
-    color: #991b1b;
+    color: var(--danger);
     font-weight: 600;
 }
 
 .memory-meta-line {
-    color: #4b5563;
-    font-size: 13px;
+    color: var(--ink-2);
+    font-size: var(--f2);
 }
 
 .memory-touch-line {
-    color: #6b7280;
-    font-size: 13px;
+    color: var(--ink-3);
+    font-size: var(--f2);
     margin-top: 6px;
 }
 
 .memory-preview {
     margin-top: 12px;
-    font-size: 15px;
+    font-size: var(--f4);
     word-break: break-word;
 }
 
@@ -691,7 +764,7 @@ summary {
 .consolidation-form {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid var(--line);
 }
 
 .memory-detail-grid {
@@ -716,8 +789,8 @@ summary {
 
 .history-summary {
     margin-top: 8px;
-    color: #6b7280;
-    font-size: 13px;
+    color: var(--ink-3);
+    font-size: var(--f2);
 }
 
 .history-toggle {
@@ -725,7 +798,7 @@ summary {
 }
 
 .empty-value {
-    color: #6b7280;
+    color: var(--ink-3);
     font-style: italic;
 }
 
@@ -750,4 +823,121 @@ summary {
     .actions-cell {
         width: 100%;
     }
+}
+
+/* === Utility classes replacing inline style attributes ======================
+   Thirty-seven `style="..."` attributes lived in the templates. Inline styles
+   cannot be themed and cannot be overridden, so a dark theme would have had to
+   route around them - and three carried colour literals of their own, outside
+   the palette entirely.
+   Named by role rather than by declaration ("tool-hint", not "opacity-80"), so
+   changing what a hint looks like stays one edit.
+   ========================================================================== */
+
+/* Explanatory paragraph under a tool heading. */
+.tool-hint {
+    margin-bottom: var(--s2, 8px);
+    color: var(--ink-2);
+}
+
+.tool-hint-quiet {
+    color: var(--ink-3);
+}
+
+/* Small print under a control: what a field expects, what a button will do. */
+.field-note {
+    margin-top: 4px;
+    font-size: var(--f1);
+    color: var(--ink-3);
+}
+
+/* A row of controls that wraps on a narrow screen. */
+.control-row {
+    margin-top: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.control-row-tight {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Inline status text a script writes into after an action. */
+.action-status {
+    font-size: var(--f2);
+    color: var(--ink-2);
+}
+
+/* Model pickers sit next to a button and must not push it off the row. */
+.model-select {
+    max-width: 200px;
+}
+
+.input-full {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.input-code {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, "Roboto Mono", monospace;
+    font-size: var(--f2);
+}
+
+/* Result preview shown after consolidation or scene extraction. */
+.preview-panel {
+    display: none;
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--ok);
+    border-radius: var(--r2);
+    background: var(--ok-bg);
+}
+
+.preview-panel.is-visible {
+    display: block;
+}
+
+.preview-line {
+    margin-top: 4px;
+}
+
+.preview-meta {
+    margin-top: 4px;
+    font-size: var(--f1);
+    color: var(--ink-3);
+}
+
+.stack-tight {
+    margin: 8px 0;
+}
+
+/* Destructive action, distinguished by colour as well as by position. */
+.button-danger-outline {
+    color: var(--danger-solid);
+    border-color: var(--danger-solid);
+}
+
+/* Backfill result banner and its "some lines were ignored" line. */
+.result-banner {
+    background: var(--ok-bg);
+    border: 1px solid var(--ok);
+    border-radius: var(--r2);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+
+.result-banner-warn {
+    color: var(--warn);
+}
+
+/* Forms that must sit on the same line as the control beside them. */
+.form-inline {
+    display: inline;
 }

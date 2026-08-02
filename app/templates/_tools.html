@@ -1,13 +1,13 @@
 <section class="create-form">
     <h2>Trackers</h2>
-    <p style="margin-bottom:8px;opacity:0.8;">Timeline, Relationship, NPC Who's Who and Character POV Notes — each is one document that gets rewritten in place, not accumulated.</p>
+    <p class="tool-hint">Timeline, Relationship, NPC Who's Who and Character POV Notes — each is one document that gets rewritten in place, not accumulated.</p>
     <input type="hidden" id="tracker-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
     <input type="hidden" id="tracker-char-id" value="{{ filters['selected_character_id'] or '' }}">
     {% if trackers_display is none %}
-    <p style="opacity:0.7;">Select a single chat to view and update its trackers.</p>
+    <p class="tool-hint tool-hint-quiet">Select a single chat to view and update its trackers.</p>
     {% else %}
     <div class="form-row">
-        <label>Model: <select id="tracker-model" style="max-width:200px;"><option value="">default</option></select></label>
+        <label>Model: <select id="tracker-model" class="model-select"><option value="">default</option></select></label>
     </div>
     <div class="tracker-grid">
         {% for t in trackers_display %}
@@ -33,9 +33,9 @@
 
 <section class="create-form">
     <h2>Consolidation</h2>
-    <p style="margin-bottom:8px;opacity:0.8;">Combine memories into higher-level summaries: Episodic → Arc → Chapter → Book.</p>
+    <p class="tool-hint">Combine memories into higher-level summaries: Episodic → Arc → Chapter → Book.</p>
     {% if consolidation_pool_truncated %}
-    <div class="result-summary" style="border-color:#a35a00;background:#3a2a1a;">
+    <div class="result-summary" >
         <strong>Warning:</strong> this chat has at least {{ consolidation_all_candidate_ids|length }} consolidation-eligible
         memories, hitting the scan cap - some older memories may not be selectable even via "Select all".
     </div>
@@ -52,32 +52,32 @@
                     <option value="book">Book (from chapters)</option>
                 </select>
             </label>
-            <label>Model: <select id="consolidate-model" style="max-width:200px;"><option value="">default</option></select></label>
+            <label>Model: <select id="consolidate-model" class="model-select"><option value="">default</option></select></label>
         </div>
-        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <div class="control-row">
             <button type="submit" id="consolidate-submit">Консолидировать выбранное (<span id="consolidate-selected-count">0</span>)</button>
             <button type="button" id="consolidate-select-all">Select all not-yet-consolidated ({{ consolidation_all_candidate_ids|length }})</button>
             <button type="button" id="consolidate-clear-selection">Clear selection</button>
-            <span id="consolidate-result" style="font-size:0.9em;"></span>
+            <span id="consolidate-result" class="action-status"></span>
         </div>
     </form>
-    <div id="consolidate-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid #2d5a2d;border-radius:8px;background:#1a3a1a;">
+    <div id="consolidate-preview" class="preview-panel">
         <strong id="consolidate-preview-title"></strong>
-        <p id="consolidate-preview-content" style="margin-top:4px;"></p>
+        <p id="consolidate-preview-content" class="preview-line"></p>
     </div>
 </section>
 
 <section class="create-form">
     <h2>LLM Provider</h2>
-    <p style="margin-bottom:8px;opacity:0.8;">Choose which LLM backend the extraction/consolidation tools call. Switching is in-process and resets to the .env default on restart.</p>
+    <p class="tool-hint">Choose which LLM backend the extraction/consolidation tools call. Switching is in-process and resets to the .env default on restart.</p>
     <form id="llm-provider-form">
         <div class="form-row">
             <label>Provider: <select id="llm-provider-select"></select></label>
             <label>Model (active): <select id="llm-model-select" disabled></select></label>
         </div>
-        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+        <div class="control-row">
             <button type="submit">Switch Provider</button>
-            <span id="llm-provider-result" style="font-size:0.9em;"></span>
+            <span id="llm-provider-result" class="action-status"></span>
         </div>
     </form>
 </section>
@@ -90,20 +90,20 @@
             <form method="POST" action="/ui/backfill-file" enctype="multipart/form-data">
                 <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] or 'backfill' }}">
                 <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or 'backfill' }}">
-                <div style="margin:8px 0;">
+                <div class="stack-tight">
                     <input type="file" name="file" accept=".jsonl,.json" required>
                 </div>
                 <button type="submit">Upload & Backfill</button>
             </form>
-            <p style="font-size:0.85em;opacity:0.7;margin-top:4px;">Upload a SillyTavern .jsonl chat file. Messages are extracted and stored as memories.</p>
+            <p class="field-note">Upload a SillyTavern .jsonl chat file. Messages are extracted and stored as memories.</p>
         </div>
         <div>
             <h3>Export Memories</h3>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+            <div class="control-row-tight">
                 <a href="/ui/export?chat_id={{ filters['selected_chat_id'] or '' }}&character_id={{ filters['selected_character_id'] or '' }}" class="button" download>Export Current Scope</a>
                 <a href="/ui/export" class="button secondary" download>Export All</a>
             </div>
-            <p style="font-size:0.85em;opacity:0.7;margin-top:4px;">Download memories as .jsonl file.</p>
+            <p class="field-note">Download memories as .jsonl file.</p>
         </div>
     </div>
 </section>
@@ -381,35 +381,35 @@
 
 <section class="create-form">
     <h2>Clip — Quick Save Fact</h2>
-    <p style="margin-bottom:8px;opacity:0.8;">Pin an important fact, promise, or detail. Saved as a pinned stable memory.</p>
+    <p class="tool-hint">Pin an important fact, promise, or detail. Saved as a pinned stable memory.</p>
     <form id="clip-form">
         <input type="hidden" id="clip-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
         <input type="hidden" id="clip-char-id" value="{{ filters['selected_character_id'] or '' }}">
-        <textarea id="clip-text" rows="3" style="width:100%;box-sizing:border-box;" placeholder="Elena promised to meet at the tavern at midnight..."></textarea>
-        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;">
+        <textarea id="clip-text" rows="3" class="input-full" placeholder="Elena promised to meet at the tavern at midnight..."></textarea>
+        <div class="control-row">
             <button type="submit">Save Clip</button>
-            <span id="clip-result" style="font-size:0.9em;"></span>
+            <span id="clip-result" class="action-status"></span>
         </div>
     </form>
 </section>
 
 <section class="create-form">
     <h2>Scene Extraction (LLM)</h2>
-    <p style="margin-bottom:8px;opacity:0.8;">Paste a scene (character messages only) and let LLM extract a structured memory with title, summary, and keywords.</p>
+    <p class="tool-hint">Paste a scene (character messages only) and let LLM extract a structured memory with title, summary, and keywords.</p>
     <form id="scene-extract-form">
         <input type="hidden" id="scene-chat-id" value="{{ filters['selected_chat_id'] or '' }}">
         <input type="hidden" id="scene-char-id" value="{{ filters['selected_character_id'] or '' }}">
-        <textarea id="scene-text" rows="8" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.85em;" placeholder="[assistant]: Изабель смотрит на тебя...&#10;[assistant]: Она встаёт и подходит к окну...&#10;[assistant]: — Ты говоришь «надеяться что урожай будет хороший»..."></textarea>
-        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <textarea id="scene-text" rows="8" class="input-code" placeholder="[assistant]: Изабель смотрит на тебя...&#10;[assistant]: Она встаёт и подходит к окну...&#10;[assistant]: — Ты говоришь «надеяться что урожай будет хороший»..."></textarea>
+        <div class="control-row">
             <button type="submit">Extract Scene Memory</button>
-            <label style="font-size:0.85em;">Model: <select id="scene-model" style="max-width:200px;"><option value="">default</option></select></label>
-            <span id="scene-result" style="font-size:0.9em;"></span>
+            <label class="field-note">Model: <select id="scene-model" class="model-select"><option value="">default</option></select></label>
+            <span id="scene-result" class="action-status"></span>
         </div>
     </form>
-    <div id="scene-preview" style="display:none;margin-top:12px;padding:12px;border:1px solid #2d5a2d;border-radius:8px;background:#1a3a1a;">
+    <div id="scene-preview" class="preview-panel">
         <strong id="scene-preview-title"></strong>
-        <p id="scene-preview-content" style="margin-top:4px;"></p>
-        <p id="scene-preview-meta" style="margin-top:4px;font-size:0.85em;opacity:0.7;"></p>
+        <p id="scene-preview-content" class="preview-line"></p>
+        <p id="scene-preview-meta" class="preview-meta"></p>
     </div>
 </section>
 
