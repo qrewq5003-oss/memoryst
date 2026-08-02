@@ -75,6 +75,105 @@
     box-sizing: border-box;
 }
 
+/* === Dark theme ============================================================
+   Only the values change: every rule below already reads a token, which is what
+   the tokenisation pass was for. Two selectors, deliberately:
+   prefers-color-scheme follows the system, and :root[data-theme=...] lets the
+   in-page toggle override it in either direction - a media query alone cannot
+   be overridden to light on a dark phone.
+
+   Not an inversion. Surfaces lift rather than darken (a card is lighter than
+   the page, as in daylight), and every foreground was re-picked and measured
+   against its own background rather than flipped.
+   ========================================================================== */
+:root[data-theme="dark"],
+:root[data-theme="dark"] body {
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --ink:        #E8EFF4;
+        --ink-2:      #AFC1CE;
+        --ink-3:      #8AA0B0;
+        --surface:    #18242F;
+        --surface-2:  #202D3A;
+        --line:       #33475A;
+        --line-soft:  #2A3B4B;
+        --paper-from: #0C141B;
+        --paper-to:   #0E1822;
+        --accent:        #4FC3CB;
+        --accent-hover:  #6FD4DB;
+        --accent-strong: #4FC3CB;
+        --accent-bg:     #10333A;
+        --sidebar-from: #142B42;
+        --sidebar-to:   #0C1C2D;
+        --sidebar-ink:  #E4EEF6;
+        --ok:            #63C79B;  --ok-bg:      #12362A;
+        --warn:          #DFA45C;  --warn-bg:    #38290F;
+        --danger:        #F09189;  --danger-bg:  #3B1B18;
+        --danger-solid:  #C4443B;  --danger-solid-hover: #D95A50;
+        --info:          #7FADF5;  --info-bg:    #16294A;
+        --violet:        #AC9AF0;  --violet-bg:  #251F45;
+        --selected-ink:   #E8EFF4;
+        --selected-line:  #4FC3CB;
+        --selected-marker:#4FC3CB;
+        --panel-info-bg:   #16294A;  --panel-info-line: #2C4A7A;
+        --panel-warn-bg:   #38290F;  --panel-warn-line: #6E5320;
+        --panel-note-bg:   #2B2413;
+        --panel-quiet-bg:  #1B2733;  --panel-quiet-line: #2F4356;
+        --panel-plain-bg:  #18242F;
+        --console-bg:   #0A121B;
+        --console-ink:  #D8E3EC;
+        --console-line: #2B3D4E;
+        --console-ok:   #63C79B;
+        --console-bad:  #F09189;
+        --shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+    }
+}
+
+/* The toggle wins over the media query in both directions. */
+:root[data-theme="dark"] {
+    --ink:        #E8EFF4;
+    --ink-2:      #AFC1CE;
+    --ink-3:      #8AA0B0;
+    --surface:    #18242F;
+    --surface-2:  #202D3A;
+    --line:       #33475A;
+    --line-soft:  #2A3B4B;
+    --paper-from: #0C141B;
+    --paper-to:   #0E1822;
+    --accent:        #4FC3CB;
+    --accent-hover:  #6FD4DB;
+    --accent-strong: #4FC3CB;
+    --accent-bg:     #10333A;
+    --sidebar-from: #142B42;
+    --sidebar-to:   #0C1C2D;
+    --sidebar-ink:  #E4EEF6;
+    --ok:            #63C79B;  --ok-bg:      #12362A;
+    --warn:          #DFA45C;  --warn-bg:    #38290F;
+    --danger:        #F09189;  --danger-bg:  #3B1B18;
+    --danger-solid:  #C4443B;  --danger-solid-hover: #D95A50;
+    --info:          #7FADF5;  --info-bg:    #16294A;
+    --violet:        #AC9AF0;  --violet-bg:  #251F45;
+    --selected-ink:   #E8EFF4;
+    --selected-line:  #4FC3CB;
+    --selected-marker:#4FC3CB;
+    --panel-info-bg:   #16294A;  --panel-info-line: #2C4A7A;
+    --panel-warn-bg:   #38290F;  --panel-warn-line: #6E5320;
+    --panel-note-bg:   #2B2413;
+    --panel-quiet-bg:  #1B2733;  --panel-quiet-line: #2F4356;
+    --panel-plain-bg:  #18242F;
+    --console-bg:   #0A121B;
+    --console-ink:  #D8E3EC;
+    --console-line: #2B3D4E;
+    --console-ok:   #63C79B;
+    --console-bad:  #F09189;
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+}
+
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     line-height: 1.6;

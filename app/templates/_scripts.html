@@ -423,4 +423,26 @@ document.addEventListener('toggle', async (event) => {
         body.innerHTML = `<a href="/ui/memory/${encodeURIComponent(details.dataset.memoryId)}">Открыть подробности</a>`;
     }
 }, true);
+
+// Theme toggle. The stylesheet follows prefers-color-scheme on its own; this
+// only exists so the choice can differ from the system one, which a media query
+// cannot express by itself. Three states would be tidier (system/light/dark) but
+// two is what a header button can convey without a label nobody reads.
+function currentTheme() {
+    return document.documentElement.dataset.theme
+        || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('memoryst-theme', theme); } catch (e) {}
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+    // Keep the browser chrome in step with the page it frames.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0C141B' : '#EEF2F5');
+}
+
+applyTheme(currentTheme());
+on('theme-toggle', 'click', () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
 </script>

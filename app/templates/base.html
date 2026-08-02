@@ -8,6 +8,14 @@
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="#16213e">
 </head>
+<script>
+        // Runs before the body renders: reading the stored choice afterwards would
+        // paint the light theme first and flash it on a dark phone.
+        try {
+            const saved = localStorage.getItem('memoryst-theme');
+            if (saved) document.documentElement.dataset.theme = saved;
+        } catch (e) {}
+    </script>
 <body>
     <div class="container">
         {% block content %}{% endblock %}
