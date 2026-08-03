@@ -81,3 +81,65 @@ class ThemeApplicationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarkupBalanceTests(unittest.TestCase):
+    """Every container a page opens, it has to close.
+
+    _memory_list.html used to end with </div></section> closing two elements its
+    parent had opened - a leftover from when it was the last include and did the
+    parent's closing itself. memories.html closes them too, so the rendered page
+    carried an extra </div> and </section>. Browsers repair that silently, which
+    is why it survived so long.
+    """
+
+    PAGES = ("/ui", "/ui/tools")
+    CONTAINERS = ("div", "section", "article", "aside", "details", "form", "nav")
+
+    def setUp(self) -> None:
+        import tempfile
+
+        from fastapi.testclient import TestClient
+
+        from app.config import config
+        from app.db import init_schema
+        from app.main import app
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        original = config.DATABASE_PATH
+        config.DATABASE_PATH = str(Path(self.temp_dir.name) / "test.db")
+        self.addCleanup(setattr, config, "DATABASE_PATH", original)
+        init_schema()
+        self.client = TestClient(app)
+
+    def _structure(self, html: str) -> str:
+        """Markup only. Scripts do not structure the document, and both they and
+        comments mention tag names in prose - counting those is how a previous
+        check reported a phantom unclosed <details>."""
+        html = re.sub(r"<script\b.*?</script>", "", html, flags=re.S)
+        return re.sub(r"<!--.*?-->", "", html, flags=re.S)
+
+    def test_container_tags_balance_on_every_page(self) -> None:
+        for page in self.PAGES:
+            markup = self._structure(self.client.get(page).text)
+            for tag in self.CONTAINERS:
+                with self.subTest(page=page, tag=tag):
+                    self.assertEqual(
+                        len(re.findall(rf"<{tag}\b", markup)),
+                        len(re.findall(rf"</{tag}>", markup)),
+                    )
+
+    def test_no_partial_closes_a_tag_it_did_not_open(self) -> None:
+        """The specific defect: a partial that ends deeper than it starts is one
+        an include order change can silently break."""
+        for template in Path("app/templates").glob("_*.html"):
+            source = re.sub(r"\{#.*?#\}", "", template.read_text(), flags=re.S)
+            source = re.sub(r"<script\b.*?</script>", "", source, flags=re.S)
+            with self.subTest(template=template.name):
+                for tag in ("div", "section"):
+                    self.assertGreaterEqual(
+                        len(re.findall(rf"<{tag}\b", source)),
+                        len(re.findall(rf"</{tag}>", source)),
+                        f"{template.name} closes more <{tag}> than it opens",
+                    )
