@@ -101,11 +101,15 @@
             {% if memories["total"] and memories["total"] > 0 %}
             <div class="pagination">
                 {% if filters["offset"] and filters["offset"] > 0 %}
-                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button">Previous</a>
+                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button secondary">Назад</a>
+                {% else %}
+                <span></span>
                 {% endif %}
-                <span>Page {{ ((filters["offset"] or 0) // filters["limit"]) + 1 }} ({{ memories["total"] }} total)</span>
+                <span class="pagination-state">{{ (filters["offset"] or 0) + 1 }}&ndash;{{ [(filters["offset"] or 0) + filters["limit"], memories["total"]]|min }} из {{ memories["total"] }}</span>
                 {% if memories["offset"] + memories["limit"] < memories["total"] %}
-                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">Next</a>
+                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">Ещё</a>
+                {% else %}
+                <span></span>
                 {% endif %}
             </div>
             {% endif %}

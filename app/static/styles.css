@@ -1315,3 +1315,59 @@ summary {
     display: inline-flex;
     align-items: center;
 }
+
+/* The chat list collapses once a chat is selected: 63 entries is ~5800px of
+   scroll to pass before reaching the memories, and after choosing you already
+   know where you are. */
+.chat-picker > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 4px;
+    cursor: pointer;
+    font-size: var(--f2);
+}
+
+.chat-picker-current {
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-picker-count {
+    font-family: ui-monospace, "Roboto Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--f1);
+    opacity: 0.75;
+}
+
+/* Keeps a long list from taking the whole screen when it is open. */
+.chat-picker[open] .chat-group-list {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Paging is now reached often enough to deserve real targets. */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.pagination .button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.pagination-state {
+    font-family: ui-monospace, "Roboto Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--f1);
+    color: var(--ink-3);
+}

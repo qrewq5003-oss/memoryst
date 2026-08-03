@@ -53,6 +53,10 @@ templates = Jinja2Templates(directory="app/templates")
 router = APIRouter(tags=["ui"])
 
 UI_SEARCH_SCAN_LIMIT = 2000
+# Fifty cards is roughly 9500px of scroll on a phone - about twelve screens before
+# the pagination controls. Twenty is two or three screens, and paging is a tap on a
+# server running on the same device.
+DEFAULT_PAGE_SIZE = 20
 # Export pages through the whole result set rather than capping it, so a large chat
 # can't be truncated without anyone noticing.
 EXPORT_PAGE_SIZE = 1000
@@ -95,7 +99,7 @@ def _render_memories_page(
     archived: str | None = None,
     pinned: str | None = None,
     show_consolidated: str | None = None,
-    limit: int = 50,
+    limit: int = DEFAULT_PAGE_SIZE,
     offset: int = 0,
     store_result=None,
     retrieve_result=None,
@@ -694,7 +698,7 @@ def ui_memories_page(
     archived: str | None = None,
     pinned: str | None = None,
     show_consolidated: str | None = None,
-    limit: int = 50,
+    limit: int = DEFAULT_PAGE_SIZE,
     offset: int = 0,
 ) -> Any:
     """Render memories page with filters."""

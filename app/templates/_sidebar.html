@@ -14,7 +14,16 @@
             </a>
         </div>
 
+        {#- The chat list is 63 entries, about 5800px of scroll before the memories
+            begin. Once a chat is selected you already know where you are, so the list
+            collapses and the summary carries the current scope and the count. With
+            nothing selected it opens, because then choosing is the task. -#}
         {% if has_chat_groups %}
+        <details class="chat-picker" {% if not filters["selected_chat_id"] and filters["view"] != "all" %}open{% endif %}>
+            <summary>
+                <span class="chat-picker-current">{{ scope_title }}</span>
+                <span class="chat-picker-count">{{ chat_groups|length }}</span>
+            </summary>
         <div class="chat-group-list">
             {% for group in chat_groups %}
             {#- The raw chat id used to appear four times per entry: in the href, in a
@@ -47,6 +56,7 @@
             </a>
             {% endfor %}
         </div>
+        </details>
         {% else %}
         <p class="empty-value">No chat scopes found for the current filters.</p>
         {% endif %}
