@@ -29,6 +29,7 @@
     --accent-hover:  #095A60;
     --accent-strong: #0B6E75;
     --accent-bg:     #DDEFF0;
+    --accent-ink:    #FFFFFF;   /* text on an accent fill */
 
     /* sidebar */
     --sidebar-from: #17324D;
@@ -40,6 +41,8 @@
     --warn:          #97580A;  --warn-bg:    #F8EEDF;
     --danger:        #B3261E;  --danger-bg:  #FBE9E7;
     --danger-solid:  #B3261E;  --danger-solid-hover: #8F1D17;
+    --danger-outline: #B3261E;
+    --danger-ink:     #FFFFFF;
     --info:          #2C63C9;  --info-bg:    #E2EBFB;
     --violet:        #6A55C4;  --violet-bg:  #EBE7F8;
 
@@ -107,6 +110,7 @@
         --accent-hover:  #6FD4DB;
         --accent-strong: #4FC3CB;
         --accent-bg:     #10333A;
+        --accent-ink:    #062A31;
         --sidebar-from: #142B42;
         --sidebar-to:   #0C1C2D;
         --sidebar-ink:  #E4EEF6;
@@ -114,6 +118,9 @@
         --warn:          #DFA45C;  --warn-bg:    #38290F;
         --danger:        #F09189;  --danger-bg:  #3B1B18;
         --danger-solid:  #C4443B;  --danger-solid-hover: #D95A50;
+        --danger-outline: #E4736A;
+        --danger-ink:     #FFFFFF;
+    --danger-outline: #E4736A;
         --info:          #7FADF5;  --info-bg:    #16294A;
         --violet:        #AC9AF0;  --violet-bg:  #251F45;
         --selected-ink:   #E8EFF4;
@@ -148,6 +155,7 @@
     --accent-hover:  #6FD4DB;
     --accent-strong: #4FC3CB;
     --accent-bg:     #10333A;
+    --accent-ink:    #062A31;
     --sidebar-from: #142B42;
     --sidebar-to:   #0C1C2D;
     --sidebar-ink:  #E4EEF6;
@@ -155,6 +163,8 @@
     --warn:          #DFA45C;  --warn-bg:    #38290F;
     --danger:        #F09189;  --danger-bg:  #3B1B18;
     --danger-solid:  #C4443B;  --danger-solid-hover: #D95A50;
+    --danger-outline: #E4736A;
+    --danger-ink:     #FFFFFF;
     --info:          #7FADF5;  --info-bg:    #16294A;
     --violet:        #AC9AF0;  --violet-bg:  #251F45;
     --selected-ink:   #E8EFF4;
@@ -193,7 +203,7 @@ h1, h2 {
 }
 
 section {
-    background: white;
+    background: var(--surface);
     padding: 20px;
     margin-bottom: 20px;
     border-radius: 14px;
@@ -391,7 +401,7 @@ textarea {
 button, .button {
     padding: 8px 16px;
     background: var(--accent);
-    color: white;
+    color: var(--accent-ink);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -419,6 +429,10 @@ button:disabled, .button:disabled {
 
 button.danger {
     background: var(--danger-solid);
+    /* Not --accent-ink: that is dark in the dark theme, and dark on this red is
+       3.06:1. The danger fill stays dark in both themes, so its text stays light -
+       which is why this is its own token rather than a theme-varying one. */
+    color: var(--danger-ink);
 }
 
 button.danger:hover {
@@ -559,7 +573,7 @@ summary {
 }
 
 .dev-tools-panel > summary {
-    background: white;
+    background: var(--surface);
     padding: 16px 20px;
     border-radius: 14px;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
@@ -1084,8 +1098,10 @@ summary {
 
 /* Destructive action, distinguished by colour as well as by position. */
 .button-danger-outline {
-    color: var(--danger-solid);
-    border-color: var(--danger-solid);
+    /* A separate token: the solid fill and an outline on a dark surface need
+       different reds - #C4443B reads 3.18:1 as text there. */
+    color: var(--danger-outline);
+    border-color: var(--danger-outline);
 }
 
 /* Backfill result banner and its "some lines were ignored" line. */

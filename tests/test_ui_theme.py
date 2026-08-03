@@ -46,11 +46,17 @@ class DarkThemeTokenTests(unittest.TestCase):
         self.assertEqual(dark - light, set())
 
     def test_the_stylesheet_body_still_holds_no_colour_literals(self) -> None:
-        """The point of the token pass: a second theme is values, not rules."""
+        """The point of the token pass: a second theme is values, not rules.
+
+        Comments are stripped first. A comment naming the hex that was rejected -
+        and why - is worth keeping, and the rule this guards is about
+        declarations, not prose.
+        """
         css = CSS.read_text()
         body = css[css.index("\nbody {"):]
+        declarations = re.sub(r"/\*.*?\*/", "", body, flags=re.S)
 
-        self.assertEqual(re.findall(r"#[0-9a-fA-F]{3,8}", body), [])
+        self.assertEqual(re.findall(r"#[0-9a-fA-F]{3,8}", declarations), [])
 
 
 class ThemeApplicationTests(unittest.TestCase):
