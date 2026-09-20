@@ -103,7 +103,20 @@
                 <a href="/ui/export?chat_id={{ filters['selected_chat_id'] or '' }}&character_id={{ filters['selected_character_id'] or '' }}" class="button" download>Export Current Scope</a>
                 <a href="/ui/export" class="button secondary" download>Export All</a>
             </div>
-            <p class="field-note">Download memories as .jsonl file.</p>
+            <p class="field-note">Download memories as .jsonl file. The export carries the whole record, so it restores as a backup.</p>
+        </div>
+        <div>
+            <h3>Import Memories</h3>
+            <form method="POST" action="/ui/import" enctype="multipart/form-data">
+                <input type="hidden" name="redirect_query" value="{{ filters['redirect_query'] or '' }}">
+                <input type="file" name="file" accept=".jsonl,application/jsonl" required>
+                <label class="control-row-tight">
+                    <input type="checkbox" name="overwrite" value="1">
+                    <span>Overwrite memories that already exist</span>
+                </label>
+                <button type="submit" class="button secondary">Import .jsonl</button>
+            </form>
+            <p class="field-note">Restores a .jsonl export. Existing memories are left alone unless you tick overwrite. A backup is taken first.</p>
         </div>
     </div>
 </section>

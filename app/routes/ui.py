@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -51,11 +52,17 @@ from app.ui_helpers.presentation import (
     resolve_selected_group,
 )
 
+logger = logging.getLogger(__name__)
+
 templates = Jinja2Templates(directory="app/templates")
 # The guard is on the router, not on individual routes: /ui has 45 form endpoints and
 # any new one would otherwise ship unprotected by default. See auth.require_same_origin
 # for why a same-origin rule is right here and wrong for the /memory API.
 router = APIRouter(tags=["ui"], dependencies=[Depends(require_same_origin)])
+
+# Bumped when the export record changes shape. The importer reads every version it has
+# ever written; the number is what tells it which fields it may expect rather than guess.
+EXPORT_SCHEMA_VERSION = 2
 
 UI_SEARCH_SCAN_LIMIT = 2000
 # Fifty cards is roughly 9500px of scroll on a phone - about twelve screens before
@@ -976,6 +983,40 @@ def ui_backfill_file(
     return RedirectResponse(url=f"/ui?{result}", status_code=303)
 
 
+@router.post("/ui/import")
+def ui_import_memories(
+    request: Request,
+    file: UploadFile = File(...),
+    overwrite: str = Form(default=""),
+    redirect_query: str = Form(default=""),
+) -> RedirectResponse:
+    """Restore memories from a .jsonl export.
+
+    A backup is taken first. This is the one endpoint that writes in bulk from a file the
+    server has never seen, and the failure it guards against is not a crash - it is a
+    successful import of the wrong file over a live database.
+    """
+    from app.services.backup_service import create_backup
+    from app.services.import_service import import_memories_jsonl
+
+    try:
+        create_backup()
+    except Exception:
+        logger.exception("Pre-import backup failed")
+
+    payload = file.file.read().decode("utf-8", errors="replace")
+    report = import_memories_jsonl(payload, overwrite=bool(overwrite))
+
+    summary = (
+        f"import_imported={report.imported}&import_overwritten={report.overwritten}"
+        f"&import_skipped={report.skipped_existing}&import_trackers={report.trackers}"
+        f"&import_invalid={report.invalid}&import_lossy={report.lossy_lines}"
+    )
+    redirect_query = normalize_redirect_query(redirect_query)
+    joined = f"{redirect_query}&{summary}" if redirect_query else summary
+    return RedirectResponse(url=f"/ui?{joined}", status_code=303)
+
+
 @router.get("/ui/export")
 def ui_export_memories(
     chat_id: str | None = None,
@@ -984,9 +1025,14 @@ def ui_export_memories(
     """Export memories and trackers as a .jsonl download.
 
     Trackers are included: the export used to run through list_memories, which hides
-    them, so a full export silently omitted every tracker document. There is no import
-    path yet, but the export is what a manual restore would be rebuilt from, and it
-    can't be the source of truth while a whole class of row is missing from it.
+    them, so a full export silently omitted every tracker document.
+
+    The record is the whole memory (schema 2). It used to be twelve chosen fields, which
+    read like a backup and was not one: `source`, `archived` and all of `metadata` beyond
+    entities and keywords were missing, so restoring from it would have flattened every
+    summary into an ordinary row, emptied every tracker, and dropped the
+    source_message_ids linking memories back to the raw chat - while looking complete.
+    /ui/import still reads the old shape, it just cannot restore what was never written.
 
     Paging is explicit rather than a bare limit=10000. The old cap would have started
     truncating silently, with no signal in the file or the response.
@@ -1012,16 +1058,25 @@ def ui_export_memories(
     lines = []
     for item in items:
         record = {
+            "schema_version": EXPORT_SCHEMA_VERSION,
             "id": item.id,
             "chat_id": item.chat_id,
             "character_id": item.character_id,
             "type": item.type,
             "layer": item.layer,
+            "source": item.source,
             "content": item.content,
             "importance": item.importance,
             "created_at": item.created_at,
             "updated_at": item.updated_at,
+            "last_accessed_at": item.last_accessed_at,
+            "access_count": item.access_count,
             "pinned": item.pinned,
+            "archived": item.archived,
+            "metadata": item.metadata.model_dump(mode="json", exclude_none=True),
+            # Kept beside `metadata` although they duplicate it: every export written
+            # before schema 2 had them at the top level, so leaving them there is what
+            # lets one reader handle both files.
             "entities": item.metadata.entities,
             "keywords": item.metadata.keywords,
         }
