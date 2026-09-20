@@ -48,8 +48,12 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
    коммит `9da6825`.** Всё идёт через `sillytavern-extension/http.mjs`. При правке
    бюджетов: `storeTimeoutMs` обязан быть больше `SCENE_LLM_TIMEOUT` из `app/config.py`,
    иначе клиент рвёт извлечение сцены, которое вот-вот бы завершилось.
-2. UI-роутер (`app/routes/ui.py`) не висит на `require_api_key`, при `allow_origins=["*"]`
-   в CORS. То же предупреждение уже есть в `README.md`, раздел Security.
+2. ~~UI-роутер не защищён при `allow_origins=["*"]`~~ — **закрыто 2026-09-20, коммит
+   `65be121`.** CORS — allowlist (`config.CORS_ALLOW_ORIGINS` / `CORS_ALLOW_ORIGIN_REGEX`,
+   по умолчанию лупбек), `/ui` висит на `auth.require_same_origin`. Две вещи, которые
+   легко сломать обратно: `require_api_key` на `/ui` вешать **нельзя** — браузерная
+   форма не умеет слать заголовок; и `/memory` намеренно **не** под same-origin — его
+   зовут кросс-доменно из SillyTavern. Это CSRF-защита, не аутентификация.
 3. Штатная кнопка ST «Install Extension» не может поставить это расширение:
    `getManifest` читает `manifest.json` из корня клона, а наш лежит в
    `sillytavern-extension/`.
