@@ -98,6 +98,12 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
   `/memory/retrieve`. При изменении контракта поднимать `PROTOCOL_VERSION` в
   `app/version.py` **и** `MEMORY_PROTOCOL_VERSION` в `sillytavern-extension/version.mjs`
 - Новые константы/пороги — в конфиг, не хардкодить в логику
+- Rolling summary обновляется сам, фоновой задачей после `/memory/store`
+  (`summary_scheduler.py`). Автопуть вызывает `generate_rolling_summary(require_llm=True)`
+  и **не пишет regex-фоллбэк** — этот текст уходит в каждый промпт как `[SUMMARY]`.
+  Ручная кнопка фоллбэк по-прежнему получает. `--dry-run` у
+  `scripts/run_rolling_summary.py` обязан только читать: `min_new` не проверяется, когда
+  сводки ещё нет, поэтому «высокий порог» дыру не затыкает
 - Добавил поле в `MemoryItem`/`MemoryMetadata` — добавь его и в экспорт
   (`ui.py:ui_export_memories`), иначе резервная копия молча перестанет быть полной.
   Формат версионируется через `EXPORT_SCHEMA_VERSION`; `import_service` обязан читать
