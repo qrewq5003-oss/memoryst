@@ -107,6 +107,16 @@ class Config:
     TRACKER_LLM_MAX_TOKENS: int = int(os.getenv("TRACKER_LLM_MAX_TOKENS", "10000"))
     TRACKER_LLM_RETRIES: int = int(os.getenv("TRACKER_LLM_RETRIES", "1"))
 
+    # The rolling summary layer existed for months and ran twice, because nothing called
+    # it except a button. It now refreshes in the background after a store; these are the
+    # knobs that decide how often that costs an LLM call. WINDOW is how many recent
+    # episodic memories one summary covers, MIN_NEW how many fresh ones have to
+    # accumulate before it is rewritten - the lower bound on cost, since a refresh that
+    # is not due returns before reaching the model.
+    ROLLING_SUMMARY_AUTO: bool = os.getenv("ROLLING_SUMMARY_AUTO", "true").lower() == "true"
+    ROLLING_SUMMARY_WINDOW: int = int(os.getenv("ROLLING_SUMMARY_WINDOW", "8"))
+    ROLLING_SUMMARY_MIN_NEW: int = int(os.getenv("ROLLING_SUMMARY_MIN_NEW", "3"))
+
     ACTIVE_LLM_PROVIDER: str = os.getenv("ACTIVE_LLM_PROVIDER", "nanogpt")
 
     OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com")

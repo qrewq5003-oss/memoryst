@@ -237,9 +237,18 @@ def generate_rolling_summary(
     character_id: str,
     window_size: int = DEFAULT_SUMMARY_WINDOW,
     min_new_memories_for_refresh: int = MIN_NEW_MEMORIES_FOR_REFRESH,
+    require_llm: bool = False,
 ) -> RollingSummaryResult:
     """
     Create or update one rolling summary for the recent episodic memories of a chat/character.
+
+    `require_llm` refuses to fall back to the rule-based text. It exists for the automatic
+    path: that text reads "Краткая сводка последних эпизодов (4): Недавние события:"
+    followed by a truncated line lifted out of a memory, and it is injected into every
+    prompt afterwards as [SUMMARY]. Writing one when the model is unreachable puts filler
+    in front of the model forever, in exchange for a row that looks like the layer is
+    working. A person pressing the button is asking for something now and gets the
+    fallback; a background refresh waits instead.
     """
     existing_summary = _list_existing_summary(chat_id, character_id)
 
@@ -286,9 +295,21 @@ def generate_rolling_summary(
         apply_conflict_resolutions(conflicts)
     conflict_notes = format_conflict_resolution_notes(conflicts)
 
-    summary_text = build_llm_summary_text(selected_memories, conflict_notes) or build_rolling_summary_text(
-        selected_memories
-    )
+    llm_text = build_llm_summary_text(selected_memories, conflict_notes)
+    if llm_text is None and require_llm:
+        return RollingSummaryResult(
+            action="skipped_llm_unavailable",
+            chat_id=chat_id,
+            character_id=character_id,
+            summary_memory_id=existing_summary.id if existing_summary else None,
+            summary_text=existing_summary.content if existing_summary else "",
+            source_memory_ids=[memory.id for memory in selected_memories],
+            summarized_count=len(selected_memories),
+            new_input_count=new_input_count,
+            refresh_threshold_used=min_new_memories_for_refresh,
+        )
+
+    summary_text = llm_text or build_rolling_summary_text(selected_memories)
     summary_metadata = _build_summary_metadata(selected_memories, summary_text)
 
     if existing_summary is None:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import require_api_key
@@ -36,7 +36,7 @@ from app.schemas import (
 from app.services.retrieve_service import retrieve_memories
 from app.services.store_service import store_memories
 from app.services.tracker_service import list_tracker_items, update_tracker
-from app.services import vector_store
+from app.services import summary_scheduler, vector_store
 
 router = APIRouter(
     prefix="/memory",
@@ -79,14 +79,29 @@ def list_memories_endpoint(
 
 
 @router.post("/store", response_model=StoreMemoryResponse, response_model_exclude_none=True)
-def store_memory_endpoint(request: StoreMemoryRequest) -> StoreMemoryResponse:
+def store_memory_endpoint(
+    request: StoreMemoryRequest,
+    background_tasks: BackgroundTasks,
+) -> StoreMemoryResponse:
     """
     Store memories from chat messages.
 
     Extracts memory candidates from messages and stores them.
     Duplicates are skipped.
+
+    The rolling summary is refreshed afterwards, as a background task rather than inline:
+    this request already waits on scene extraction (SCENE_LLM_TIMEOUT, 90s) and the
+    extension's own deadline for it is 120s, so a second LLM call in the same request
+    would push a normal turn past both. The task runs once the response has gone out, and
+    most turns it returns without calling a model at all - see summary_scheduler.
     """
-    return store_memories(request)
+    response = store_memories(request)
+    background_tasks.add_task(
+        summary_scheduler.refresh_rolling_summary,
+        request.chat_id,
+        request.character_id,
+    )
+    return response
 
 
 @router.post("/retrieve", response_model=RetrieveMemoryResponse, response_model_exclude_none=True)
