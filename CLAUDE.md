@@ -44,9 +44,10 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
 
 Актуальный перечень открытых проблем — `docs/extension_audit_2026-09-20.md`.
 Три, которые стоит чинить первыми:
-1. Ни на одном `fetch` в расширении нет `AbortController`, а `retrieve` вызывается из
-   `MESSAGE_SENT`, который `Generate()` ждёт → висячий бэкенд насмерть стопорит
-   генерацию в SillyTavern без единого сообщения.
+1. ~~Ни на одном `fetch` в расширении нет `AbortController`~~ — **закрыто 2026-09-20,
+   коммит `9da6825`.** Всё идёт через `sillytavern-extension/http.mjs`. При правке
+   бюджетов: `storeTimeoutMs` обязан быть больше `SCENE_LLM_TIMEOUT` из `app/config.py`,
+   иначе клиент рвёт извлечение сцены, которое вот-вот бы завершилось.
 2. UI-роутер (`app/routes/ui.py`) не висит на `require_api_key`, при `allow_origins=["*"]`
    в CORS. То же предупреждение уже есть в `README.md`, раздел Security.
 3. Штатная кнопка ST «Install Extension» не может поставить это расширение:
