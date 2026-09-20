@@ -6,21 +6,21 @@ import {
     DEFAULT_MAX_PROMPT_MEMORIES,
     DEFAULT_MAX_STABLE_ITEMS,
     DEFAULT_MAX_SUMMARY_ITEMS,
-} from './audit.mjs?v=fc36fdc';
+} from './audit.mjs?v=eebabad';
 import {
     DEFAULT_MAX_TRACKER_CHARS,
     DEFAULT_TRACKER_REMINDER_THRESHOLD,
-} from './trackers.mjs?v=fc36fdc';
+} from './trackers.mjs?v=eebabad';
 import {
     DEFAULT_RETRIEVE_TIMEOUT_MS,
     DEFAULT_STORE_TIMEOUT_MS,
-} from './http.mjs?v=fc36fdc';
+} from './http.mjs?v=eebabad';
 import {
     DEFAULT_PROMPT_DEPTH,
     DEFAULT_PROMPT_POSITION,
     DEFAULT_PROMPT_ROLE,
     DEFAULT_PROMPT_SCAN,
-} from './injection.mjs?v=fc36fdc';
+} from './injection.mjs?v=eebabad';
 
 // retrieveTimeoutMs and storeTimeoutMs are knobs rather than constants because they are
 // the two that trade real things off against each other, and the right answer depends on

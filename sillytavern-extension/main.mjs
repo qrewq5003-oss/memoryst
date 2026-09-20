@@ -39,17 +39,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=fc36fdc';
+} from './audit.mjs?v=eebabad';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=fc36fdc';
-import { mountSettingsUi } from './settings-ui.mjs?v=fc36fdc';
-import { resolveEffectiveScope } from './scope.mjs?v=fc36fdc';
+} from './settings.mjs?v=eebabad';
+import { mountSettingsUi } from './settings-ui.mjs?v=eebabad';
+import { resolveEffectiveScope } from './scope.mjs?v=eebabad';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=fc36fdc';
+} from './lore-anchors.mjs?v=eebabad';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -57,22 +57,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=fc36fdc';
+} from './trackers.mjs?v=eebabad';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=fc36fdc';
+} from './version.mjs?v=eebabad';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=fc36fdc';
+} from './injection.mjs?v=eebabad';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=fc36fdc';
+} from './supersede.mjs?v=eebabad';
+import {
+    summarizeForeignInjectors,
+    summarizeWorldInfo,
+} from './injectors.mjs?v=eebabad';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -83,7 +87,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=fc36fdc';
+} from './http.mjs?v=eebabad';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -103,6 +107,9 @@ let pendingInteractionAudit = null;
 // What the last store created, so a swipe, a delete or an edit can take it back.
 // Cleared the moment the turn is settled - see onUserMessageSent.
 let lastStoredTurn = null;
+// Lorebook text never passes through extension_prompts, so the only place to measure it
+// is the activation handler, which already receives the entries.
+let currentWorldInfoSummary = { entry_count: 0, chars: 0 };
 let pendingTurnKey = null;
 let currentMemoryPromptBlock = '';
 let currentRetrieveBudget = null;
@@ -214,6 +221,15 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
         trackerEventTrace: [...turnEventTrace],
         trackerEntryComments: currentTrackerInfo?.entryComments || [],
     });
+
+    // The whole prompt, not just our slice of it. Working this out used to mean parsing
+    // CharMemory's accounting out of a chat's .jsonl by hand; it was done twice in seven
+    // weeks, and the second time it turned out memoryst had been switched off for five
+    // of them with nothing reporting it.
+    record.prompt_competition = {
+        ...summarizeForeignInjectors(getContext()?.extensionPrompts || {}),
+        world_info: currentWorldInfoSummary,
+    };
     record.applied_to_current_turn = anyBlock;
 }
 
@@ -750,6 +766,8 @@ function onWorldInfoActivated(entries = []) {
         return;
     }
 
+    currentWorldInfoSummary = summarizeWorldInfo(entries);
+
     const loreAnchorInfo = buildLoreAnchorBlock({
         entries,
         existingMemoryBlock: currentMemoryPromptBlock,
@@ -1191,6 +1209,7 @@ async function onMessageEdited(editedMessageIndex) {
 function onChatChanged() {
     turnEventTrace = [];
     lastStoredTurn = null;
+    currentWorldInfoSummary = { entry_count: 0, chars: 0 };
     clearMemoryPrompt();
     clearLoreAnchorPrompt();
     clearTrackerPrompt();
