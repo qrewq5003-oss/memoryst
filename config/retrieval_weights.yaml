@@ -31,10 +31,15 @@ weights:
   # reports no distribution.
   semantic_relative_margin: 0.12
   semantic_min_similarity: 0.62
-  # Where the graded boost reaches full strength. Below the floor the boost is zero, at
-  # this value it is semantic_boost, in between it ramps - so "nearest of a flat set"
-  # and "unmistakably the same subject" stop being worth the same.
-  semantic_full_strength_similarity: 0.82
+  # Where the graded boost reaches full strength, also measured from the median and for
+  # the same reason. The first cut of this was an absolute 0.82, taken from a
+  # memory-to-memory measurement where both sides are extracted facts in the same terse
+  # register. A real retrieve compares a *query* to a memory - raw roleplay prose against
+  # a one-line fact - and that ceiling is simply never reached: measured on the live
+  # "Alina volkova" chat (144 memories) on 2026-09-20, the best match for two real user
+  # messages sat 0.139 and 0.138 above the median, so every surviving hit scored a
+  # strength under 0.15 and the whole layer did nothing.
+  semantic_full_strength_margin: 0.20
   relationship_cue_weight: 0.14
   episodic_specificity_bonus: 0.06
   episodic_low_value_penalty: 0.12

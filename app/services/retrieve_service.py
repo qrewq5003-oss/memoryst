@@ -36,7 +36,7 @@ from app.services.retrieval_config import (
     RELATIONSHIP_CUE_WEIGHT,
     RELATIONSHIP_SUPPORT_BONUS_BY_LAYER,
     SEMANTIC_BOOST,
-    SEMANTIC_FULL_STRENGTH_SIMILARITY,
+    SEMANTIC_FULL_STRENGTH_MARGIN,
     SEMANTIC_MIN_SIMILARITY,
     SEMANTIC_RELATIVE_MARGIN,
     SUPPORT_MEDIUM_THRESHOLD,
@@ -386,6 +386,14 @@ def _semantic_floor(result: dict) -> float:
     return max(SEMANTIC_MIN_SIMILARITY, float(median) + SEMANTIC_RELATIVE_MARGIN)
 
 
+def _semantic_ceiling(result: dict) -> float:
+    """The similarity at which a match is worth the full boost, for this query."""
+    median = result.get("scanned_median_similarity")
+    if median is None:
+        return SEMANTIC_MIN_SIMILARITY + SEMANTIC_FULL_STRENGTH_MARGIN
+    return float(median) + SEMANTIC_FULL_STRENGTH_MARGIN
+
+
 def _score_semantic_matches(results: list[dict]) -> dict[str, float]:
     """Turn vector hits into a 0..1 strength per memory id.
 
@@ -410,7 +418,12 @@ def _score_semantic_matches(results: list[dict]) -> dict[str, float]:
         if similarity < floor:
             continue
 
-        span = max(SEMANTIC_FULL_STRENGTH_SIMILARITY - floor, 1e-6)
+        # The ceiling rides the same median as the floor. An absolute one cannot work:
+        # a query is prose and a memory is a terse fact, so query-to-memory similarity
+        # tops out well below memory-to-memory similarity, and a ceiling calibrated on
+        # the latter makes every real match score near zero.
+        ceiling = _semantic_ceiling(result)
+        span = max(ceiling - floor, 1e-6)
         strengths[result["id"]] = min(1.0, (float(similarity) - floor) / span)
     return strengths
 

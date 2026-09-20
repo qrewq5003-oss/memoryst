@@ -22,11 +22,15 @@ from app.db import get_connection, init_schema
 from app.services.retrieval_config import (
     MIN_RETRIEVAL_SCORE,
     SEMANTIC_BOOST,
-    SEMANTIC_FULL_STRENGTH_SIMILARITY,
+    SEMANTIC_FULL_STRENGTH_MARGIN,
     SEMANTIC_MIN_SIMILARITY,
     SEMANTIC_RELATIVE_MARGIN,
 )
-from app.services.retrieve_service import _score_semantic_matches, _semantic_floor
+from app.services.retrieve_service import (
+    _score_semantic_matches,
+    _semantic_ceiling,
+    _semantic_floor,
+)
 
 
 def _hit(memory_id: str, similarity: float, median: float | None = 0.591) -> dict:
@@ -66,12 +70,22 @@ class SemanticStrengthTests(unittest.TestCase):
         self.assertLess(boost, MIN_RETRIEVAL_SCORE)
 
     def test_an_unmistakable_match_gets_the_full_boost(self) -> None:
-        strengths = _score_semantic_matches([_hit("same_subject", 0.86)])
+        ceiling = 0.591 + SEMANTIC_FULL_STRENGTH_MARGIN
+        strengths = _score_semantic_matches([_hit("same_subject", ceiling + 0.05)])
         self.assertAlmostEqual(strengths["same_subject"], 1.0)
 
-    def test_strength_is_graded_between_the_floor_and_full_strength(self) -> None:
+    def test_the_ceiling_follows_the_median_like_the_floor_does(self) -> None:
+        # An absolute ceiling was the first cut and it was wrong for the same reason an
+        # absolute floor is: a query is prose and a memory is a terse fact, so
+        # query-to-memory similarity tops out well below memory-to-memory similarity.
+        # Calibrated on the latter, every real match scored near zero.
+        self.assertAlmostEqual(_semantic_ceiling(_hit("a", 0.9, median=0.571)), 0.571 + SEMANTIC_FULL_STRENGTH_MARGIN)
+        self.assertAlmostEqual(_semantic_ceiling(_hit("a", 0.9, median=0.700)), 0.700 + SEMANTIC_FULL_STRENGTH_MARGIN)
+
+    def test_strength_is_graded_between_the_floor_and_the_ceiling(self) -> None:
         floor = 0.591 + SEMANTIC_RELATIVE_MARGIN
-        midpoint = (floor + SEMANTIC_FULL_STRENGTH_SIMILARITY) / 2
+        ceiling = 0.591 + SEMANTIC_FULL_STRENGTH_MARGIN
+        midpoint = (floor + ceiling) / 2
         strength = _score_semantic_matches([_hit("mid", midpoint)])["mid"]
         self.assertGreater(strength, 0.0)
         self.assertLess(strength, 1.0)
@@ -79,9 +93,9 @@ class SemanticStrengthTests(unittest.TestCase):
 
     def test_strength_rises_with_similarity(self) -> None:
         strengths = _score_semantic_matches([
-            _hit("near", 0.80),
-            _hit("nearer", 0.84),
-            _hit("nearest", 0.90),
+            _hit("near", 0.72),
+            _hit("nearer", 0.75),
+            _hit("nearest", 0.80),
         ])
         self.assertLess(strengths["near"], strengths["nearer"])
         self.assertLessEqual(strengths["nearer"], strengths["nearest"])

@@ -24,7 +24,7 @@ REQUIRED_WEIGHT_KEYS = [
     "semantic_boost",
     "semantic_relative_margin",
     "semantic_min_similarity",
-    "semantic_full_strength_similarity",
+    "semantic_full_strength_margin",
     "relationship_cue_weight",
     "episodic_specificity_bonus",
     "episodic_low_value_penalty",
@@ -76,7 +76,7 @@ CLOSE_SCORE_LAYER_TIE_EPSILON: float = _weights["close_score_layer_tie_epsilon"]
 SEMANTIC_BOOST: float = _weights["semantic_boost"]
 SEMANTIC_RELATIVE_MARGIN: float = _weights["semantic_relative_margin"]
 SEMANTIC_MIN_SIMILARITY: float = _weights["semantic_min_similarity"]
-SEMANTIC_FULL_STRENGTH_SIMILARITY: float = _weights["semantic_full_strength_similarity"]
+SEMANTIC_FULL_STRENGTH_MARGIN: float = _weights["semantic_full_strength_margin"]
 RELATIONSHIP_CUE_WEIGHT: float = _weights["relationship_cue_weight"]
 EPISODIC_SPECIFICITY_BONUS: float = _weights["episodic_specificity_bonus"]
 EPISODIC_LOW_VALUE_PENALTY: float = _weights["episodic_low_value_penalty"]
