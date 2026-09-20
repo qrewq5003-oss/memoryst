@@ -181,6 +181,47 @@ class IndexedSceneTextTests(unittest.TestCase):
         self.assertIn("[0][assistant]: первое сообщение", scene_text)
         self.assertIn("[1][user]: второе сообщение", scene_text)
 
+    def test_long_opening_message_does_not_empty_the_scene(self) -> None:
+        """
+        A message longer than the whole scene budget used to `break` on the first
+        iteration, returning an empty scene text - which sent the batch to the
+        rule-based extractor with no log line. 41.3% of the assistant messages
+        stored here are that long, so this was the single largest source of
+        prose-shaped "facts" in the database.
+        """
+        messages = [
+            _msg("А" * 9000, message_id="uuid-long", index=0),
+            _msg("короткий ответ", role="user", message_id="uuid-b", index=1),
+        ]
+
+        scene_text, id_by_index = build_indexed_scene_text(messages)
+
+        self.assertTrue(scene_text)
+        self.assertEqual(id_by_index, ["uuid-long", "uuid-b"])
+        self.assertIn("[1][user]: короткий ответ", scene_text)
+
+    def test_long_message_is_capped_head_and_tail(self) -> None:
+        text = "НАЧАЛО" + ("х" * 5000) + "КОНЕЦ"
+        messages = [_msg(text, message_id="uuid-long", index=0)]
+
+        scene_text, _ = build_indexed_scene_text(messages, max_message_chars=400)
+
+        self.assertIn("НАЧАЛО", scene_text)
+        self.assertIn("КОНЕЦ", scene_text)
+        self.assertIn("[...]", scene_text)
+        self.assertLess(len(scene_text), 500)
+
+    def test_total_budget_still_stops_after_the_first_message(self) -> None:
+        messages = [
+            _msg("первое сообщение", message_id="uuid-a", index=0),
+            _msg("второе сообщение", role="user", message_id="uuid-b", index=1),
+        ]
+
+        scene_text, id_by_index = build_indexed_scene_text(messages, max_chars=30)
+
+        self.assertEqual(id_by_index, ["uuid-a"])
+        self.assertNotIn("uuid-b", scene_text)
+
     def test_extract_scene_facts_maps_llm_indices_back_to_message_ids(self) -> None:
         messages = [
             _msg("первое сообщение", message_id="uuid-a", index=0),

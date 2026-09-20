@@ -195,23 +195,33 @@ def get_max_sequence_index(chat_id: str, character_id: str) -> int:
 
 def search_chat_messages_fts(
     chat_id: str,
-    character_id: str,
+    character_id: str | None,
     query: str,
     limit: int = 20,
 ) -> list[ChatMessageItem]:
-    """Full-text search over cooled raw messages, scoped to one chat/character."""
+    """Full-text search over cooled raw messages, scoped to one chat.
+
+    `character_id` is optional and normally None - raw messages carry the same volatile
+    index memories do, and 5 of 42 chats had theirs split across two values, so filtering
+    on it hid part of a chat's own transcript from its own fallback search.
+    """
+    scoped = " AND cm.character_id = ?" if character_id is not None else ""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            """
+            f"""
             SELECT cm.* FROM chat_messages cm
             JOIN chat_messages_fts fts ON cm.rowid = fts.rowid
             WHERE chat_messages_fts MATCH ?
-              AND cm.chat_id = ? AND cm.character_id = ?
+              AND cm.chat_id = ?{scoped}
             ORDER BY rank
             LIMIT ?
             """,
-            (query, chat_id, character_id, limit),
+            tuple(
+                [query, chat_id]
+                + ([character_id] if character_id is not None else [])
+                + [limit]
+            ),
         )
         rows = cursor.fetchall()
         return [_row_to_chat_message(dict(row)) for row in rows]

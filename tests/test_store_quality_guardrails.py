@@ -245,6 +245,45 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
         self.assertEqual(candidates[0].type, "event")
         self.assertEqual(candidates[0].layer, "episodic")
 
+    def test_long_descriptive_prose_is_not_stored_as_a_fact(self) -> None:
+        """
+        The rule-based path keeps the source line close to verbatim, so a paragraph of
+        scenery used to be stored as a fact and re-injected for the model to re-narrate.
+        """
+        prose = (
+            "Серебристый свет ночника в форме полумесяца струился по серому постельному "
+            "белью, заставляя геометрический узор на наволочках казаться рельефным, почти "
+            "трёхмерным, словно кто-то выгравировал его на ткани тонким резцом, пока никто "
+            "не смотрел, и тени в углах комнаты становились глубже с каждой минутой."
+        )
+        self.assertGreater(len(prose), config.RULE_EXTRACT_MAX_CONTENT_CHARS)
+
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[MessageInput(role="assistant", text=prose)],
+        )
+
+        self.assertEqual(candidates, [])
+
+    def test_short_declarative_line_of_the_same_scene_still_extracts(self) -> None:
+        """The length cut must not swallow the ordinary short facts around the prose."""
+        candidates = extract_memories(
+            chat_id="chat-1",
+            character_id="char-1",
+            messages=[
+                MessageInput(
+                    role="assistant",
+                    text="Они решили остаться на ночь и договорились встать в семь.",
+                )
+            ],
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertLessEqual(
+            len(candidates[0].content), config.RULE_EXTRACT_MAX_CONTENT_CHARS
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

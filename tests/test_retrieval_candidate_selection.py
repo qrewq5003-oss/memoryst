@@ -62,7 +62,10 @@ class RetrievalCandidateSelectionTests(unittest.TestCase):
         self.assertEqual(response.items, [])
         candidates_mock.assert_called_once_with(
             chat_id="chat-1",
-            character_id="char-1",
+            # None on purpose: the chat is the retrieval scope. character_id is
+            # SillyTavern's array index, which shifts, and filtering on it cut chats off
+            # from their own history - see text_utils.scope_character_id.
+            character_id=None,
             include_archived=False,
         )
 

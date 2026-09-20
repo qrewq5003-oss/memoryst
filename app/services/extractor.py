@@ -1,6 +1,7 @@
 import re
 from typing import Literal
 
+from app.config import config
 from app.schemas import CreateMemoryRequest, MemoryMetadata, MemoryType, MessageInput
 from app.services import text_features
 from app.services.text_utils import clean_memory_text, is_ooc_text, truncate_content
@@ -377,6 +378,19 @@ def extract_memories(
             memory_type = "event"
 
         content = truncate_content(text)
+
+        # This path stores the source line close to verbatim, which is fine for a
+        # short declarative line and wrong for a long descriptive one: a paragraph of
+        # scenery came out as a "fact" ("Серебристый свет ночника в форме полумесяца
+        # струился по серому постельному белью...", 473 characters, stored
+        # stable/relationship at importance 0.85), and retrieval then fed the model
+        # back its own prose to re-narrate. Length is what separates the two here -
+        # see config.RULE_EXTRACT_MAX_CONTENT_CHARS for the measurement. Dropping
+        # rather than truncating: half a paragraph of scenery is not a better fact
+        # than none, and the LLM path covers these scenes properly.
+        if len(content) > config.RULE_EXTRACT_MAX_CONTENT_CHARS:
+            continue
+
         entities = text_features.extract_entities(text)
         keywords = text_features.extract_keywords(text)
 

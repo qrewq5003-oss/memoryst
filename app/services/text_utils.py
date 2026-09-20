@@ -180,3 +180,31 @@ def clean_memory_text(text: str) -> str:
     storing".
     """
     return strip_transcript_header(strip_scene_scaffolding(text))
+
+
+# --- Retrieval scope -------------------------------------------------------------
+#
+# memoryst's unit of memory is the CHAT, not the character.
+#
+# `character_id` arrives from SillyTavern's `getContext().characterId`, which is the
+# character's *position in the characters array* - not an identity. Adding, deleting or
+# reordering a card shifts every index above it, and the scope silently moves with it.
+# Measured over data/memory.db on 2026-09-20: `character_id=20` appears in 15 unrelated
+# chats and `18` in 10, while 9 of 54 chats had their own memories split across two or
+# three ids. The worst held 360 memories in three unreachable pieces, and a live turn in
+# that chat scored exactly one candidate.
+#
+# Scoping by chat alone costs nothing that exists. A chat belongs to one character, and
+# `chat_id` already carries that character's name; in a group chat `character_id` is
+# undefined and resolve_effective_scope (scope.mjs) already collapses it onto `chat_id`,
+# so nothing distinguishes members there today either.
+#
+# `character_id` is still stored on every row - it is provenance, and trackers are still
+# keyed by it. It is just no longer what decides which memories a chat can see.
+def scope_character_id(character_id: str | None) -> str | None:
+    """The character_id to filter a chat-scoped query by: none.
+
+    A function rather than a bare `None` at each call site so the decision is one thing
+    with one explanation, and so the call sites still say what they are scoping.
+    """
+    return None

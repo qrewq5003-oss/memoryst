@@ -203,11 +203,15 @@ def list_memories(
 
 def list_retrieval_candidates(
     chat_id: str,
-    character_id: str,
+    character_id: str | None,
     include_archived: bool = False,
 ) -> list[MemoryItem]:
     """
-    List all retrieval candidates for a chat/character pair without UI pagination bias.
+    List all retrieval candidates for a chat without UI pagination bias.
+
+    `character_id` is optional and retrieval passes None - see
+    text_utils.scope_character_id. Filtering on it was cutting a chat off from its own
+    history whenever SillyTavern's character index shifted.
 
     Retrieval scoring should operate on the full candidate set rather than the
     recency-ordered paginated listing used by the UI/API.
@@ -216,7 +220,11 @@ def list_retrieval_candidates(
     in the extension, so scoring them here would both double-inject them and let a whole
     tracker document crowd out real memories in the budget.
     """
-    params: list[object] = [chat_id, character_id]
+    params: list[object] = [chat_id]
+    character_sql = ""
+    if character_id is not None:
+        character_sql = " AND character_id = ?"
+        params.append(character_id)
     archived_sql = ""
     if not include_archived:
         archived_sql = " AND archived = 0"
@@ -226,7 +234,7 @@ def list_retrieval_candidates(
         cursor.execute(
             f"""
             SELECT * FROM memories
-            WHERE chat_id = ? AND character_id = ? AND type != 'tracker'{archived_sql}
+            WHERE chat_id = ?{character_sql} AND type != 'tracker'{archived_sql}
             """,
             params,
         )
@@ -600,7 +608,7 @@ def set_review_status(memory_ids: list[str], review_status: str) -> int:
 
 def find_memory_by_normalized_content(
     chat_id: str,
-    character_id: str,
+    character_id: str | None,
     normalized_content: str,
 ) -> MemoryItem | None:
     """
@@ -609,16 +617,22 @@ def find_memory_by_normalized_content(
     This is a minimal helper for store_service deduplication. Trackers are excluded as a
     backstop: an extracted fact must never dedupe onto a tracker document and rewrite it.
     """
+    # character_id is optional: passing None scopes the lookup to the chat, which is what
+    # store_service does. A chat whose character_id had shifted was failing to find its
+    # own duplicates and storing the same fact again under the new index.
+    sql = """
+        SELECT * FROM memories
+        WHERE chat_id = ? AND normalized_content = ?
+          AND type != 'tracker'
+    """
+    params: list[object] = [chat_id, normalized_content]
+    if character_id is not None:
+        sql += " AND character_id = ?"
+        params.append(character_id)
+
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM memories
-            WHERE chat_id = ? AND character_id = ? AND normalized_content = ?
-              AND type != 'tracker'
-            """,
-            (chat_id, character_id, normalized_content),
-        )
+        cursor.execute(sql, params)
         row = cursor.fetchone()
         if row is None:
             return None

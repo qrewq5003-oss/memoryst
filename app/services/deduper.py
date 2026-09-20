@@ -38,7 +38,6 @@ def check_soft_match(
     
     Soft match criteria:
     - Same chat_id
-    - Same character_id
     - Same type
     - existing is eligible for auto-update
     - entity_overlap >= 1
@@ -51,7 +50,6 @@ def check_soft_match(
     
     if (
         candidate.chat_id != existing.chat_id
-        or candidate.character_id != existing.character_id
         or candidate.type != existing.type
     ):
         return False

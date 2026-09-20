@@ -45,6 +45,9 @@ from app.services.retrieval_config import (
     SUPPORT_MULTIPLIER_WEAK,
     SUPPORT_STRONG_THRESHOLD,
 )
+from app.services.text_utils import (
+    scope_character_id,
+)
 from app.services.text_utils import normalize_for_similarity, token_overlap_ratio
 
 
@@ -343,7 +346,7 @@ def _collect_raw_fallback(
             try:
                 raw_messages = search_chat_messages_fts(
                     request.chat_id,
-                    request.character_id,
+                    scope_character_id(request.character_id),
                     fts_query,
                     limit=RAW_FALLBACK_MAX_RESULTS,
                 )
@@ -357,11 +360,9 @@ def _collect_raw_fallback(
         try:
             for message_id in dict.fromkeys(request.manual_source_message_ids):
                 message = get_chat_message_by_id(message_id)
-                if (
-                    message is not None
-                    and message.chat_id == request.chat_id
-                    and message.character_id == request.character_id
-                ):
+                # Chat-scoped like everything else: a message the user explicitly asked
+                # for must not be refused because its row carries an older index.
+                if message is not None and message.chat_id == request.chat_id:
                     manual_messages.append(message)
         except sqlite3.Error:
             manual_messages = []
@@ -471,7 +472,9 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     # Get candidates without UI pagination bias
     all_candidates = list_retrieval_candidates(
         chat_id=request.chat_id,
-        character_id=request.character_id,
+        # The chat is the scope - see text_utils.scope_character_id for why filtering on
+        # character_id here was cutting chats off from their own history.
+        character_id=scope_character_id(request.character_id),
         include_archived=request.include_archived,
     )
     total_candidates = len(all_candidates)
@@ -483,7 +486,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
             request.user_input,
             n_results=min(10, total_candidates),
             chat_id=request.chat_id,
-            character_id=request.character_id,
+            character_id=scope_character_id(request.character_id),
         )
         semantic_strength = _score_semantic_matches(semantic_results)
 

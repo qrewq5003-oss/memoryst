@@ -182,8 +182,33 @@ SCENE_FACTS_SCHEMA = {
 }
 
 
+ELISION_MARKER = " [...] "
+
+
+def _fit_message_text(text: str, max_chars: int) -> str:
+    """
+    Shorten one message to `max_chars`, keeping its head and its tail.
+
+    Head-only truncation is the wrong cut for a roleplay message: these open with
+    scene-setting description and develop the dialogue, decisions and outcomes -
+    the parts actually worth remembering - further down. Dropping the middle keeps
+    both ends of that arc.
+    """
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    budget = max_chars - len(ELISION_MARKER)
+    if budget <= 0:
+        return text[:max_chars]
+    head = budget * 3 // 5
+    tail = budget - head
+    return f"{text[:head].rstrip()}{ELISION_MARKER}{text[-tail:].lstrip()}" if tail else text[:head]
+
+
 def build_indexed_scene_text(
-    messages: list[ChatMessageItem], max_chars: int = 4000
+    messages: list[ChatMessageItem],
+    max_chars: int | None = None,
+    *,
+    max_message_chars: int | None = None,
 ) -> tuple[str, list[str]]:
     """
     Format buffered/cooled chat messages into an indexed scene text for LLM analysis.
@@ -192,7 +217,23 @@ def build_indexed_scene_text(
     of the message labeled "[i]" in scene_text - this lets the LLM reference messages
     by a small integer instead of repeating UUIDs, while still letting callers map
     "source_message_indices" back to real message ids afterwards.
+
+    Each message is first shortened to `max_message_chars` on its own, then messages
+    are added until the whole scene reaches `max_chars`. The per-message cap is what
+    makes the scene budget survive a long message: this used to `break` on the first
+    message that did not fit the total, which on a chat whose assistant messages run
+    4000+ characters (41.3% of them do here) either returned an empty scene - silently
+    degrading the whole batch to the rule-based extractor - or handed the LLM one
+    message out of eight and called it a scene. See config.SCENE_TEXT_MAX_CHARS.
+
+    At least one message is always included, however long it is, so this never
+    returns an empty scene for a non-empty batch.
     """
+    total_budget = config.SCENE_TEXT_MAX_CHARS if max_chars is None else max_chars
+    message_budget = (
+        config.SCENE_MESSAGE_MAX_CHARS if max_message_chars is None else max_message_chars
+    )
+
     lines = []
     id_by_index: list[str] = []
     total = 0
@@ -202,8 +243,8 @@ def build_indexed_scene_text(
         # put `Time` and 📍 place names into the entities it returned - 248 occurrences
         # of `Time` alone. Dropping it also buys back scene budget.
         text = clean_memory_text(message.text) or message.text
-        line = f"[{index}][{message.role}]: {text}"
-        if total + len(line) > max_chars:
+        line = f"[{index}][{message.role}]: {_fit_message_text(text, message_budget)}"
+        if lines and total + len(line) > total_budget:
             break
         lines.append(line)
         id_by_index.append(message.id)
@@ -232,6 +273,18 @@ def extract_scene_facts(
 
     scene_text, id_by_index = build_indexed_scene_text(messages)
     if not scene_text:
+        # Was a bare `return None`, and it accounted for 536 of the 627 rule-based
+        # fallbacks in data/server.log without leaving a single line behind - the
+        # scene budget dropped every message and this looked exactly like "the LLM
+        # decided nothing was memorable". build_indexed_scene_text now always keeps
+        # at least one message, so reaching this means the batch cleaned down to
+        # nothing; log it rather than let it go quiet again.
+        print(
+            f"[llm_extractor] extract_scene_facts got an EMPTY scene text from "
+            f"{len(messages)} messages -> falling back to the rule-based extractor",
+            file=sys.stderr,
+            flush=True,
+        )
         return None
 
     llm_messages = [

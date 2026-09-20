@@ -24,6 +24,7 @@ from app.services.deduper import (
     check_soft_match,
     merge_candidate_with_existing,
 )
+from app.services.text_utils import scope_character_id
 from app.services.text_utils import (
     get_utc_now,
     normalize_content as _normalize_content,
@@ -151,9 +152,11 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     debug_candidates: list[StoreCandidateDebug] = []
 
     # Load existing memories once for soft-match checks (not per candidate)
+    # Same scope as retrieval: a shifted character_id used to hide a chat's own memories
+    # from the dedup pass too, so the same fact was stored again under the new index.
     existing_memories = list_memories(
         chat_id=request.chat_id,
-        character_id=request.character_id,
+        character_id=scope_character_id(request.character_id),
         limit=200,
     ).items
 
@@ -177,7 +180,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         # Check for exact duplicate using normalized content
         existing = find_memory_by_normalized_content(
             chat_id=request.chat_id,
-            character_id=request.character_id,
+            character_id=scope_character_id(request.character_id),
             normalized_content=normalized,
         )
 
