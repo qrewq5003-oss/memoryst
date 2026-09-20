@@ -121,6 +121,13 @@ class Config:
         k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()
     ]
     GOOGLE_EMBEDDING_MODEL: str = os.getenv("GOOGLE_EMBEDDING_MODEL", "gemini-embedding-2-preview")
+    # The model returns 3072 dimensions by default and accepts outputDimensionality to
+    # return fewer, already normalised (verified 2026-09-20: norm 1.0 at 768). 768 is
+    # what makes the store affordable here - 4639 memories is 14 MB of float32 instead
+    # of 57 MB, and the per-query cosine is a quarter of the arithmetic, on the retrieve
+    # path that blocks generation. Changing this invalidates every stored vector: rows
+    # whose dimensions differ from the query are skipped, so a change means a re-backfill.
+    GOOGLE_EMBEDDING_DIM: int = int(os.getenv("GOOGLE_EMBEDDING_DIM", "768"))
     CHROMADB_PATH: str = os.getenv("CHROMADB_PATH", "data/chromadb")
 
 

@@ -36,6 +36,9 @@ from app.services.retrieval_config import (
     RELATIONSHIP_CUE_WEIGHT,
     RELATIONSHIP_SUPPORT_BONUS_BY_LAYER,
     SEMANTIC_BOOST,
+    SEMANTIC_FULL_STRENGTH_SIMILARITY,
+    SEMANTIC_MIN_SIMILARITY,
+    SEMANTIC_RELATIVE_MARGIN,
     SUPPORT_MEDIUM_THRESHOLD,
     SUPPORT_MULTIPLIER_MEDIUM,
     SUPPORT_MULTIPLIER_STRONG,
@@ -368,6 +371,50 @@ def _collect_raw_fallback(
     return results
 
 
+def _semantic_floor(result: dict) -> float:
+    """How similar a match has to be, for this query, to count at all.
+
+    Relative to the scanned set wherever that is known. Every memory in a chat shares a
+    cast, a setting and a narrator, so the whole similarity distribution sits high and
+    shifts from chat to chat - an absolute threshold tuned on one chat is wrong on the
+    next. The Chroma backend reports no distribution, so there the absolute backstop is
+    all there is.
+    """
+    median = result.get("scanned_median_similarity")
+    if median is None:
+        return SEMANTIC_MIN_SIMILARITY
+    return max(SEMANTIC_MIN_SIMILARITY, float(median) + SEMANTIC_RELATIVE_MARGIN)
+
+
+def _score_semantic_matches(results: list[dict]) -> dict[str, float]:
+    """Turn vector hits into a 0..1 strength per memory id.
+
+    This used to be a set: the nearest ten memories, each handed the full boost. With a
+    baseline that high (median 0.591 inside one chat, 45% of arbitrary pairs over 0.60)
+    that meant ten near-arbitrary memories got enough of a lift to clear
+    min_retrieval_score on their own, with no lexical match at all. Grading the boost and
+    dropping everything under the floor is what keeps the vector layer from turning
+    retrieval into a random walk through the chat.
+    """
+    strengths: dict[str, float] = {}
+    for result in results:
+        similarity = result.get("similarity")
+        if similarity is None:
+            # A backend that reports only distance (older rows, other stores).
+            distance = result.get("distance")
+            if distance is None:
+                continue
+            similarity = 1.0 - float(distance)
+
+        floor = _semantic_floor(result)
+        if similarity < floor:
+            continue
+
+        span = max(SEMANTIC_FULL_STRENGTH_SIMILARITY - floor, 1e-6)
+        strengths[result["id"]] = min(1.0, (float(similarity) - floor) / span)
+    return strengths
+
+
 def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     """
     Retrieve relevant memories for the current context.
@@ -417,7 +464,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
     total_candidates = len(all_candidates)
 
     # Query vector store for semantic matches (if enabled)
-    semantic_ids: set[str] = set()
+    semantic_strength: dict[str, float] = {}
     if vector_store.is_vector_store_enabled() and total_candidates > 0:
         semantic_results = vector_store.query_similar(
             request.user_input,
@@ -425,7 +472,7 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
             chat_id=request.chat_id,
             character_id=request.character_id,
         )
-        semantic_ids = {r["id"] for r in semantic_results}
+        semantic_strength = _score_semantic_matches(semantic_results)
 
     # Score each candidate and partition them into explicit retrieval layers.
     scored_entries: list[dict[str, object]] = []
@@ -450,9 +497,11 @@ def retrieve_memories(request: RetrieveMemoryRequest) -> RetrieveMemoryResponse:
         )
         score = details["score"]
 
-        # Boost score for semantically similar memories
-        if memory.id in semantic_ids:
-            score = min(score + SEMANTIC_BOOST, 1.0)
+        # Boost score for semantically similar memories, in proportion to how similar
+        # they actually are - see _score_semantic_matches.
+        strength = semantic_strength.get(memory.id, 0.0)
+        if strength > 0:
+            score = min(score + SEMANTIC_BOOST * strength, 1.0)
 
         passed_threshold = score >= MIN_RETRIEVAL_SCORE
         if passed_threshold:

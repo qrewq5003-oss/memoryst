@@ -118,6 +118,27 @@ CHAT_MESSAGES_FTS_TRIGGERS_SQL = (
 # Small persistent key-value store for process-spanning app settings (e.g. the
 # active LLM provider) that shouldn't live in .env because they're changed at
 # runtime, not at deploy time.
+# Embeddings live beside the memories rather than in a JSON file. The file backend this
+# replaced rewrote itself on every insert, so backfilling this database would have written
+# hundreds of gigabytes to flash to produce a file too large to parse on the query path.
+MEMORY_EMBEDDINGS_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS memory_embeddings (
+        memory_id TEXT PRIMARY KEY,
+        chat_id TEXT NOT NULL,
+        character_id TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        model TEXT NOT NULL,
+        vector BLOB NOT NULL
+    )
+"""
+
+# A retrieve only ever compares within one (chat, character), so that is the only access
+# path this needs - without it every query would deserialize every vector in the database.
+MEMORY_EMBEDDINGS_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_memory_embeddings_scope "
+    "ON memory_embeddings (chat_id, character_id)",
+)
+
 APP_SETTINGS_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
@@ -146,6 +167,12 @@ def _create_memories_indexes(cursor: sqlite3.Cursor) -> None:
 
 def _create_app_settings_table(cursor: sqlite3.Cursor) -> None:
     cursor.execute(APP_SETTINGS_TABLE_SQL)
+
+
+def _create_memory_embeddings_table(cursor: sqlite3.Cursor) -> None:
+    cursor.execute(MEMORY_EMBEDDINGS_TABLE_SQL)
+    for statement in MEMORY_EMBEDDINGS_INDEX_SQL:
+        cursor.execute(statement)
 
 
 def _create_chat_messages_table(cursor: sqlite3.Cursor) -> None:
@@ -305,6 +332,7 @@ def init_schema() -> None:
         _create_memories_indexes(cursor)
         _create_chat_messages_table(cursor)
         _create_app_settings_table(cursor)
+        _create_memory_embeddings_table(cursor)
 
         conn.commit()
 

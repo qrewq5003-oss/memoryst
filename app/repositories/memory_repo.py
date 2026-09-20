@@ -513,15 +513,31 @@ def update_memory(memory_id: str, payload: UpdateMemoryRequest) -> MemoryItem | 
 
 
 def delete_memory(memory_id: str) -> bool:
-    """Delete a memory record by ID."""
+    """Delete a memory record by ID, and the embedding that belongs to it.
+
+    Both rows go in one transaction rather than leaving the vector to a caller, because
+    only one caller ever remembered to: whole-chat deletion. Every other path - the UI's
+    delete button, and now the extension undoing a rejected swipe - left the embedding
+    behind. An orphan does not produce wrong answers (scoring looks candidates up by id,
+    and a deleted memory is not a candidate) but it is dead weight in every query's scan,
+    and it accumulates for exactly as long as nobody notices.
+
+    Done here rather than through vector_store to keep the layering: this is storage
+    talking to storage, in one transaction, with no service import.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             "DELETE FROM memories WHERE id = ?",
             (memory_id,),
         )
+        deleted = cursor.rowcount > 0
+        cursor.execute(
+            "DELETE FROM memory_embeddings WHERE memory_id = ?",
+            (memory_id,),
+        )
         conn.commit()
-        return cursor.rowcount > 0
+        return deleted
 
 
 def set_pinned(memory_id: str, pinned: bool) -> bool:

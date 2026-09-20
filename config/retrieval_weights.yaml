@@ -17,6 +17,24 @@ weights:
   near_duplicate_token_overlap: 0.80
   close_score_layer_tie_epsilon: 0.05
   semantic_boost: 0.15
+  # A semantic hit is not a yes/no. Measured over data/memory.db on 2026-09-20 with
+  # gemini-embedding-2-preview: inside one chat the median cosine between arbitrary
+  # memories is 0.591, p90 is 0.689 and genuinely related pairs sit at 0.81-0.86.
+  # Taking the nearest 10 unconditionally - which is what this did before there was a
+  # floor - handed the full boost to ten near-arbitrary memories, enough on its own to
+  # push a candidate with no lexical match at all past min_retrieval_score.
+  #
+  # The floor is relative because the absolute scale is not comparable between chats:
+  # every memory in a chat shares a cast, a setting and a narrator, so the whole
+  # distribution shifts. semantic_relative_margin is how far above *this* chat's median
+  # a match has to sit; semantic_min_similarity is a backstop for the Chroma path, which
+  # reports no distribution.
+  semantic_relative_margin: 0.12
+  semantic_min_similarity: 0.62
+  # Where the graded boost reaches full strength. Below the floor the boost is zero, at
+  # this value it is semantic_boost, in between it ramps - so "nearest of a flat set"
+  # and "unmistakably the same subject" stop being worth the same.
+  semantic_full_strength_similarity: 0.82
   relationship_cue_weight: 0.14
   episodic_specificity_bonus: 0.06
   episodic_low_value_penalty: 0.12
