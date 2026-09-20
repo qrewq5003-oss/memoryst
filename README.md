@@ -4,7 +4,7 @@ External memory service for SillyTavern.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+ (CI собирает на 3.11)
 
 ## Installation
 
@@ -175,6 +175,18 @@ It also prints:
 - `new_input_count`
 - `refresh_threshold_used`
 - `source_memory_ids`
+
+## Audits
+
+The full review of the SillyTavern extension and its integration — including a
+comparison against Memory Books, CharMemory, qvink_memory, VectFox and the two
+built-ins — is in
+[docs/extension_audit_2026-09-20.md](docs/extension_audit_2026-09-20.md). It carries
+the current list of open problems.
+
+The earlier whole-project audit is in
+[docs/full_audit_2026-08-01.md](docs/full_audit_2026-08-01.md); all 15 of its findings
+were closed on 2026-08-02 and it is kept for history.
 
 ## Live ST Verification
 

@@ -4,10 +4,26 @@ External memory service integration for long-term context in roleplay chats.
 
 ## Installation
 
-1. Copy this folder to your SillyTavern extensions directory:
+**SillyTavern's "Install Extension" button cannot install this.** That button clones a
+git repo and reads `manifest.json` from the clone root (`src/endpoints/extensions.js`,
+`getManifest`); this repo's root holds the backend, and the manifest lives one level
+down in `sillytavern-extension/`. Install by hand instead.
+
+1. Symlink (or copy) this folder into one of SillyTavern's extension directories:
+
+   ```bash
+   ln -s ~/memoryst/sillytavern-extension \
+         ~/SillyTavern/public/scripts/extensions/third-party/memoryst
    ```
-   <SillyTavern>/extensions/memory-service/
-   ```
+
+   The other valid location is `~/SillyTavern/data/<user>/extensions/memoryst`.
+   SillyTavern loads from **both** and de-duplicates only on an exact name match, so a
+   forgotten second copy under a different name will load alongside this one and
+   overwrite its settings. Check both directories before debugging anything else.
+
+   A symlink is preferred over a copy: SillyTavern reinstalls and git updates can
+   recreate `public/`, and a broken symlink is at least detectable — the extension
+   warns about a stale pairing via the `/memory/version` handshake.
 
 2. Enable the extension in SillyTavern:
    - Open SillyTavern
@@ -16,10 +32,14 @@ External memory service integration for long-term context in roleplay chats.
 
 3. Configure settings from the native memoryst panel inside SillyTavern Extensions.
 
-The extension keeps ST-facing settings grouped logically in storage:
+The extension keeps ST-facing settings grouped logically in storage, under the
+`extension_settings` key `memory-service` (deliberately *not* renamed to match the
+directory — see the comment on `SETTINGS_KEY` in `main.mjs`):
 - `connection`
 - `retrieval`
+- `extraction`
 - `promptBudget`
+- `trackers`
 - `audit`
 
 ## How It Works

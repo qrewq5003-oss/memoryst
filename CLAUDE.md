@@ -6,7 +6,11 @@
 FastAPI + SQLite, локальное хранилище, извлечение через внешний LLM API (llm_client.py).
 
 Два клиента к одному API:
-- `sillytavern-extension/main.mjs` — основной, вызывает `/memory/store` и `/memory/retrieve`.
+- `sillytavern-extension/main.mjs` — основной. Зовёт `/memory/retrieve` (на `MESSAGE_SENT`),
+  `/memory/store` (на `CHARACTER_MESSAGE_RENDERED`), плюс `/memory/version` (хэндшейк),
+  `/memory/trackers` и `/memory/audit`. Рядом ещё семь модулей, не зависящих от ST:
+  `audit.mjs`, `settings.mjs`, `settings-ui.mjs`, `trackers.mjs`, `lore-anchors.mjs`,
+  `scope.mjs`, `version.mjs` — они и покрыты mjs-тестами.
   `index.js` — только 16-строчный загрузчик, намеренно заморожен (объяснение внутри файла)
 - `app/routes/ui.py` — web UI, вызывает те же сервисы напрямую
 
@@ -19,7 +23,8 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
 - `app/services/text_features.py` — текстовые фичи для скоринга
 - `app/services/scene_extractor.py` + `app/services/llm_extractor.py` — извлечение по сцене
   через LLM (structured output) с regex-фоллбэком
-- `tests/` — 45 Python + 8 mjs тест-файлов, все должны проходить после любых изменений
+- `tests/` — 56 Python + 8 mjs тест-файлов на 2026-09-20 (`ls tests/test_*.py | wc -l`),
+  все должны проходить после любых изменений
 
 ### Живой код, который легко принять за мёртвый
 - **`app/services/llm_extractor.py` — НЕ мёртвый код, не удалять.** Его
@@ -31,11 +36,22 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
   было ошибочным и снято 2026-08-01.
 
 ### Известный технический долг
-Прежний список (дублирование `extract_memories`/`extract_for_backfill`, веса в
-`retrieve_service.py`, async-фикс `_call_embed`, fail-fast для `API_KEY`) закрыт
-целиком — проверено 2026-08-01. Актуальный перечень открытых проблем ведётся
-не здесь, а в `docs/full_audit_2026-08-01.md` (15 находок, к исправлению не
-приступали).
+Два прежних списка закрыты целиком, оба — история, а не задание:
+- дублирование `extract_memories`/`extract_for_backfill`, веса в `retrieve_service.py`,
+  async-фикс `_call_embed`, fail-fast для `API_KEY` — закрыто 2026-08-01;
+- 15 находок `docs/full_audit_2026-08-01.md` — **все закрыты 2026-08-02**, перечень
+  коммитов в шапке самого файла. Прежняя редакция этого раздела утверждала обратное.
+
+Актуальный перечень открытых проблем — `docs/extension_audit_2026-09-20.md`.
+Три, которые стоит чинить первыми:
+1. Ни на одном `fetch` в расширении нет `AbortController`, а `retrieve` вызывается из
+   `MESSAGE_SENT`, который `Generate()` ждёт → висячий бэкенд насмерть стопорит
+   генерацию в SillyTavern без единого сообщения.
+2. UI-роутер (`app/routes/ui.py`) не висит на `require_api_key`, при `allow_origins=["*"]`
+   в CORS. То же предупреждение уже есть в `README.md`, раздел Security.
+3. Штатная кнопка ST «Install Extension» не может поставить это расширение:
+   `getManifest` читает `manifest.json` из корня клона, а наш лежит в
+   `sillytavern-extension/`.
 
 ## План доработки — выполнен целиком (проверено 2026-08-01)
 
@@ -50,15 +66,19 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
 | 4 | Консолидация со слиянием фактов | `summary_service._build_summary_metadata` (транзитивная агрегация), `conflict_resolver.py` |
 | 5 | Retrieval fallback на raw-историю | `retrieve_service._collect_raw_fallback_results` — оба триггера, авто и ручной |
 
-Следующие работы берутся не отсюда, а из `docs/full_audit_2026-08-01.md`.
+Следующие работы берутся не отсюда, а из `docs/extension_audit_2026-09-20.md`.
 
 ## Правила работы с кодом
 
 - Перед удалением кода как «мёртвого» — проверить вызовы grep'ом по `app/`,
   `sillytavern-extension/` **и** `app/templates/`, а не по одному только `app/`.
   Именно пропуск шаблонов породил ошибочное указание удалить `llm_extractor`
-- После любых изменений запускать `pytest tests/` — все тесты должны проходить
-- `sillytavern-extension/main.mjs` — не ломать совместимость с `/memory/store` и `/memory/retrieve`
+- После любых изменений запускать **обе** сюиты: `pytest tests/` и
+  `node --test tests/*.mjs`. CI гоняет ещё и `scripts/run_retrieval_eval.py` как gate —
+  правка весов ретрива без прогона eval'а завалит пайплайн
+- `sillytavern-extension/main.mjs` — не ломать совместимость с `/memory/store` и
+  `/memory/retrieve`. При изменении контракта поднимать `PROTOCOL_VERSION` в
+  `app/version.py` **и** `MEMORY_PROTOCOL_VERSION` в `sillytavern-extension/version.mjs`
 - Новые константы/пороги — в конфиг, не хардкодить в логику
 
 ## Стек
