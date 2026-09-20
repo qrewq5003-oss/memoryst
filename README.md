@@ -4,10 +4,25 @@ External memory service integration for long-term context in roleplay chats.
 
 ## Installation
 
-**SillyTavern's "Install Extension" button cannot install this.** That button clones a
-git repo and reads `manifest.json` from the clone root (`src/endpoints/extensions.js`,
-`getManifest`); this repo's root holds the backend, and the manifest lives one level
-down in `sillytavern-extension/`. Install by hand instead.
+### With SillyTavern's Install button
+
+Extensions menu → **Install extension**, then:
+
+- URL: `https://github.com/qrewq5003-oss/memoryst`
+- **Branch or tag name: `extension`**
+
+The branch is not optional. SillyTavern clones the repo and reads `manifest.json` from
+the clone root (`src/endpoints/extensions.js`, `getManifest`); this repo's root is the
+backend, so the default branch fails. The `extension` branch is the same code with the
+extension at its root, published by `scripts/publish_extension_branch.py`.
+
+The extension is only half of memoryst - it does nothing until the backend is running.
+See the repository README for that.
+
+### By hand, for development
+
+A symlink is what you want if you are editing the extension: the branch is a
+publication and only updates when someone runs the publish script.
 
 1. Symlink (or copy) this folder into one of SillyTavern's extension directories:
 
