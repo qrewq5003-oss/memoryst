@@ -26,6 +26,8 @@ Environment variables:
 | `BACKUP_KEEP_RECENT` | `3` | How many of the newest backups are kept regardless of day |
 | `API_KEY` | `` | API key for the `/memory` API (empty = auth disabled). Sent as the `X-API-Key` header. |
 | `DEBUG` | `false` | Enable debug mode (auto-reload) |
+| `CORS_ALLOW_ORIGINS` | `` | Comma-separated list of origins allowed to call this service from a browser. Set it and it **replaces** the regex below rather than adding to it |
+| `CORS_ALLOW_ORIGIN_REGEX` | loopback only | Origins allowed when no explicit list is set. Defaults to `http(s)://localhost`, `127.0.0.1` or `[::1]` on any port |
 
 ## Security
 
@@ -37,13 +39,37 @@ API endpoint requires a matching `X-API-Key` header. `/health` and
 The server refuses to start if `APP_HOST` is non-loopback (e.g. `0.0.0.0`) while
 `API_KEY` is empty — this closes the silent "public bind, no auth" hole.
 
-> ⚠️ **Before exposing this service on a LAN, know the current limit:** `API_KEY`
-> protects only the `/memory` API. The web UI router (`/ui` and its form-based
-> create/edit/delete/pin/archive actions) is **not** behind the key, and the
-> browser Tools tab calls `/memory/*` via `fetch()` without the header — so with
-> `API_KEY` set those Tools actions return 401. For localhost use this is fine.
-> **If you enable `API_KEY` for non-localhost access, first protect the UI router
-> (`app/routes/ui.py`) — do not rely on `API_KEY` alone for LAN exposure.**
+### The other browser tab
+
+`API_KEY` and the loopback bind both answer "who may reach this service from
+another machine". Neither answers "what may another page in this same browser
+do", and that is a real question for a service on `localhost`: a form post is a
+CORS *simple* request, so any site the user visits could submit a hidden form at
+`http://localhost:8001/ui/delete-chat` and the delete would happen.
+
+Two guards now close that:
+
+- **CORS is an allowlist, not `*`.** By default only loopback origins may read
+  responses from this service, which is what keeps `/memory/list` and
+  `/ui/export` — both of which return the whole memory store — from being read
+  by any site the browser happens to have open. SillyTavern on another localhost
+  port still works. If you reach SillyTavern over a LAN address instead, add that
+  origin to `CORS_ALLOW_ORIGINS` or the extension's requests will start failing
+  CORS, which shows up only in the browser console.
+- **`/ui` rejects cross-origin writes.** Every state-changing `/ui` request must
+  carry a same-origin `Origin` (or, failing that, `Referer`). Requests with
+  neither header — `curl`, scripts — are allowed through: browsers always send
+  `Origin` on a cross-origin write, so their absence is not the case being
+  defended against. The `/memory` API is deliberately exempt: it is called
+  cross-origin by design, and `application/json` bodies and `DELETE` are
+  preflighted, so the CORS allowlist already decides them.
+
+> ⚠️ **Still true before exposing this on a LAN:** `API_KEY` protects only the
+> `/memory` API. The `/ui` router has a CSRF guard, not authentication — anyone
+> who can reach the port can still use the UI. The browser Tools tab also calls
+> `/memory/*` via `fetch()` without the header, so with `API_KEY` set those Tools
+> actions return 401. **For LAN exposure, put real authentication in front of
+> `app/routes/ui.py` — do not rely on `API_KEY` alone.**
 
 ## Running
 

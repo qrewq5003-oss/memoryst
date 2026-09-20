@@ -34,6 +34,21 @@ class Config:
     BACKUP_KEEP_DAYS: int = int(os.getenv("BACKUP_KEEP_DAYS", os.getenv("BACKUP_KEEP", "14")))
     BACKUP_KEEP_RECENT: int = int(os.getenv("BACKUP_KEEP_RECENT", "3"))
     API_KEY: str = os.getenv("API_KEY", "")
+
+    # CORS used to be allow_origins=["*"], which let any page the browser had open read
+    # this service's responses - /memory/list and /ui/export return the whole memory
+    # store, so that was a read of every chat to any site the user happened to visit.
+    # The default below keeps the one cross-origin caller that has to work (SillyTavern
+    # on another localhost port) and drops the rest. Set CORS_ALLOW_ORIGINS to a
+    # comma-separated list when ST is reached over something other than loopback, e.g.
+    # a LAN address; doing so replaces the regex rather than adding to it.
+    CORS_ALLOW_ORIGINS: list[str] = [
+        o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()
+    ]
+    CORS_ALLOW_ORIGIN_REGEX: str = os.getenv(
+        "CORS_ALLOW_ORIGIN_REGEX",
+        r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$",
+    )
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
     LLM_API_BASE: str = os.getenv("LLM_API_BASE", "")
@@ -61,6 +76,32 @@ class Config:
     # largest cause. Sized like TRACKER_LLM_TIMEOUT, for the same reason: the budget has
     # to match the size of the call, not the average of all calls.
     SCENE_LLM_TIMEOUT: int = int(os.getenv("SCENE_LLM_TIMEOUT", "90"))
+
+    # How much of a scene reaches the extraction LLM (see
+    # llm_extractor.build_indexed_scene_text).
+    #
+    # SCENE_TEXT_MAX_CHARS used to be a hardcoded 4000 that the builder enforced by
+    # `break`ing on the first message that did not fit. Measured over data/memory.db on
+    # 2026-08-03: 41.3% of stored assistant messages are longer than 4000 characters on
+    # their own, so whenever such a message opened a scene the builder returned an empty
+    # string, extract_scene_facts returned None without logging, and the whole scene
+    # silently degraded to the rule-based extractor - 536 of the 627 fallbacks in
+    # data/server.log had no accompanying error, against only 91 real LLM failures.
+    # SCENE_MESSAGE_MAX_CHARS caps each message individually (middle-out) so one long
+    # message can no longer consume or block the whole scene budget.
+    SCENE_TEXT_MAX_CHARS: int = int(os.getenv("SCENE_TEXT_MAX_CHARS", "12000"))
+    SCENE_MESSAGE_MAX_CHARS: int = int(os.getenv("SCENE_MESSAGE_MAX_CHARS", "1500"))
+
+    # Upper bound on what the rule-based extractor (extractor.extract_memories) may
+    # store. That path keeps the source line close to verbatim, so on a descriptive
+    # roleplay message it stores narrative prose ("Чай остывал в кружках, и пар больше
+    # не поднимался над керамическими ободками...") as if it were a fact, and retrieval
+    # then feeds the model back its own scenery. Measured over data/memory.db on
+    # 2026-08-03: LLM-extracted facts top out at 251 characters (p99 = 197), while the
+    # rule-based path runs to the 500-character truncation limit - of the 229 rows longer
+    # than 250 characters, 228 came from the rule-based path. Cutting there drops prose
+    # without touching anything the LLM path produces.
+    RULE_EXTRACT_MAX_CONTENT_CHARS: int = int(os.getenv("RULE_EXTRACT_MAX_CONTENT_CHARS", "250"))
 
     TRACKER_LLM_TIMEOUT: int = int(os.getenv("TRACKER_LLM_TIMEOUT", "120"))
     TRACKER_LLM_MAX_TOKENS: int = int(os.getenv("TRACKER_LLM_MAX_TOKENS", "10000"))

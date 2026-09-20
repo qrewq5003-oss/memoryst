@@ -1,7 +1,9 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+
+from app.auth import require_same_origin
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -50,7 +52,10 @@ from app.ui_helpers.presentation import (
 )
 
 templates = Jinja2Templates(directory="app/templates")
-router = APIRouter(tags=["ui"])
+# The guard is on the router, not on individual routes: /ui has 45 form endpoints and
+# any new one would otherwise ship unprotected by default. See auth.require_same_origin
+# for why a same-origin rule is right here and wrong for the /memory API.
+router = APIRouter(tags=["ui"], dependencies=[Depends(require_same_origin)])
 
 UI_SEARCH_SCAN_LIMIT = 2000
 # Fifty cards is roughly 9500px of scroll on a phone - about twelve screens before

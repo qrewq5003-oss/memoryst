@@ -50,12 +50,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# An explicit CORS_ALLOW_ORIGINS list wins outright; otherwise the loopback regex
+# applies. Passing both to Starlette would OR them together, which would silently keep
+# a wide default alive next to the narrow list someone deliberately configured.
+_cors_kwargs: dict = (
+    {"allow_origins": config.CORS_ALLOW_ORIGINS}
+    if config.CORS_ALLOW_ORIGINS
+    else {"allow_origin_regex": config.CORS_ALLOW_ORIGIN_REGEX}
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    **_cors_kwargs,
 )
 
 
