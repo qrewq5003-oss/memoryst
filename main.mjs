@@ -39,17 +39,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=c185b5e';
+} from './audit.mjs?v=fc36fdc';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=c185b5e';
-import { mountSettingsUi } from './settings-ui.mjs?v=c185b5e';
-import { resolveEffectiveScope } from './scope.mjs?v=c185b5e';
+} from './settings.mjs?v=fc36fdc';
+import { mountSettingsUi } from './settings-ui.mjs?v=fc36fdc';
+import { resolveEffectiveScope } from './scope.mjs?v=fc36fdc';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=c185b5e';
+} from './lore-anchors.mjs?v=fc36fdc';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -57,18 +57,25 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=c185b5e';
+} from './trackers.mjs?v=fc36fdc';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=c185b5e';
+} from './version.mjs?v=fc36fdc';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=c185b5e';
+} from './injection.mjs?v=fc36fdc';
+import {
+    buildStoredTurn,
+    isSupersedingRender,
+    shouldDiscardAfterDelete,
+    shouldDiscardAfterEdit,
+} from './supersede.mjs?v=fc36fdc';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
+    DEFAULT_DISCARD_TIMEOUT_MS,
     DEFAULT_RETRIEVE_TIMEOUT_MS,
     DEFAULT_STORE_TIMEOUT_MS,
     DEFAULT_TRACKERS_TIMEOUT_MS,
@@ -76,7 +83,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=c185b5e';
+} from './http.mjs?v=fc36fdc';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -93,6 +100,9 @@ let settings = {};
 let isStoreProcessing = false;
 let isRetrieveProcessing = false;
 let pendingInteractionAudit = null;
+// What the last store created, so a swipe, a delete or an edit can take it back.
+// Cleared the moment the turn is settled - see onUserMessageSent.
+let lastStoredTurn = null;
 let pendingTurnKey = null;
 let currentMemoryPromptBlock = '';
 let currentRetrieveBudget = null;
@@ -602,6 +612,47 @@ async function retrieveMemories() {
 }
 
 /**
+ * Delete the memories the last store created, for a reply the user took back.
+ *
+ * One DELETE per id rather than a batch endpoint: a turn creates a handful of memories,
+ * and a new endpoint would be a contract change for a saving nobody would notice.
+ * Failures are logged and swallowed - a memory that could not be deleted is a stale row,
+ * which is the situation we were already in, and is not worth breaking a turn over.
+ */
+async function discardStoredTurn(reason) {
+    const turn = lastStoredTurn;
+    lastStoredTurn = null;
+    if (!turn?.memoryIds?.length) {
+        return;
+    }
+
+    const headers = {};
+    if (settings.apiKey) {
+        headers['X-API-Key'] = settings.apiKey;
+    }
+
+    let deleted = 0;
+    for (const memoryId of turn.memoryIds) {
+        try {
+            const response = await fetchWithTimeout(
+                `${settings.memoryServiceUrl}/memory/${encodeURIComponent(memoryId)}`,
+                { method: 'DELETE', headers },
+                { timeoutMs: DEFAULT_DISCARD_TIMEOUT_MS },
+            );
+            if (response.ok) {
+                deleted += 1;
+            } else {
+                console.warn('[memoryst] Could not discard memory', memoryId, response.status);
+            }
+        } catch (error) {
+            console.warn('[memoryst] Could not discard memory', memoryId, error?.message || error);
+        }
+    }
+
+    console.log('[memoryst] Discarded', deleted, 'of', turn.memoryIds.length, 'memories:', reason);
+}
+
+/**
  * Pull one character's trackers into the cache. Fire-and-forget everywhere it is called:
  * a failure only means the tracker block is missing from this turn's prompt, which is not
  * worth blocking or breaking generation over.
@@ -958,6 +1009,10 @@ async function onBeforeGeneration(hookName, ...hookArgs) {
  */
 async function onUserMessageSent() {
     trace('message_sent');
+    // The user moved on, so the previous reply is the one they kept. Forget how to undo
+    // it: from here a delete or an edit is about an exchange we can no longer fix, and
+    // acting on it would remove memories the user never rejected.
+    lastStoredTurn = null;
     if (!settings.enabled || isRetrieveProcessing) {
         trace('sent_skip_busy');
         return;
@@ -1045,12 +1100,22 @@ async function runRetrievalForTurn(stage) {
 /**
  * Store the completed exchange after the assistant message is rendered.
  */
-async function onMessageRendered() {
+async function onMessageRendered(_messageId, renderType) {
     if (!settings.enabled || isStoreProcessing) {
         return;
     }
 
+    // Claimed before the first await, not after it. The discard below is asynchronous,
+    // and a second render arriving during it would sail past the guard above and store
+    // the same turn twice - which is the bug this function is meant to be removing.
     isStoreProcessing = true;
+
+    // A swipe or a regenerate replaces the reply this turn already stored. Take that
+    // store back before writing the new one, or both versions end up in memory - which
+    // is what happened to every chat where the user swiped before settling.
+    if (isSupersedingRender(renderType)) {
+        await discardStoredTurn(`superseded_by_${renderType}`);
+    }
 
     try {
         const chatContext = getChatContext();
@@ -1074,6 +1139,15 @@ async function onMessageRendered() {
                 previewChars: settings.auditPreviewChars,
             });
             notifyStaleTrackers(storeResult);
+            lastStoredTurn = buildStoredTurn({
+                chatId: chatContext?.chatId || null,
+                characterId: chatContext?.characterId || null,
+                // Absent on a backend that predates the field, which degrades to the old
+                // behaviour: nothing is remembered, so nothing is offered to undo.
+                createdIds: storeResult.result?.created_ids || [],
+                chatLength: chatContext?.chat?.length || 0,
+                recentMessagesCount: settings.recentMessagesCount,
+            });
         } else if (storeResult.reason) {
             auditRecord.notes.push(storeResult.reason);
         }
@@ -1089,11 +1163,34 @@ async function onMessageRendered() {
     }
 }
 
+async function onMessageDeleted(chatLengthAfterDelete) {
+    if (!settings.enabled) {
+        return;
+    }
+    const chatId = getChatContext()?.chatId || null;
+    if (shouldDiscardAfterDelete(lastStoredTurn, { chatId, chatLengthAfterDelete })) {
+        await discardStoredTurn('message_deleted');
+    }
+}
+
+async function onMessageEdited(editedMessageIndex) {
+    if (!settings.enabled) {
+        return;
+    }
+    const chatId = getChatContext()?.chatId || null;
+    if (shouldDiscardAfterEdit(lastStoredTurn, { chatId, editedMessageIndex })) {
+        // Only discarded, never re-extracted here: the next store sends the last N
+        // messages anyway, so the edited text is re-read on the following turn.
+        await discardStoredTurn('message_edited');
+    }
+}
+
 /**
  * Handle chat change - clear prompt if chat changes
  */
 function onChatChanged() {
     turnEventTrace = [];
+    lastStoredTurn = null;
     clearMemoryPrompt();
     clearLoreAnchorPrompt();
     clearTrackerPrompt();
@@ -1137,6 +1234,15 @@ function init() {
     eventSource.makeLast(event_types.CHARACTER_MESSAGE_RENDERED, onMessageRendered);
 
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    // Taking a turn back. MESSAGE_DELETED carries only the chat's new length and
+    // MESSAGE_EDITED only an index, which is why supersede.mjs decides from those two
+    // numbers rather than from the message itself.
+    if (event_types.MESSAGE_DELETED) {
+        eventSource.on(event_types.MESSAGE_DELETED, onMessageDeleted);
+    }
+    if (event_types.MESSAGE_EDITED) {
+        eventSource.on(event_types.MESSAGE_EDITED, onMessageEdited);
+    }
     eventSource.on(event_types.WORLD_INFO_ACTIVATED || 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
     exposeAuditHelpers();
     refreshSettingsUi();

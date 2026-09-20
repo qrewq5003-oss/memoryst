@@ -11,7 +11,7 @@
 import {
     DEFAULT_TRACKERS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=c185b5e';
+} from './http.mjs?v=fc36fdc';
 
 export const TRACKER_PROMPT_KEY = 'memory-service-tracker';
 
