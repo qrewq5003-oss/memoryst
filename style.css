@@ -1,0 +1,5 @@
+/* memoryst — the settings panel ships its own <style> block from settings-ui.mjs,
+   built on SillyTavern's --SmartTheme* variables so it follows the active theme.
+   This file stays because manifest.json declares it, and because anything that must
+   outlive a panel re-render (mountSettingsUi replaces the panel's innerHTML) belongs
+   here rather than in that inline block. */

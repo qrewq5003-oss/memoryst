@@ -1,0 +1,380 @@
+# memoryst Extension for SillyTavern
+
+External memory service integration for long-term context in roleplay chats.
+
+## Installation
+
+**SillyTavern's "Install Extension" button cannot install this.** That button clones a
+git repo and reads `manifest.json` from the clone root (`src/endpoints/extensions.js`,
+`getManifest`); this repo's root holds the backend, and the manifest lives one level
+down in `sillytavern-extension/`. Install by hand instead.
+
+1. Symlink (or copy) this folder into one of SillyTavern's extension directories:
+
+   ```bash
+   ln -s ~/memoryst/sillytavern-extension \
+         ~/SillyTavern/public/scripts/extensions/third-party/memoryst
+   ```
+
+   The other valid location is `~/SillyTavern/data/<user>/extensions/memoryst`.
+   SillyTavern loads from **both** and de-duplicates only on an exact name match, so a
+   forgotten second copy under a different name will load alongside this one and
+   overwrite its settings. Check both directories before debugging anything else.
+
+   A symlink is preferred over a copy: SillyTavern reinstalls and git updates can
+   recreate `public/`, and a broken symlink is at least detectable — the extension
+   warns about a stale pairing via the `/memory/version` handshake.
+
+2. Enable the extension in SillyTavern:
+   - Open SillyTavern
+   - Go to Extensions menu (puzzle piece icon)
+   - Find "memoryst" and enable it
+
+3. Configure settings from the native memoryst panel inside SillyTavern Extensions.
+
+The extension keeps ST-facing settings grouped logically in storage, under the
+`extension_settings` key `memory-service` (deliberately *not* renamed to match the
+directory — see the comment on `SETTINGS_KEY` in `main.mjs`):
+- `connection`
+- `retrieval`
+- `extraction`
+- `promptBudget`
+- `trackers`
+- `audit`
+
+## How It Works
+
+**Current pattern:** retrieve runs before generation and affects the current reply. Store still runs after render for the completed exchange.
+
+## Lorebook Ephemeral Anchors
+
+The extension now supports a separate lorebook bridge for curated canonical anchors.
+
+This layer is:
+
+- triggered by Lorebook / World Info activation
+- injected only for the current turn
+- never stored in the memoryst database
+- never summarized into rolling summary
+- never consolidated into stable or episodic memory
+
+It is intentionally separate from normal memory retrieval.
+
+### Allowlist Policy
+
+Only explicitly allowlisted lore entries are eligible for this bridge.
+
+Current v1 markers:
+
+- tag: `memory-anchor`
+- comment marker: `[memory-anchor]`
+- comment marker: `@memory-anchor`
+- content marker line: `@memory-anchor`
+- explicit compact anchor line: `@memory-anchor: ...`
+
+If a lore entry is not marked, it is ignored by the bridge.
+
+### Prompt Shape
+
+Lore anchors are injected as a compact, separate system block:
+
+```text
+[Lore Anchor]
+- ...
+```
+
+This keeps canonical lore assistance available for the current reply without polluting the normal summary/stable/episodic memory layers.
+
+## Character Trackers
+
+Four per-character documents the backend maintains (Timeline, Relationship, NPC Who's Who,
+Character POV Notes). The extension fetches them on chat change and injects the current
+character's trackers when a lorebook entry for that character activates.
+
+Like the anchors above, this rides the World Info activation event - but unlike them it is
+injected under its own extension-prompt key (`memory-service-tracker`) and does **not** pass
+through the memory budget, so a tracker never costs a retrieved memory its slot.
+
+Trackers are never regenerated on mention: whatever the backend last stored is what gets
+injected. Update them from the backend's web UI (`/ui`), or call
+`memoryServiceTrackers.refresh()` from the console to pick up an update without switching
+chats.
+
+### Always Inject Current Character
+
+`trackerAlwaysInjectCurrentCharacter` (default on) injects the current character's trackers
+every turn, without waiting for a lorebook entry about them to activate. This is the main path
+for a solo chat.
+
+It exists because the lorebook cannot carry that weight: entries written by STMemoryBooks are
+vectorized, so they activate only when the Vector Storage extension finds them semantically
+relevant - the main character's tracker would otherwise reach the prompt only on the turns that
+happened to surface such an entry.
+
+The lorebook route below is unchanged and still runs. Its job now is to pull in a *secondary*
+character's trackers. When both paths name the same character, the stronger resolution is the
+one reported (marker > name > fallback > always) and the character is injected once.
+
+Group chats stay on the lorebook path only: "the current character" is not well defined there,
+and guessing would inject the wrong person's trackers.
+
+### Which character a lorebook entry is about
+
+Resolved in this order:
+
+1. **Explicit marker** in the entry's `comment`: `@memory-tracker: Valeria Mendoza` (a name)
+   or `@memory-tracker: 20` (a raw character id). Beats everything else, no matter which
+   entry the lorebook happens to hand over first.
+2. **By character name** - matched against the entry's comment and its keys, case-insensitively
+   and on word boundaries (Cyrillic included).
+3. **Fallback**: in a solo chat, an entry that matches nobody still means "these trackers are
+   relevant now", so the current character's trackers are used.
+
+A marker naming somebody unknown does not veto the entry - it is recorded in the audit
+(`tracker_unresolved`) and the other branches still run.
+
+Note: an entry that is **vectorized** (as entries created by STMemoryBooks are) activates only
+when the Vector Storage extension finds it semantically relevant - not by keyword and not by
+`constant`. Trackers therefore only reach the prompt on the turns such an entry happens to
+fire.
+
+### Budget
+
+`maxTrackerChars` (default 2000) is a single budget shared by all four of a character's
+trackers, not one budget each. When it overflows, the largest tracker is shrunk one unit at a
+time - Timeline from the oldest entry (with an `…(ранее опущено)` marker), Relationship from
+the tails of its lists, NPCs and notes from the end - so all four survive as long as possible.
+The last surviving tracker is truncated rather than dropped: a truncated tracker beats no
+tracker.
+
+### Reminder toasts
+
+`/memory/store` returns, for free, how many messages each tracker is behind the chat. Past
+`trackerReminderThreshold` (default 22) a toast suggests updating it, and then stays quiet
+until the tracker drifts another full threshold - state kept in `lastTrackerToastAt`, so a
+page reload does not restart the nagging.
+
+### Debugging
+
+Audit records (`auditEnabled`) carry `tracker_*` fields that say exactly why a tracker did or
+did not reach the prompt: whether the lorebook listener fired at all
+(`tracker_wi_event_count`), how many entries it carried, what their comments were, which
+resolution branch won (`tracker_match_sources`), the character roster size, any thrown error,
+and the ordered hook trace. `extension_build` names the build the browser actually loaded -
+ES modules cache hard, and a mobile browser has no hard-reload gesture.
+
+## Scoping Policy
+
+The memory scope unit is always:
+
+- `chat_id`
+- `character_id`
+
+The extension derives them from SillyTavern context like this:
+
+- `chat_id = context.chatId`
+- `character_id = context.characterId`
+- if `characterId` is missing, the extension falls back to `character_id = chat_id`
+
+This keeps retrieval, store, and rolling summaries scoped per chat/character pair, while keeping the fallback stable for chats that do not expose a separate character id.
+
+### Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Current turn                                                │
+│ 1. User sends message                                       │
+│ 2. Pre-generation hook fires                                │
+│ 3. Extension calls /memory/retrieve                         │
+│ 4. Extension sets memory_block for CURRENT generation       │
+│ 5. Assistant generates response (WITH memory injection)     │
+│ 6. CHARACTER_MESSAGE_RENDERED fires                         │
+│ 7. Extension calls /memory/store                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Points
+
+- **Retrieve timing:** before generation on a pre-generation hook
+- **Memory application:** the retrieved `memory_block` is intended for the **current** generation
+- **Store timing:** after `CHARACTER_MESSAGE_RENDERED`, so the completed exchange can be extracted safely
+
+## Settings UI
+
+The extension now exposes a native SillyTavern settings panel for the memoryst extension. It shows the current values, saves them back into `extension_settings`, and keeps backward compatibility with older flat or grouped saved configs.
+
+The panel is grouped as:
+
+- `Connection`
+- `Retrieval`
+- `Prompt Injection Budget`
+- `Audit`
+
+There is also a small `Apply Recommended Baseline` action for long Russian chats.
+
+## Settings Groups
+
+The runtime still uses simple flat fields internally, but persisted settings are grouped so the extension is easier to reason about in real long-chat use.
+
+### Connection
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | `false` | Enable or disable the extension |
+| `memoryServiceUrl` | `http://localhost:8001` | memoryst endpoint |
+| `apiKey` | `''` | API key sent as `X-API-Key` |
+
+### Retrieval
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `retrieveLimit` | `5` | Maximum memories requested from backend retrieval |
+| `recentMessagesCount` | `8` | Recent chat messages sent to store extraction |
+
+### Prompt Injection Budget
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `maxPromptMemories` | `4` | Maximum memory entries injected into the prompt |
+| `maxPromptChars` | `1500` | Maximum injected memory block size in characters |
+| `maxSummaryItems` | `1` | Maximum rolling summary items kept |
+| `maxStableItems` | `2` | Maximum stable/profile/relationship items kept |
+| `maxEpisodicItems` | `1` | Maximum episodic items kept |
+
+### Audit
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `auditEnabled` | `false` | Enable per-interaction integration audit |
+| `auditMaxRecords` | `20` | Keep only the latest N audit records |
+| `auditPreviewChars` | `240` | Preview length for messages and memory blocks |
+
+The native UI is the preferred way to tune these values. Editing `sillytavern-extension/settings.mjs` only changes shipped defaults. Existing older flat settings still load correctly, and the extension still serializes grouped settings for cleaner storage.
+
+### Recommended long Russian chat defaults
+
+Recommended baseline:
+
+- `retrieveLimit: 5`
+- `recentMessagesCount: 8`
+- `maxPromptMemories: 4`
+- `maxPromptChars: 1500`
+- `maxSummaryItems: 1`
+- `maxStableItems: 2`
+- `maxEpisodicItems: 1`
+
+This is a safe starting point for long Russian RP chats:
+- one rolling summary usually survives
+- two stable slots preserve durable relationship/profile context
+- only one episodic slot reaches prompt injection by default
+- prompt budget stays compact enough not to crowd out the main prompt
+
+Knobs most worth tuning first:
+- `retrieveLimit`
+- `maxPromptChars`
+- `maxStableItems`
+- `maxEpisodicItems`
+
+The UI exposes all of these directly, so you no longer need to hand-edit settings for normal use.
+
+## Integration Audit Mode
+
+For Russian long-chat debugging, enable:
+
+```js
+auditEnabled: true
+```
+
+Each rendered interaction then stores one recent audit record in:
+
+```js
+extension_settings['memory-service'].recentAudits
+```
+
+You can also inspect it in browser devtools:
+
+```js
+memoryServiceAudit.getRecentAudits()
+memoryServiceAudit.printRecentAudits()
+memoryServiceAudit.clearRecentAudits()
+memoryServiceLoreAnchors.getCurrentAnchorBlock()
+memoryServiceLoreAnchors.getCurrentAnchorEntries()
+```
+
+Each audit record includes:
+
+- `timestamp`
+- `chat_id`, `character_id`
+- `store_called`, `retrieve_called`
+- store message previews and store summary
+- retrieve query, recent message previews, returned item count
+- retrieved vs injected item counts by layer
+- `memory_block` preview, length, item count
+- prompt budget settings, actual chars, trimmed item count, trimming reasons
+- retrieve stage and prompt injection stage
+- `applied_to_current_turn: true/false`
+- prompt insertion method/timing (`setExtensionPrompt`, `current_generation_pre_prompt`)
+- notes for missing steps such as `no_last_user_message`, `empty_memory_block`, `prompt_insertion_not_observed`
+
+This is intentionally opt-in and meant for local debugging, not always-on telemetry.
+
+### Manual verification in SillyTavern
+
+1. Enable `Audit > Enable Audit` in the native memoryst settings panel.
+2. Open a Russian chat with existing stored memories.
+3. Send a user message that should clearly retrieve one of them.
+4. Before or immediately after the reply, inspect:
+
+```js
+memoryServiceAudit.getRecentAudits()[0]
+```
+
+Expected signals:
+
+- `retrieve_called: true`
+- `retrieve_stage: 'pre_generation'`
+- `prompt_injection_stage: 'pre_generation'`
+- `applied_to_current_turn: true`
+- non-empty `prompt_insertion.memory_block_preview`
+- sensible `prompt_insertion.injected_summary_count / injected_stable_count / injected_episodic_count`
+- non-zero `trimmed_item_count` only when the retrieved set actually exceeded prompt budget
+
+If current-turn injection fails, the audit record should make that visible via `notes`.
+
+## Requirements
+
+- memoryst running and accessible
+- SillyTavern with extension support
+
+## API Compatibility
+
+This extension uses the following SillyTavern APIs:
+
+**From `../../extensions.js`:**
+- `getContext()` - Get current chat context
+- `extension_settings` - Settings storage per extension
+
+**From `../../../script.js`:**
+- `eventSource` - Event system
+- `event_types` - Event type constants (CHARACTER_MESSAGE_RENDERED, CHAT_CHANGED)
+- `saveSettingsDebounced` - Debounced settings save function
+- `setExtensionPrompt` - Function to set prompt for generation
+
+## Troubleshooting
+
+1. **Extension not working:**
+   - Check memoryst is running: `curl http://localhost:8001/health`
+   - Verify URL in settings
+   - Check browser console for errors
+
+2. **No memories being stored:**
+   - Ensure extension is enabled in SillyTavern
+   - Check that chat has started (character selected)
+
+3. **Memory block not appearing:**
+   - Check that memories exist in the database
+   - Verify retrieval is finding relevant items
+
+## License
+
+Same as memoryst project.
