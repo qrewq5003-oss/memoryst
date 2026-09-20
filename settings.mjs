@@ -6,15 +6,21 @@ import {
     DEFAULT_MAX_PROMPT_MEMORIES,
     DEFAULT_MAX_STABLE_ITEMS,
     DEFAULT_MAX_SUMMARY_ITEMS,
-} from './audit.mjs?v=aabb3c5';
+} from './audit.mjs?v=c185b5e';
 import {
     DEFAULT_MAX_TRACKER_CHARS,
     DEFAULT_TRACKER_REMINDER_THRESHOLD,
-} from './trackers.mjs?v=aabb3c5';
+} from './trackers.mjs?v=c185b5e';
 import {
     DEFAULT_RETRIEVE_TIMEOUT_MS,
     DEFAULT_STORE_TIMEOUT_MS,
-} from './http.mjs?v=aabb3c5';
+} from './http.mjs?v=c185b5e';
+import {
+    DEFAULT_PROMPT_DEPTH,
+    DEFAULT_PROMPT_POSITION,
+    DEFAULT_PROMPT_ROLE,
+    DEFAULT_PROMPT_SCAN,
+} from './injection.mjs?v=c185b5e';
 
 // retrieveTimeoutMs and storeTimeoutMs are knobs rather than constants because they are
 // the two that trade real things off against each other, and the right answer depends on
@@ -50,6 +56,17 @@ export const DEFAULT_RETRIEVAL_SETTINGS = {
 // CLAUDE.md's scene-extraction-llm-failing investigation for the verification.
 export const DEFAULT_EXTRACTION_SETTINGS = {
     sceneExtractionModel: 'deepseek/deepseek-v4-pro',
+};
+
+// One set of placement knobs for all three blocks memoryst injects (memory, lore anchor,
+// tracker) rather than four knobs each. Twelve controls would be a worse panel for a
+// distinction nobody has asked for: they are one extension's contribution to the prompt
+// and there is no reason for them to sit in different places.
+export const DEFAULT_INJECTION_SETTINGS = {
+    promptPosition: DEFAULT_PROMPT_POSITION,
+    promptDepth: DEFAULT_PROMPT_DEPTH,
+    promptRole: DEFAULT_PROMPT_ROLE,
+    promptScan: DEFAULT_PROMPT_SCAN,
 };
 
 export const DEFAULT_PROMPT_BUDGET_SETTINGS = {
@@ -92,6 +109,7 @@ export const DEFAULT_SETTINGS_GROUPS = {
     connection: { ...DEFAULT_CONNECTION_SETTINGS },
     retrieval: { ...DEFAULT_RETRIEVAL_SETTINGS },
     extraction: { ...DEFAULT_EXTRACTION_SETTINGS },
+    injection: { ...DEFAULT_INJECTION_SETTINGS },
     promptBudget: { ...DEFAULT_PROMPT_BUDGET_SETTINGS },
     trackers: { ...DEFAULT_TRACKER_SETTINGS },
     audit: { ...DEFAULT_AUDIT_SETTINGS },
@@ -101,6 +119,7 @@ export const DEFAULT_SETTINGS = {
     ...DEFAULT_CONNECTION_SETTINGS,
     ...DEFAULT_RETRIEVAL_SETTINGS,
     ...DEFAULT_EXTRACTION_SETTINGS,
+    ...DEFAULT_INJECTION_SETTINGS,
     ...DEFAULT_PROMPT_BUDGET_SETTINGS,
     ...DEFAULT_TRACKER_SETTINGS,
     ...DEFAULT_AUDIT_SETTINGS,
@@ -122,6 +141,10 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...DEFAULT_EXTRACTION_SETTINGS,
         ...(rawSettings.extraction || {}),
     };
+    const injection = {
+        ...DEFAULT_INJECTION_SETTINGS,
+        ...(rawSettings.injection || {}),
+    };
     const promptBudget = {
         ...DEFAULT_PROMPT_BUDGET_SETTINGS,
         ...(rawSettings.promptBudget || {}),
@@ -140,6 +163,7 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         ...connection,
         ...retrieval,
         ...extraction,
+        ...injection,
         ...promptBudget,
         ...trackers,
         ...audit,
@@ -160,6 +184,10 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         retrieveLimit: rawSettings.retrieveLimit ?? retrieval.retrieveLimit,
         recentMessagesCount: rawSettings.recentMessagesCount ?? retrieval.recentMessagesCount,
         sceneExtractionModel: rawSettings.sceneExtractionModel || extraction.sceneExtractionModel,
+        promptPosition: rawSettings.promptPosition ?? injection.promptPosition,
+        promptDepth: rawSettings.promptDepth ?? injection.promptDepth,
+        promptRole: rawSettings.promptRole ?? injection.promptRole,
+        promptScan: rawSettings.promptScan ?? injection.promptScan,
         maxPromptMemories: rawSettings.maxPromptMemories ?? promptBudget.maxPromptMemories,
         maxPromptChars: rawSettings.maxPromptChars ?? promptBudget.maxPromptChars,
         maxSummaryItems: rawSettings.maxSummaryItems ?? promptBudget.maxSummaryItems,
@@ -207,6 +235,12 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
         },
         extraction: {
             sceneExtractionModel: settings.sceneExtractionModel || DEFAULT_EXTRACTION_SETTINGS.sceneExtractionModel,
+        },
+        injection: {
+            promptPosition: settings.promptPosition ?? DEFAULT_INJECTION_SETTINGS.promptPosition,
+            promptDepth: settings.promptDepth ?? DEFAULT_INJECTION_SETTINGS.promptDepth,
+            promptRole: settings.promptRole ?? DEFAULT_INJECTION_SETTINGS.promptRole,
+            promptScan: settings.promptScan ?? DEFAULT_INJECTION_SETTINGS.promptScan,
         },
         promptBudget: {
             maxPromptMemories: settings.maxPromptMemories ?? DEFAULT_PROMPT_BUDGET_SETTINGS.maxPromptMemories,

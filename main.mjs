@@ -23,6 +23,10 @@
 
 import { getContext, extension_settings } from '../../../extensions.js';
 import { eventSource, event_types, saveSettingsDebounced, setExtensionPrompt } from '../../../../script.js';
+// A namespace import, not a named one: these two enums are only used to check our own
+// copies against SillyTavern's, and a SillyTavern that stopped exporting them would
+// break a named import at load time - taking the whole extension down over a diagnostic.
+import * as sillyTavernScript from '../../../../script.js';
 import {
     buildBudgetedMemoryBlock,
     buildPromptInsertionAuditSection,
@@ -35,17 +39,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=aabb3c5';
+} from './audit.mjs?v=c185b5e';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=aabb3c5';
-import { mountSettingsUi } from './settings-ui.mjs?v=aabb3c5';
-import { resolveEffectiveScope } from './scope.mjs?v=aabb3c5';
+} from './settings.mjs?v=c185b5e';
+import { mountSettingsUi } from './settings-ui.mjs?v=c185b5e';
+import { resolveEffectiveScope } from './scope.mjs?v=c185b5e';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=aabb3c5';
+} from './lore-anchors.mjs?v=c185b5e';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -53,12 +57,16 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=aabb3c5';
+} from './trackers.mjs?v=c185b5e';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=aabb3c5';
+} from './version.mjs?v=c185b5e';
+import {
+    findEnumDrift,
+    resolveInjectionSettings,
+} from './injection.mjs?v=c185b5e';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_RETRIEVE_TIMEOUT_MS,
@@ -68,7 +76,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=aabb3c5';
+} from './http.mjs?v=c185b5e';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -117,9 +125,20 @@ function trace(event) {
     }
 }
 
+/**
+ * The placement arguments for every block this extension injects.
+ *
+ * Read per call rather than cached: the settings panel writes straight into `settings`,
+ * and a cached copy would leave the change invisible until a reload.
+ */
+function injectionArgs() {
+    return resolveInjectionSettings(settings);
+}
+
 function setMemoryPrompt(memoryBlock) {
     currentMemoryPromptBlock = memoryBlock || '';
-    setExtensionPrompt('memory-service', memoryBlock || '', 0, 0, true, 'system');
+    const { position, depth, scan, role } = injectionArgs();
+    setExtensionPrompt('memory-service', memoryBlock || '', position, depth, scan, role);
 }
 
 function clearMemoryPrompt() {
@@ -128,7 +147,8 @@ function clearMemoryPrompt() {
 }
 
 function setLoreAnchorPrompt(anchorBlock) {
-    setExtensionPrompt(LORE_ANCHOR_PROMPT_KEY, anchorBlock || '', 0, 0, true, 'system');
+    const { position, depth, scan, role } = injectionArgs();
+    setExtensionPrompt(LORE_ANCHOR_PROMPT_KEY, anchorBlock || '', position, depth, scan, role);
 }
 
 function clearLoreAnchorPrompt() {
@@ -137,7 +157,8 @@ function clearLoreAnchorPrompt() {
 }
 
 function setTrackerPrompt(trackerBlock) {
-    setExtensionPrompt(TRACKER_PROMPT_KEY, trackerBlock || '', 0, 0, true, 'system');
+    const { position, depth, scan, role } = injectionArgs();
+    setExtensionPrompt(TRACKER_PROMPT_KEY, trackerBlock || '', position, depth, scan, role);
 }
 
 function clearTrackerPrompt() {
@@ -1123,6 +1144,17 @@ function init() {
     // Fire-and-forget: warns in the UI/console if the backend is an
     // incompatible or stale pairing, without blocking initialization.
     checkBackendCompatibility();
+
+    // injection.mjs hardcodes SillyTavern's position/role enums so it stays testable
+    // without SillyTavern. If ST ever renumbers them, every block would land somewhere
+    // other than where the panel says - say so loudly rather than inject blind.
+    const enumDrift = findEnumDrift(
+        sillyTavernScript.extension_prompt_types,
+        sillyTavernScript.extension_prompt_roles,
+    );
+    if (enumDrift.length) {
+        console.error('[memoryst] SillyTavern prompt enums have moved:', enumDrift.join('; '));
+    }
 
     console.log('[memoryst] Extension initialized, build', MEMORY_EXTENSION_BUILD);
     console.log('[memoryst] Current-turn pattern: retrieve happens before generation, store after render');
