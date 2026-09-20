@@ -121,9 +121,13 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
 
 - Python 3.11+, FastAPI, SQLite, uvicorn
 - `llm_client.py` — внешний LLM API (OpenRouter/DeepSeek-совместимый)
-- `vector_store.py` — ChromaDB (primary) + JSON fallback. На этой машине `chromadb`
-  не установлен, `data/vectors.json` отсутствует — векторный слой фактически не
-  используется, а оба его теста в `tests/` помечены skip
+- `vector_store.py` — ChromaDB (primary, не установлен) + **SQLite-бэкенд** (боевой):
+  float32-блобы в `memory_embeddings`, 768 измерений. JSON-хранилище удалено — оно
+  пересохраняло весь файл на каждой вставке. Слой **включён** (`GOOGLE_API_KEYS` в
+  `.env`), но на этих данных ничего не меняет: сигнал слабый, подробности и цифры в
+  `docs/extension_audit_2026-09-20.md`. **Не поднимай `semantic_boost`, чтобы он
+  «заработал»** — измерено, что это вернёт шум. Бэкфилл — `scripts/embed_memories.py`,
+  по умолчанию только два самых свежих чата, каждый вызов стоит денег
 - Тесты: pytest (Python), node/vitest (JS extension)
 
 ## Что не трогать
