@@ -1,7 +1,13 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=ba96e73';
+} from './settings.mjs?v=aabb3c5';
+import {
+    DEFAULT_BACKFILL_TIMEOUT_MS,
+    DEFAULT_DELETE_CHAT_TIMEOUT_MS,
+    DEFAULT_MODELS_TIMEOUT_MS,
+    fetchWithTimeout,
+} from './http.mjs?v=aabb3c5';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -36,6 +42,24 @@ export const SETTINGS_UI_FIELDS = [
                 help: 'Optional X-API-Key header for protected backends.',
                 type: 'password',
                 placeholder: 'Optional',
+            },
+            {
+                key: 'retrieveTimeoutMs',
+                label: 'Retrieve Timeout (ms)',
+                help: 'Deadline for the retrieval request. It runs before the prompt is assembled and '
+                    + 'SillyTavern waits for it, so this is how long a stalled backend may hold up a reply. '
+                    + 'On expiry the turn simply gets no injected memory.',
+                type: 'number',
+                min: 500,
+            },
+            {
+                key: 'storeTimeoutMs',
+                label: 'Store Timeout (ms)',
+                help: 'Deadline for the store request, which runs after the reply is rendered and blocks '
+                    + 'nothing. Keep it above the backend SCENE_LLM_TIMEOUT (90s by default) - a shorter '
+                    + 'value aborts extractions that were about to succeed.',
+                type: 'number',
+                min: 500,
             },
         ],
     },
@@ -237,7 +261,11 @@ export async function loadSceneExtractionModelOptions({
         const headers = {};
         if (apiKey) headers['X-API-Key'] = apiKey;
 
-        const resp = await fetchImpl(`${memoryServiceUrl}/memory/models`, { headers });
+        const resp = await fetchWithTimeout(
+            `${memoryServiceUrl}/memory/models`,
+            { headers },
+            { timeoutMs: DEFAULT_MODELS_TIMEOUT_MS, fetchImpl },
+        );
         if (!resp.ok) {
             if (resultEl) resultEl.textContent = `Could not load model list: ${resp.status}`;
             return false;
@@ -701,11 +729,15 @@ export function renderSettingsUi({
         const headers = { 'Content-Type': 'application/json' };
         if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
 
-        const resp = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
-        });
+        const resp = await fetchWithTimeout(
+            url,
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
+            },
+            { timeoutMs: DEFAULT_BACKFILL_TIMEOUT_MS },
+        );
 
         if (resp.ok) {
             const r = await resp.json();
@@ -789,7 +821,11 @@ export function renderSettingsUi({
                 const headers = {};
                 if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
 
-                const resp = await fetch(url, { method: 'DELETE', headers });
+                const resp = await fetchWithTimeout(
+                    url,
+                    { method: 'DELETE', headers },
+                    { timeoutMs: DEFAULT_DELETE_CHAT_TIMEOUT_MS },
+                );
 
                 if (resp.ok) {
                     const r = await resp.json();

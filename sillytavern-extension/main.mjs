@@ -35,17 +35,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=ba96e73';
+} from './audit.mjs?v=aabb3c5';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=ba96e73';
-import { mountSettingsUi } from './settings-ui.mjs?v=ba96e73';
-import { resolveEffectiveScope } from './scope.mjs?v=ba96e73';
+} from './settings.mjs?v=aabb3c5';
+import { mountSettingsUi } from './settings-ui.mjs?v=aabb3c5';
+import { resolveEffectiveScope } from './scope.mjs?v=aabb3c5';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=ba96e73';
+} from './lore-anchors.mjs?v=aabb3c5';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -53,12 +53,22 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=ba96e73';
+} from './trackers.mjs?v=aabb3c5';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=ba96e73';
+} from './version.mjs?v=aabb3c5';
+import {
+    DEFAULT_AUDIT_TIMEOUT_MS,
+    DEFAULT_RETRIEVE_TIMEOUT_MS,
+    DEFAULT_STORE_TIMEOUT_MS,
+    DEFAULT_TRACKERS_TIMEOUT_MS,
+    DEFAULT_VERSION_TIMEOUT_MS,
+    fetchWithTimeout,
+    isTimeoutError,
+    resolveTimeoutMs,
+} from './http.mjs?v=aabb3c5';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -263,10 +273,11 @@ async function checkBackendCompatibility() {
             headers['X-API-Key'] = settings.apiKey;
         }
 
-        const response = await fetch(`${settings.memoryServiceUrl}/memory/version`, {
-            method: 'GET',
-            headers,
-        });
+        const response = await fetchWithTimeout(
+            `${settings.memoryServiceUrl}/memory/version`,
+            { method: 'GET', headers },
+            { timeoutMs: DEFAULT_VERSION_TIMEOUT_MS },
+        );
 
         if (response.ok) {
             backendInfo = await response.json();
@@ -404,11 +415,11 @@ async function storeMemories() {
             body.model = settings.sceneExtractionModel;
         }
 
-        const response = await fetch(`${settings.memoryServiceUrl}/memory/store`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-        });
+        const response = await fetchWithTimeout(
+            `${settings.memoryServiceUrl}/memory/store`,
+            { method: 'POST', headers, body: JSON.stringify(body) },
+            { timeoutMs: resolveTimeoutMs(settings.storeTimeoutMs, DEFAULT_STORE_TIMEOUT_MS) },
+        );
 
         if (response.ok) {
             const result = await response.json();
@@ -427,7 +438,17 @@ async function storeMemories() {
             };
         }
     } catch (error) {
-        console.error('[memoryst] Store error:', error);
+        if (isTimeoutError(error)) {
+            // The request was abandoned here, not on the server: the backend goes on and
+            // very likely still writes the memories. What is lost is this turn's store
+            // result - the audit section and the tracker counters that ride along with it.
+            console.warn(
+                '[memoryst] Store timed out after', error.timeoutMs,
+                'ms; the backend may still have stored this exchange',
+            );
+        } else {
+            console.error('[memoryst] Store error:', error);
+        }
         return {
             called: true,
             messages,
@@ -469,18 +490,22 @@ async function retrieveMemories() {
             headers['X-API-Key'] = settings.apiKey;
         }
 
-        const response = await fetch(`${settings.memoryServiceUrl}/memory/retrieve`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                chat_id: chatContext.chatId,
-                character_id: chatContext.characterId,
-                user_input: user_input,
-                recent_messages: recent_messages,
-                limit: settings.retrieveLimit,
-                debug: settings.auditEnabled,
-            }),
-        });
+        const response = await fetchWithTimeout(
+            `${settings.memoryServiceUrl}/memory/retrieve`,
+            {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    chat_id: chatContext.chatId,
+                    character_id: chatContext.characterId,
+                    user_input: user_input,
+                    recent_messages: recent_messages,
+                    limit: settings.retrieveLimit,
+                    debug: settings.auditEnabled,
+                }),
+            },
+            { timeoutMs: resolveTimeoutMs(settings.retrieveTimeoutMs, DEFAULT_RETRIEVE_TIMEOUT_MS) },
+        );
 
         if (response.ok) {
             const result = await response.json();
@@ -533,7 +558,14 @@ async function retrieveMemories() {
             };
         }
     } catch (error) {
-        console.error('[memoryst] Retrieve error:', error);
+        if (isTimeoutError(error)) {
+            console.warn(
+                '[memoryst] Retrieve timed out after', error.timeoutMs,
+                'ms; this turn generates without injected memory',
+            );
+        } else {
+            console.error('[memoryst] Retrieve error:', error);
+        }
         clearMemoryPrompt();
         return {
             called: true,
@@ -575,6 +607,7 @@ async function refreshTrackersFor(characterId) {
             apiKey: settings.apiKey,
             chatId: chatContext.chatId,
             characterId,
+            timeoutMs: DEFAULT_TRACKERS_TIMEOUT_MS,
         });
         setTrackerStatus({ status: 'ok', detail: null });
     } catch (error) {
@@ -825,11 +858,11 @@ function sendAuditToBackend(record) {
         if (settings.apiKey) {
             headers['X-API-Key'] = settings.apiKey;
         }
-        fetch(`${settings.memoryServiceUrl}/memory/audit`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(record),
-        }).catch(() => {});
+        fetchWithTimeout(
+            `${settings.memoryServiceUrl}/memory/audit`,
+            { method: 'POST', headers, body: JSON.stringify(record) },
+            { timeoutMs: DEFAULT_AUDIT_TIMEOUT_MS },
+        ).catch(() => {});
     } catch (error) {
         // Serialization or a malformed URL - nothing here is worth breaking a turn for.
     }

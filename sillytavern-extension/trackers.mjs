@@ -8,6 +8,11 @@
  * memories for their budget - see buildTrackerBlock.
  */
 
+import {
+    DEFAULT_TRACKERS_TIMEOUT_MS,
+    fetchWithTimeout,
+} from './http.mjs?v=aabb3c5';
+
 export const TRACKER_PROMPT_KEY = 'memory-service-tracker';
 
 export const TRACKER_TYPES = ['timeline', 'relationship', 'npc_whoswho', 'character_pov_notes'];
@@ -560,6 +565,7 @@ export async function fetchTrackers({
     chatId,
     characterId,
     fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
+    timeoutMs = DEFAULT_TRACKERS_TIMEOUT_MS,
 } = {}) {
     if (!memoryServiceUrl || !chatId || !characterId || typeof fetchImpl !== 'function') {
         return [];
@@ -571,7 +577,11 @@ export async function fetchTrackers({
     }
 
     const query = new URLSearchParams({ chat_id: chatId, character_id: String(characterId) });
-    const response = await fetchImpl(`${memoryServiceUrl}/memory/trackers?${query}`, { headers });
+    const response = await fetchWithTimeout(
+        `${memoryServiceUrl}/memory/trackers?${query}`,
+        { headers },
+        { timeoutMs, fetchImpl },
+    );
     if (!response.ok) {
         throw new Error(`trackers_http_${response.status}`);
     }

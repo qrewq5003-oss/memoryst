@@ -6,16 +6,29 @@ import {
     DEFAULT_MAX_PROMPT_MEMORIES,
     DEFAULT_MAX_STABLE_ITEMS,
     DEFAULT_MAX_SUMMARY_ITEMS,
-} from './audit.mjs?v=ba96e73';
+} from './audit.mjs?v=aabb3c5';
 import {
     DEFAULT_MAX_TRACKER_CHARS,
     DEFAULT_TRACKER_REMINDER_THRESHOLD,
-} from './trackers.mjs?v=ba96e73';
+} from './trackers.mjs?v=aabb3c5';
+import {
+    DEFAULT_RETRIEVE_TIMEOUT_MS,
+    DEFAULT_STORE_TIMEOUT_MS,
+} from './http.mjs?v=aabb3c5';
 
+// retrieveTimeoutMs and storeTimeoutMs are knobs rather than constants because they are
+// the two that trade real things off against each other, and the right answer depends on
+// the machine. retrieve blocks generation, so its budget is "how long is the user willing
+// to stare at a chat that has not replied"; store waits on the backend's extraction LLM,
+// so its budget has to clear app/config.py's SCENE_LLM_TIMEOUT or it aborts work that was
+// about to succeed. Everything else the extension fetches is fire-and-forget and keeps a
+// fixed default in http.mjs.
 export const DEFAULT_CONNECTION_SETTINGS = {
     enabled: false,
     memoryServiceUrl: 'http://localhost:8001',
     apiKey: '',
+    retrieveTimeoutMs: DEFAULT_RETRIEVE_TIMEOUT_MS,
+    storeTimeoutMs: DEFAULT_STORE_TIMEOUT_MS,
 };
 
 export const DEFAULT_RETRIEVAL_SETTINGS = {
@@ -142,6 +155,8 @@ export function normalizeExtensionSettings(rawSettings = {}) {
         // way; its siblings were not, which made the same stale-settings.json that has
         // bitten before behave differently field by field.
         apiKey: rawSettings.apiKey || connection.apiKey,
+        retrieveTimeoutMs: rawSettings.retrieveTimeoutMs ?? connection.retrieveTimeoutMs,
+        storeTimeoutMs: rawSettings.storeTimeoutMs ?? connection.storeTimeoutMs,
         retrieveLimit: rawSettings.retrieveLimit ?? retrieval.retrieveLimit,
         recentMessagesCount: rawSettings.recentMessagesCount ?? retrieval.recentMessagesCount,
         sceneExtractionModel: rawSettings.sceneExtractionModel || extraction.sceneExtractionModel,
@@ -183,6 +198,8 @@ export function serializeExtensionSettings(settings = DEFAULT_SETTINGS) {
             enabled: settings.enabled ?? DEFAULT_CONNECTION_SETTINGS.enabled,
             memoryServiceUrl: settings.memoryServiceUrl || DEFAULT_CONNECTION_SETTINGS.memoryServiceUrl,
             apiKey: settings.apiKey || DEFAULT_CONNECTION_SETTINGS.apiKey,
+            retrieveTimeoutMs: settings.retrieveTimeoutMs ?? DEFAULT_CONNECTION_SETTINGS.retrieveTimeoutMs,
+            storeTimeoutMs: settings.storeTimeoutMs ?? DEFAULT_CONNECTION_SETTINGS.storeTimeoutMs,
         },
         retrieval: {
             retrieveLimit: settings.retrieveLimit ?? DEFAULT_RETRIEVAL_SETTINGS.retrieveLimit,
