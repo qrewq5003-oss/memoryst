@@ -53,9 +53,26 @@ directory — see the comment on `SETTINGS_KEY` in `main.mjs`):
 - `connection`
 - `retrieval`
 - `extraction`
+- `injection`
 - `promptBudget`
 - `trackers`
 - `audit`
+
+### Prompt placement
+
+`injection` decides where the three blocks memoryst sets — retrieved memory, lore
+anchors and trackers — land in the prompt. One set of knobs covers all three.
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `promptPosition` | `0` (in prompt) | Same default as SillyTavern's Summarize and Vector Storage. `1` places the block in chat at `promptDepth` |
+| `promptDepth` | `2` | Only read when the position is "in chat" |
+| `promptRole` | `0` (system) | Only meaningful in chat; every other position renders as system |
+| `promptScan` | `true` | Lets injected memory trigger lorebook entries. On by default, unlike the other memory extensions |
+
+All four are stored as **numbers/booleans, never words**: `setExtensionPrompt` runs
+`Number(position)` and `Number(role)`, so a string like `"system"` becomes `NaN`.
+`injection.mjs` normalizes whatever is on disk before it reaches SillyTavern.
 
 ## How It Works
 

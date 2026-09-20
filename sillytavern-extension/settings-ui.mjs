@@ -1,13 +1,17 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=aabb3c5';
+} from './settings.mjs?v=c185b5e';
+import {
+    PROMPT_POSITION_OPTIONS,
+    PROMPT_ROLE_OPTIONS,
+} from './injection.mjs?v=c185b5e';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=aabb3c5';
+} from './http.mjs?v=c185b5e';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -80,6 +84,44 @@ export const SETTINGS_UI_FIELDS = [
                 help: 'How many recent chat messages are sent as context, for both retrieval and store extraction.',
                 type: 'number',
                 min: 1,
+            },
+        ],
+    },
+    {
+        group: 'Prompt Placement',
+        description: 'Where memoryst\'s blocks go in the prompt. Applies to all three of them: '
+            + 'retrieved memory, lore anchors and trackers.',
+        fields: [
+            {
+                key: 'promptPosition',
+                label: 'Position',
+                help: 'In prompt is the default and what SillyTavern\'s own Summarize and Vector Storage '
+                    + 'use. In chat places the block at the depth below, nearer the current message.',
+                type: 'select',
+                options: PROMPT_POSITION_OPTIONS,
+            },
+            {
+                key: 'promptDepth',
+                label: 'Depth',
+                help: 'How many messages up from the end the block sits. Only used when Position is '
+                    + '"In chat"; ignored otherwise.',
+                type: 'number',
+                min: 0,
+            },
+            {
+                key: 'promptRole',
+                label: 'Role',
+                help: 'Which speaker the block is attributed to. Only meaningful when Position is '
+                    + '"In chat"; every other position renders it as system.',
+                type: 'select',
+                options: PROMPT_ROLE_OPTIONS,
+            },
+            {
+                key: 'promptScan',
+                label: 'Scanned by World Info',
+                help: 'Let injected memory trigger lorebook entries. On by default, which is where '
+                    + 'memoryst deliberately differs from the other memory extensions.',
+                type: 'checkbox',
             },
         ],
     },
@@ -365,13 +407,30 @@ export function buildTrackerStatusBannerMarkup(trackerStatus = null) {
     });
 }
 
+function buildFieldInputMarkup(field, value) {
+    if (field.type === 'checkbox') {
+        return `<input data-memory-setting="${field.key}" type="checkbox" ${value ? 'checked' : ''}>`;
+    }
+
+    if (field.type === 'select') {
+        // Values are compared loosely on purpose: the stored value is a number, the
+        // option's is a number, but a settings.json that has been through a hand edit can
+        // hold the string "1". Rendering that as "nothing selected" would look like the
+        // setting had been lost.
+        const options = (field.options || [])
+            .map(option => `<option value="${escapeHtml(option.value)}"${String(option.value) === String(value) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`)
+            .join('');
+        return `<select data-memory-setting="${field.key}">${options}</select>`;
+    }
+
+    return `<input data-memory-setting="${field.key}" type="${field.type}" value="${escapeHtml(value)}"${field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : ''}${typeof field.min === 'number' ? ` min="${field.min}"` : ''}>`;
+}
+
 export function buildSettingsUiMarkup(settings = {}, compatibility = null, trackerStatus = null) {
     const sections = SETTINGS_UI_FIELDS.map(section => {
         const fields = section.fields.map(field => {
             const value = getFieldValue(settings, field);
-            const inputHtml = field.type === 'checkbox'
-                ? `<input data-memory-setting="${field.key}" type="checkbox" ${value ? 'checked' : ''}>`
-                : `<input data-memory-setting="${field.key}" type="${field.type}" value="${escapeHtml(value)}"${field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : ''}${typeof field.min === 'number' ? ` min="${field.min}"` : ''}>`;
+            const inputHtml = buildFieldInputMarkup(field, value);
 
             return `
                 <label class="memory-service-setting-row">
@@ -553,6 +612,14 @@ function coerceFieldValue(field, input) {
         return Boolean(input.checked);
     }
 
+    if (field.type === 'select') {
+        // Numbers, not strings. setExtensionPrompt does Number(position)/Number(role),
+        // and a string that does not parse becomes NaN - which is the bug this whole
+        // group of settings was added to fix.
+        const parsed = Number(input.value);
+        return Number.isFinite(parsed) ? parsed : field.options?.[0]?.value;
+    }
+
     if (field.type === 'number') {
         const parsed = Number.parseInt(input.value, 10);
         if (!Number.isNaN(parsed)) {
@@ -610,7 +677,7 @@ export function renderSettingsUi({
                 continue;
             }
 
-            const eventName = field.type === 'checkbox' ? 'change' : 'input';
+            const eventName = field.type === 'checkbox' || field.type === 'select' ? 'change' : 'input';
             input.addEventListener(eventName, () => {
                 const nextValue = coerceFieldValue(field, input);
                 onSettingsChanged(field.key, nextValue);
