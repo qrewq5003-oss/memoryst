@@ -98,6 +98,10 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
   `/memory/retrieve`. При изменении контракта поднимать `PROTOCOL_VERSION` в
   `app/version.py` **и** `MEMORY_PROTOCOL_VERSION` в `sillytavern-extension/version.mjs`
 - Новые константы/пороги — в конфиг, не хардкодить в логику
+- Добавил поле в `MemoryItem`/`MemoryMetadata` — добавь его и в экспорт
+  (`ui.py:ui_export_memories`), иначе резервная копия молча перестанет быть полной.
+  Формат версионируется через `EXPORT_SCHEMA_VERSION`; `import_service` обязан читать
+  все версии, которые когда-либо писались
 - Менял `sillytavern-extension/` — после коммита прогнать
   `python -m scripts.stamp_extension_build`, затем
   `python -m scripts.publish_extension_branch --push`. Ветка `extension` — это то, что
