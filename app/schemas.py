@@ -176,6 +176,14 @@ class StoreMemoryResponse(BaseModel):
     updated: int
     skipped: int
     items: list[MemoryItem]
+    # Ids of memories this call *created*, which is not the same as `items`: a candidate
+    # that soft-matches an existing memory is merged into it, so `items` also carries rows
+    # that predate this turn. The extension undoes a rejected swipe by deleting what the
+    # superseded reply created, and deleting all of `items` would take pre-existing
+    # memories with it. Additive on purpose: an older extension ignores the field, and a
+    # newer extension against an older backend sees it missing and simply does not offer
+    # to undo - neither is a protocol break, so PROTOCOL_VERSION stays put.
+    created_ids: list[str] = Field(default_factory=list)
     debug: StoreDebugPayload | None = None
     # "llm": scene_extractor's LLM call ran and parsed (even if it legitimately
     # found nothing). "regex_fallback": the LLM was skipped/disabled or the call

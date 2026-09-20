@@ -37,6 +37,10 @@ export const DEFAULT_MODELS_TIMEOUT_MS = 15000;
 export const DEFAULT_BACKFILL_TIMEOUT_MS = 600000;
 export const DEFAULT_DELETE_CHAT_TIMEOUT_MS = 30000;
 
+// Undoing a rejected swipe. One DELETE per memory, issued while the user is already
+// looking at the new reply, so it must not linger.
+export const DEFAULT_DISCARD_TIMEOUT_MS = 10000;
+
 export const MIN_TIMEOUT_MS = 500;
 export const MAX_TIMEOUT_MS = 600000;
 

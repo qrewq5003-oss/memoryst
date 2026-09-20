@@ -144,6 +144,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     )
 
     stored_items: list[MemoryItem] = []
+    created_ids: list[str] = []
     stored_count = 0
     updated_count = 0
     skipped_count = 0
@@ -289,6 +290,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
                 # No match found - create new record
                 created = create_memory(candidate)
                 stored_items.append(created)
+                created_ids.append(created.id)
                 stored_count += 1
                 vector_store.add_memory(
                     created.id,
@@ -319,6 +321,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         updated=updated_count,
         skipped=skipped_count,
         items=stored_items,
+        created_ids=created_ids,
         debug=StoreDebugPayload(candidates=debug_candidates) if request.debug else None,
         extraction_method=extraction_method,
         # Piggybacked, not fetched: the extension already calls /memory/store every turn,
