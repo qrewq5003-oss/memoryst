@@ -75,7 +75,9 @@ class ScenePromptTests(unittest.TestCase):
             "the language requirement must come after the names, or the model follows "
             "the English instruction it read last",
         )
-        self.assertTrue(prompt.rstrip().endswith("language you write in."))
+        # The prompt now closes on the names exception to the language rule, which is
+        # itself the last thing after the language rule - see VerbatimNameTests.
+        self.assertTrue(prompt.rstrip().endswith("a fact nobody can find again."))
 
     def test_the_names_are_rules_not_a_trailing_block(self) -> None:
         prompt = build_scene_facts_prompt("Аллина Волкова", "Wanteda")
@@ -143,3 +145,43 @@ class ScenePassThroughTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VerbatimNameTests(unittest.TestCase):
+    """Participant names are copied, not adapted.
+
+    The rule used to end "use the form of the name that fits the language of the fact",
+    which for a Latin persona name in a Russian fact means transliterating it. A trial
+    re-extraction of 10 historical scenes on 2026-09-21 produced "Вантед" beside
+    "Wanted" and "Мендоза" beside "Мендоса" - and a stored name that does not match how
+    it is written everywhere else is a fact no query can reach. Fixing the language
+    without this would have traded one unreachable-memory bug for another.
+
+    The exception is repeated inside the LANGUAGE block because that block is last and
+    outranks everything above it: an exception stated earlier loses to it.
+    """
+
+    def test_the_rule_demands_the_exact_spelling(self) -> None:
+        prompt = build_scene_facts_prompt("Beatriz", "Wanted", language="Russian")
+        self.assertIn("EXACTLY as spelled here", prompt)
+        self.assertIn("never transliterated, translated or", prompt)
+
+    def test_the_language_block_carves_the_names_out(self) -> None:
+        prompt = build_scene_facts_prompt("Beatriz", "Wanted", language="Russian")
+        language_at = prompt.index("LANGUAGE,")
+        exception_at = prompt.index("names keep their own spelling")
+        self.assertGreater(
+            exception_at,
+            language_at,
+            "the exception must come after the rule it excepts, or the model applies the "
+            "language rule to the names too",
+        )
+
+    def test_the_names_are_interpolated_not_described(self) -> None:
+        prompt = build_scene_facts_prompt("Beatriz", "Wanted", language="Russian")
+        self.assertIn("the character is Beatriz, the user is Wanted", prompt)
+
+    def test_role_words_are_still_forbidden(self) -> None:
+        prompt = build_scene_facts_prompt("Beatriz", "Wanted", language="Russian")
+        for role_word in ("девушка", "пользователь", "the girl", "the user"):
+            self.assertIn(role_word, prompt)

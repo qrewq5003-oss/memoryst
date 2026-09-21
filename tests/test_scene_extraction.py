@@ -523,14 +523,16 @@ class ExtractionLanguageTests(unittest.TestCase):
 
         prompt = build_scene_facts_prompt(language="Russian")
         self.assertGreater(prompt.index("LANGUAGE,"), prompt.index("return an empty"))
-        self.assertTrue(prompt.rstrip().endswith("language you write in."))
+        # Closes on the names exception, which follows the language rule it excepts.
+        self.assertTrue(prompt.rstrip().endswith("a fact nobody can find again."))
 
     def test_the_language_rule_is_still_last_with_names(self) -> None:
         from app.services.llm_extractor import build_scene_facts_prompt
 
         prompt = build_scene_facts_prompt("Алина", "Wanted", language="Russian")
         self.assertGreater(prompt.index("LANGUAGE,"), prompt.index("The participants are"))
-        self.assertTrue(prompt.rstrip().endswith("language you write in."))
+        # Closes on the names exception, which follows the language rule it excepts.
+        self.assertTrue(prompt.rstrip().endswith("a fact nobody can find again."))
 
     def test_a_caller_with_no_scene_keeps_the_old_wording(self) -> None:
         from app.services.llm_extractor import build_scene_facts_prompt

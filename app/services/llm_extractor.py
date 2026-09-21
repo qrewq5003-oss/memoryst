@@ -126,9 +126,11 @@ Rules:
 # the language requirement is what stopped it.
 SCENE_FACTS_NAMES_TEMPLATE = """
 - The participants are: the character is {character_name}, the user is {user_name}.
-  Name them in "content", "keywords" and "entities" instead of writing a role word
-  ("девушка", "пользователь", "the girl", "the user"), even when the scene does not
-  say the name aloud. Use the form of the name that fits the language of the fact.
+  Write those two names EXACTLY as spelled here, character for character, in
+  "content", "keywords" and "entities" - never transliterated, translated or
+  re-spelled to match the language of the fact. Use them even when the scene does not
+  say the name aloud, and never a role word in their place ("девушка", "пользователь",
+  "the girl", "the user").
 - Repeating the first rule because it outranks the one above: each fact's "content"
   MUST be in {language}, whatever language these instructions are written in."""
 
@@ -145,7 +147,12 @@ SCENE_FACTS_LANGUAGE_TEMPLATE = """
 - LANGUAGE, last because it outranks everything above: every fact's "content",
   "keywords" and "entities" must be written in {language}. The scene mixes alphabets -
   names and quoted lines may be in another language - and that does not change the
-  language you write in."""
+  language you write in.
+- The one exception to the rule above, and it is not negotiable: the participants'
+  names keep their own spelling. Copy them character for character from the rule that
+  names them. Writing a name in {language}'s alphabet instead is the single worst
+  thing you can do here - a stored name that does not match how it is written
+  everywhere else is a fact nobody can find again."""
 
 
 def build_scene_facts_prompt(
