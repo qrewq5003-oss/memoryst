@@ -1,17 +1,17 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=29a6f53';
+} from './settings.mjs?v=e147550';
 import {
     PROMPT_POSITION_OPTIONS,
     PROMPT_ROLE_OPTIONS,
-} from './injection.mjs?v=29a6f53';
+} from './injection.mjs?v=e147550';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=29a6f53';
+} from './http.mjs?v=e147550';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -562,6 +562,7 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                 </div>
                 <div class="inline-drawer-content">
             <p class="memory-service-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
+            <p class="memory-service-settings-intro">Everything on this panel is saved under the <code>extension_settings</code> key <code>memory-service</code>, not <code>memoryst</code>. If you edit <code>settings.json</code> by hand, that key is this extension &mdash; deleting it as an orphan resets every value here.</p>
             <div class="memory-service-settings-baseline">
                 <button type="button" id="memory-service-apply-baseline">Apply Recommended Baseline</button>
                 <span class="memory-service-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
