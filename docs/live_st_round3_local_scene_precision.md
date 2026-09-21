@@ -1,4 +1,4 @@
-# Live SillyTavern Verification Report v3
+# Live SillyTavern — раунд 3: точность локальной сцены
 
 > **Отчёт о замере** · 2026-03-27 · **история**
 >

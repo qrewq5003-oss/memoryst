@@ -61,12 +61,25 @@
 **История.** Что было измерено в тот день — не описание текущего поведения. Все от
 2026-03-27, когда проверялась связка с живой SillyTavern.
 
-- Проверки на живой ST: [verification](live_st_verification_report.md),
-  [v2](live_st_verification_report_v2.md), [v3](live_st_verification_report_v3.md),
-  [устойчивые отношения](live_st_durable_relationship_report.md),
-  [арка отношений](live_st_relationship_arc_report.md),
-  [вопросы-guardrail](live_st_question_guardrail_recheck.md),
-  [локальная сцена](live_st_local_scene_question_recheck.md)
+**Проверки на живой SillyTavern.** Первые три — цепочка: каждый раунд заканчивается
+выводом, что проверять дальше, и следующий проверяет именно это. Раньше они назывались
+`verification_report`, `_v2` и `_v3`, то есть не сообщали ни темы, ни того, что связаны.
+
+1. [Раунд 1 — базовые сценарии](live_st_round1_baseline_scenarios.md): арка отношений,
+   сквозная цель сквозь шум, свежая локальная сцена, расплывчатый русский вопрос.
+   Вывод → дальше нужна устойчивость к формулировкам об отношениях.
+2. [Раунд 2 — формулировки об отношениях](live_st_round2_relationship_wording.md):
+   статус, отношение, широкое состояние, «работаем вместе». Вывод → дальше нужна точность
+   локальной сцены.
+3. [Раунд 3 — точность локальной сцены](live_st_round3_local_scene_precision.md): решение
+   на встрече, детальный исход, недавняя реплика. Вывод → дальше нужен посеянный
+   устойчивый контекст, что и проверяет следующий отчёт.
+
+Отдельные проверки: [устойчивые отношения против перезахвата
+сцены](live_st_durable_relationship_report.md), [посеянная арка
+отношений](live_st_relationship_arc_report.md), [guardrail на
+вопросы](live_st_question_guardrail_recheck.md), [вопрос о локальной
+сцене](live_st_local_scene_question_recheck.md)
 - Лорбук и World Info: [мост эфемерных якорей](lorebook_ephemeral_anchor_report.md),
   [польза якорей](lorebook_anchor_usefulness_report.md),
   [перепроверка](lorebook_anchor_usefulness_recheck_report.md),

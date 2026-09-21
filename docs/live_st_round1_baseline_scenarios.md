@@ -1,4 +1,4 @@
-# Live SillyTavern Verification Report
+# Live SillyTavern — раунд 1: базовые сценарии
 
 > **Отчёт о замере** · 2026-03-27 · **история**
 >

@@ -1,4 +1,4 @@
-# Live SillyTavern Verification Report v2
+# Live SillyTavern — раунд 2: формулировки об отношениях
 
 > **Отчёт о замере** · 2026-03-27 · **история**
 >

@@ -265,9 +265,9 @@ were closed on 2026-08-02 and it is kept for history.
 
 ## Live ST Verification
 
-Short practical notes from the first real SillyTavern runtime verification run are in [docs/live_st_verification_report.md](docs/live_st_verification_report.md).
-The repeated verification pass after the Russian relationship retrieval fixes is in [docs/live_st_verification_report_v2.md](docs/live_st_verification_report_v2.md).
-The local-scene focused repeat verification pass is in [docs/live_st_verification_report_v3.md](docs/live_st_verification_report_v3.md).
+Short practical notes from the first real SillyTavern runtime verification run are in [docs/live_st_round1_baseline_scenarios.md](docs/live_st_round1_baseline_scenarios.md).
+The repeated verification pass after the Russian relationship retrieval fixes is in [docs/live_st_round2_relationship_wording.md](docs/live_st_round2_relationship_wording.md).
+The local-scene focused repeat verification pass is in [docs/live_st_round3_local_scene_precision.md](docs/live_st_round3_local_scene_precision.md).
 The richer seeded relationship-arc verification is in [docs/live_st_relationship_arc_report.md](docs/live_st_relationship_arc_report.md).
 The durable relationship formation live verification is in [docs/live_st_durable_relationship_report.md](docs/live_st_durable_relationship_report.md).
 The focused re-check after the question-form durable relationship guardrail is in [docs/live_st_question_guardrail_recheck.md](docs/live_st_question_guardrail_recheck.md).
