@@ -148,6 +148,9 @@ def _store(fact: dict, chat_id: str, character_id: str) -> bool:
         return False
 
     created = create_memory(candidate)
+    # Best-effort since vector_store guards it now - a missing vector costs the memory
+    # its semantic boost, nothing else. It was not guarded when this run first hit
+    # Google's quota at scene 37 of 73, and the exception ended the pass there.
     vector_store.add_memory(
         created.id,
         created.content,

@@ -84,3 +84,10 @@ def isolate_backup_dir(tmp_path_factory):
         yield
     finally:
         config.BACKUP_DIR = original
+
+
+# A global DATABASE_PATH redirect was tried here and reverted: 18 tests create their
+# schema once per class and a per-test path leaves them pointing at an empty file. The
+# guard that works is the one each test already does in setUp - see _IsolatedDatabase in
+# the newer test modules. BACKUP_DIR above is different: nothing sets it per test, so
+# nothing is disturbed by fixing it centrally.

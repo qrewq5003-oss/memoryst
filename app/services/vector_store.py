@@ -1,5 +1,6 @@
 import json
 import math
+import sys
 import threading
 from array import array
 from pathlib import Path
@@ -355,20 +356,47 @@ def list_keys() -> list[dict[str, str]]:
 
 
 def add_memory(memory_id: str, content: str, metadata: dict | None = None) -> None:
+    """Embed one memory. Best-effort: a failure here must not fail the write it follows.
+
+    store_service calls this immediately after create_memory, inside the loop over a
+    scene's facts, and called it unguarded. So the first time the embedding provider
+    answered 429 - Google's quota, exhausted mid-run on 2026-09-21 - the exception came
+    back out through /memory/store: the client saw a failed store, the facts already
+    written stayed written, and the rest of the scene was never stored at all. The
+    embedding is an enhancement to a memory, not part of storing it, and it was the only
+    thing in that path able to take the whole request down.
+
+    A memory without a vector is still fully retrievable: retrieval is lexical first and
+    the semantic layer only adds a graded boost on top.
+    """
     if not is_vector_store_enabled():
         return
-    embedding = embed_text(content)
-    meta = metadata or {}
-    if _use_chroma():
-        _chroma_add(memory_id, embedding, meta)
-    else:
-        _sqlite_add(memory_id, embedding, meta)
+    try:
+        embedding = embed_text(content)
+        meta = metadata or {}
+        if _use_chroma():
+            _chroma_add(memory_id, embedding, meta)
+        else:
+            _sqlite_add(memory_id, embedding, meta)
+    except Exception as exc:
+        print(
+            f"[vector_store] could not embed memory {memory_id}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def query_similar(text: str, *, n_results: int = 10, chat_id: str | None = None, character_id: str | None = None) -> list[dict]:
+    """Semantic candidates for a query. Best-effort, for the same reason as add_memory:
+    this runs inside /memory/retrieve, which blocks generation, and an exhausted
+    embedding quota must cost the turn its semantic boost rather than its memory."""
     if not is_vector_store_enabled():
         return []
-    embedding = embed_text(text)
+    try:
+        embedding = embed_text(text)
+    except Exception as exc:
+        print(f"[vector_store] could not embed the query: {exc}", file=sys.stderr, flush=True)
+        return []
     where = {}
     if chat_id:
         where["chat_id"] = chat_id

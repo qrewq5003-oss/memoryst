@@ -15,6 +15,7 @@ match actually sits.
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from app.config import config
@@ -228,3 +229,53 @@ class SchemaTests(_IsolatedDatabase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmbeddingFailureIsolationTests(_IsolatedDatabase):
+    """An embedding failure must not take the write it follows down with it.
+
+    store_service calls add_memory right after create_memory, inside the loop over a
+    scene's facts, and called it unguarded. The first time the provider answered 429 -
+    Google's quota, exhausted mid-run on 2026-09-21 - the exception came back out
+    through /memory/store: the client saw a failed store, the facts already written
+    stayed written, and the rest of the scene was never stored.
+
+    A memory without a vector is still fully retrievable. Retrieval is lexical first;
+    the semantic layer only adds a graded boost on top.
+    """
+
+    def test_a_quota_error_while_embedding_does_not_raise(self) -> None:
+        from app.services import vector_store
+
+        with patch.object(vector_store, "is_vector_store_enabled", return_value=True), \
+             patch.object(vector_store, "embed_text", side_effect=RuntimeError("429 RESOURCE_EXHAUSTED")):
+            vector_store.add_memory("m1", "текст", {"chat_id": "c", "character_id": "x"})
+
+    def test_a_quota_error_while_querying_returns_no_candidates(self) -> None:
+        from app.services import vector_store
+
+        with patch.object(vector_store, "is_vector_store_enabled", return_value=True), \
+             patch.object(vector_store, "embed_text", side_effect=RuntimeError("429")):
+            self.assertEqual(vector_store.query_similar("запрос", chat_id="c"), [])
+
+    def test_storing_survives_an_embedding_outage(self) -> None:
+        # The path that actually broke: /memory/store writing a scene's facts.
+        from app.repositories.memory_repo import list_memories
+        from app.schemas import MessageInput, StoreMemoryRequest
+        from app.services import vector_store
+        from app.services.store_service import store_memories
+
+        with patch.object(vector_store, "is_vector_store_enabled", return_value=True), \
+             patch.object(vector_store, "embed_text", side_effect=RuntimeError("429 RESOURCE_EXHAUSTED")):
+            response = store_memories(
+                StoreMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    messages=[
+                        MessageInput(role="user", text="Алина Волкова работает ветеринаром в клинике")
+                    ],
+                )
+            )
+
+        self.assertGreater(response.stored, 0)
+        self.assertGreater(list_memories(chat_id="chat-1", limit=10).total, 0)
