@@ -23,7 +23,9 @@ from app.db import init_schema
 from app.main import app
 
 
-class VersionEndpointTests(unittest.TestCase):
+class _VersionEndpointCase(unittest.TestCase):
+    """Shared fixture: unauthenticated by default, against a throwaway database."""
+
     def setUp(self) -> None:
         self.original_api_key = config.API_KEY
         self.original_db_path = config.DATABASE_PATH
@@ -41,6 +43,8 @@ class VersionEndpointTests(unittest.TestCase):
         config.API_KEY = self.original_api_key
         config.DATABASE_PATH = self.original_db_path
 
+
+class VersionEndpointTests(_VersionEndpointCase):
     def test_version_payload_shape(self) -> None:
         response = self.client.get("/memory/version")
         self.assertEqual(response.status_code, 200)
@@ -62,6 +66,50 @@ class VersionEndpointTests(unittest.TestCase):
         response = self.client.get("/memory/version")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("detail", response.json())
+
+
+class HandshakeBuildReportingTests(_VersionEndpointCase):
+    """The handshake carries the extension's build so a reload alone identifies it.
+
+    Before this, the build appeared only inside an audit record, and a turn writes those.
+    After a reload with no turn yet, the newest audit still named the *previous* build -
+    so the stamp could not answer the question it exists for. Measured 2026-09-21: the
+    last audit read 29a6f53 while the server was serving 30a8ea5.
+    """
+
+    def test_a_reported_build_is_accepted_and_logged(self) -> None:
+        with self.assertLogs("app.main", level="INFO") as logs:
+            response = self.client.get("/memory/version?build=30a8ea5")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any("30a8ea5" in line for line in logs.output), logs.output)
+
+    def test_the_payload_is_unchanged_by_the_parameter(self) -> None:
+        plain = self.client.get("/memory/version").json()
+        with_build = self.client.get("/memory/version?build=30a8ea5").json()
+        self.assertEqual(plain, with_build)
+
+    def test_an_older_extension_sending_no_build_still_handshakes(self) -> None:
+        # The whole point of the handshake is diagnosing a stale extension, so the
+        # stale extension must not be the one that fails it.
+        with self.assertLogs("app.main", level="INFO") as logs:
+            response = self.client.get("/memory/version")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any("not reported" in line for line in logs.output), logs.output)
+
+    def test_it_stays_unauthenticated_with_the_parameter(self) -> None:
+        config.API_KEY = "secret-key"
+        response = self.client.get("/memory/version?build=30a8ea5")
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_hostile_build_value_is_capped_not_echoed_whole(self) -> None:
+        # Unauthenticated endpoint, so the value is attacker-controlled in principle;
+        # it must not be able to flood the log with one request.
+        with self.assertLogs("app.main", level="INFO") as logs:
+            response = self.client.get("/memory/version?build=" + "A" * 5000)
+        self.assertEqual(response.status_code, 200)
+        logged = "".join(logs.output)
+        self.assertNotIn("A" * 100, logged)
+        self.assertIn("A" * 64, logged)
 
 
 class GitCommitReaderTests(unittest.TestCase):

@@ -117,3 +117,24 @@ test('the memory block injects under its own named key, distinct from the settin
         `injectors.mjs does not list '${promptKey}' as one of our own prompt keys`,
     );
 });
+
+/**
+ * The handshake reports the build, so a reload alone identifies the loaded copy.
+ *
+ * Every other report of MEMORY_EXTENSION_BUILD rides an audit record, and a turn writes
+ * those - a page load does not. Measured 2026-09-21, right after a hard reload: the
+ * newest audit still read 29a6f53 while the server was serving 30a8ea5, so the stamp
+ * could not answer the question it exists for. The browser console would have answered
+ * it, and this project already documents the console as unavailable on the device it
+ * runs on, which is why the audit is mirrored to the backend at all.
+ */
+test('the version handshake sends the build as a query parameter', () => {
+    const call = MAIN.match(/\/memory\/version`?[^;]*?\{ method: 'GET'/s)?.[0] ?? '';
+    assert.match(call, /build=\$\{encodeURIComponent\(MEMORY_EXTENSION_BUILD\)\}/);
+});
+
+test('the build is url-encoded rather than interpolated raw', () => {
+    // It is a git short hash today, but it is concatenated into a URL - a stamping
+    // change that let a slash through would silently retarget the request.
+    assert.doesNotMatch(MAIN, /\?build=\$\{MEMORY_EXTENSION_BUILD\}/);
+});

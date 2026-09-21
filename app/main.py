@@ -81,8 +81,31 @@ async def health_check() -> dict:
 # cause of misconfiguration). Registering it here, before include_router below,
 # also keeps it from being swallowed by the /memory/{id} catch-all route.
 @app.get("/memory/version")
-async def memory_version() -> dict:
-    """Report backend version/compatibility info for the extension handshake."""
+async def memory_version(build: str | None = None) -> dict:
+    """Report backend version/compatibility info for the extension handshake.
+
+    `build` is the extension's MEMORY_EXTENSION_BUILD. It is reported here so that
+    "which build is actually loaded in the browser" can be answered right after a
+    reload. It used to be observable only inside an audit record, and a turn writes
+    those - a page load does not. So the one question the build stamp exists to answer
+    needed either a turn or a browser console, and this project already documents the
+    console as unavailable on the phone it runs on (see `services/audit_sink`), which
+    is why the audit is mirrored here in the first place.
+
+    A query parameter rather than a header on purpose: it lands in uvicorn's access log
+    with no code at all, so `grep "/memory/version" data/server.log` is the whole
+    interface, the same way `tail data/audit.jsonl` is for the audit. Logged explicitly
+    as well, so the answer survives a change of access-log format.
+
+    Optional, and never validated beyond truncation: an extension older than this sends
+    no build, and a handshake must not fail over a diagnostic field. The value is
+    attacker-controlled in principle - the endpoint is deliberately unauthenticated -
+    so it is length-capped and %r-quoted rather than interpolated raw into the log.
+    """
+    if build:
+        logger.info("extension handshake: build %r", build[:64])
+    else:
+        logger.info("extension handshake: build not reported")
     return get_version_info()
 
 

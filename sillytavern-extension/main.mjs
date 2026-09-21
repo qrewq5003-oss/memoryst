@@ -334,8 +334,12 @@ async function checkBackendCompatibility() {
             headers['X-API-Key'] = settings.apiKey;
         }
 
+        // The build travels on the handshake so a reload alone proves which copy the
+        // browser loaded. Every other report of it rides an audit record, and those are
+        // written by a turn - which is one step too late to answer "did my change ship".
         const response = await fetchWithTimeout(
-            `${settings.memoryServiceUrl}/memory/version`,
+            `${settings.memoryServiceUrl}/memory/version`
+                + `?build=${encodeURIComponent(MEMORY_EXTENSION_BUILD)}`,
             { method: 'GET', headers },
             { timeoutMs: DEFAULT_VERSION_TIMEOUT_MS },
         );
