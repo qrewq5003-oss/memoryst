@@ -12,17 +12,17 @@ from app.db import get_connection
 from app.services.summary_service import MIN_SUMMARY_INPUTS, generate_rolling_summary
 
 
-def _episodic_count(chat_id: str, character_id: str) -> int:
-    """How many episodic memories a scope has. Reads only."""
+def _episodic_count(chat_id: str) -> int:
+    """How many episodic memories a chat has. Reads only."""
     conn = get_connection()
     try:
         row = conn.execute(
             """
             SELECT COUNT(*) FROM memories
-            WHERE chat_id = ? AND character_id = ? AND archived = 0
+            WHERE chat_id = ? AND archived = 0
               AND layer = 'episodic' AND type != 'summary'
             """,
-            (chat_id, character_id),
+            (chat_id,),
         ).fetchone()
     finally:
         conn.close()
@@ -30,19 +30,28 @@ def _episodic_count(chat_id: str, character_id: str) -> int:
 
 
 def _all_scopes() -> list[tuple[str, str]]:
-    """Every (chat, character) that has episodic memories, newest activity first.
+    """Every chat that has episodic memories, newest first, with one character_id each.
 
     The catch-up pass. Automatic refreshes only cover chats that are still being written
     to, so history that predates the trigger would otherwise never get a summary at all.
+
+    One row per chat, not per (chat, character): a rolling summary belongs to the chat
+    (see summary_service._list_existing_summary), so walking the pairs would call the
+    model twice for a chat whose character index had shifted - once to create the summary
+    and once for the second fragment to find it and consider refreshing it. The
+    character_id is still passed through because a created row carries it as provenance.
+
+    Ordered by created_at rather than updated_at: updated_at is bumped by any pass over a
+    memory, so a previous sweep leaves every chat it touched looking equally fresh.
     """
     conn = get_connection()
     try:
         rows = conn.execute(
             """
-            SELECT chat_id, character_id FROM memories
+            SELECT chat_id, MAX(character_id) AS character_id FROM memories
             WHERE archived = 0 AND layer = 'episodic' AND type != 'summary'
-            GROUP BY chat_id, character_id
-            ORDER BY MAX(updated_at) DESC
+            GROUP BY chat_id
+            ORDER BY MAX(created_at) DESC
             """
         ).fetchall()
     finally:
@@ -64,7 +73,7 @@ def _sweep(args) -> int:
             # that would make it decline - it does not. min-new is only consulted when a
             # summary already exists, so for the 56 scopes that had none it went straight
             # to writing one. A dry run has to read, and only read.
-            due = _episodic_count(chat_id, character_id) >= MIN_SUMMARY_INPUTS
+            due = _episodic_count(chat_id) >= MIN_SUMMARY_INPUTS
             key = "would_summarize" if due else "too_few_inputs"
             actions[key] = actions.get(key, 0) + 1
             continue

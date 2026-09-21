@@ -276,7 +276,7 @@ class SweepDryRunTests(_IsolatedDatabase):
 
         args = SimpleNamespace(limit=None, dry_run=True, window=8, min_new=3)
         self.assertEqual(cli._sweep(args), 0)
-        self.assertGreaterEqual(cli._episodic_count("chat-1", "char-1"), 5)
+        self.assertGreaterEqual(cli._episodic_count("chat-1"), 5)
 
 
 class _Result:
