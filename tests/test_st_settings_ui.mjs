@@ -58,7 +58,13 @@ class FakeElement {
 
         // Generic id-based lookup for elements not covered by the
         // data-memory-setting pattern above (buttons, selects, status spans).
-        const idPattern = /<(button|select|span)\b[^>]*\bid="([^"]+)"[^>]*>/g;
+        //
+        // `input` and `textarea` are here because leaving them out made whole controls
+        // invisible to every test in this file: the backfill file input shipped hidden by
+        // SillyTavern's global stylesheet and nothing here could even see it to notice.
+        // Settings inputs carry data-memory-setting and no id, so they stay with the
+        // pattern above and are not matched twice.
+        const idPattern = /<(button|select|span|input|textarea)\b[^>]*\bid="([^"]+)"[^>]*>/g;
         let idMatch;
         while ((idMatch = idPattern.exec(value)) !== null) {
             const [, tag, id] = idMatch;
@@ -297,4 +303,79 @@ test('renderSettingsUi wires the Scene Extraction Model select+Confirm to the sa
     // Not part of the generic field loop - no data-memory-setting input should
     // exist for it (regression guard against dual-registration/auto-save).
     assert.equal(panel.querySelector('[data-memory-setting="sceneExtractionModel"]'), null);
+});
+
+/**
+ * Two defects the panel's own screenshot showed, both invisible to the tests that existed.
+ *
+ * The first is a CSS specificity trap. `#memoryst-settings-panel p { margin: 0 }` outranks
+ * a bare `.memoryst-settings-intro { margin-top: 6px }`, so that margin never applied. With
+ * one intro paragraph nothing looked wrong; adding the settings-key warning as a second
+ * one made the two run together as a single block of prose, so the warning read as the
+ * tail of a sentence about retrieval controls.
+ *
+ * The second is older: SillyTavern sets display:none on every input[type=file] globally,
+ * so the backfill upload control was in the markup and absent from the screen. The label
+ * above it promised an upload the panel offered no way to begin. Confirmed present before
+ * the rename - identical markup, only the id differed.
+ */
+test('the settings-key warning is its own block, not a second intro paragraph', () => {
+    const html = buildSettingsUiMarkup(DEFAULT_SETTINGS);
+    assert.match(html, /class="memoryst-settings-note"/);
+    // Sharing the intro class is what made it read as one paragraph.
+    const notes = html.match(/<p class="memoryst-settings-intro">/g) ?? [];
+    assert.equal(notes.length, 1, 'the warning is still styled as an intro paragraph');
+});
+
+test('the spacing rules outrank the panel-wide margin reset', () => {
+    const html = buildSettingsUiMarkup(DEFAULT_SETTINGS);
+    // An id in the selector, so it beats `#memoryst-settings-panel p { margin: 0 }`.
+    for (const cls of ['memoryst-settings-intro', 'memoryst-settings-note']) {
+        assert.match(
+            html,
+            new RegExp(`#memoryst-settings-panel\\s+\\.${cls}\\s*\\{`),
+            `.${cls} is styled by a bare class rule, which the margin reset overrides`,
+        );
+    }
+});
+
+test('the hidden file input is reachable through a label', () => {
+    const html = buildSettingsUiMarkup(DEFAULT_SETTINGS);
+    assert.match(html, /<input type="file" id="memoryst-backfill-file"/);
+    // SillyTavern hides the input itself; a label pointing at it still opens the picker.
+    assert.match(html, /<label for="memoryst-backfill-file"[^>]*class="menu_button"/);
+});
+
+test('the chosen filename is echoed, since the input cannot be seen', () => {
+    const html = buildSettingsUiMarkup(DEFAULT_SETTINGS);
+    assert.match(html, /id="memoryst-backfill-filename"/);
+});
+
+test('picking a file writes its name into the readout', () => {
+    const document = new FakeDocument();
+    mountSettingsUi({ document, settings: DEFAULT_SETTINGS, onChange() {} });
+    const panel = document.host.querySelector('#memoryst-settings-panel');
+
+    const fileInput = panel.querySelector('#memoryst-backfill-file');
+    const readout = panel.querySelector('#memoryst-backfill-filename');
+    assert.ok(fileInput, 'the fake DOM cannot see the file input');
+    assert.ok(readout, 'the fake DOM cannot see the filename readout');
+
+    fileInput.files = [{ name: 'Valeria Mendoza - 2026-07-09.jsonl' }];
+    fileInput.dispatch('change');
+
+    assert.equal(readout.textContent, 'Valeria Mendoza - 2026-07-09.jsonl');
+});
+
+test('no file chosen leaves the readout empty rather than showing undefined', () => {
+    const document = new FakeDocument();
+    mountSettingsUi({ document, settings: DEFAULT_SETTINGS, onChange() {} });
+    const panel = document.host.querySelector('#memoryst-settings-panel');
+
+    const fileInput = panel.querySelector('#memoryst-backfill-file');
+    const readout = panel.querySelector('#memoryst-backfill-filename');
+    fileInput.files = [];
+    fileInput.dispatch('change');
+
+    assert.equal(readout.textContent, '');
 });

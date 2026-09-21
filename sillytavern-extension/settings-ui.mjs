@@ -468,8 +468,23 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                 #memoryst-settings-panel p {
                     margin: 0;
                 }
-                .memoryst-settings-intro {
+                /* Scoped under the id, not left as a bare class: the
+                   #memoryst-settings-panel p { margin: 0 } rule above outranks a class
+                   on specificity, so the margin-top here was silently dropped. That went
+                   unnoticed while there was one intro paragraph, and showed the moment a
+                   second one was added - the two ran together as a single block of
+                   prose, reading as one sentence. */
+                #memoryst-settings-panel .memoryst-settings-intro {
                     margin-top: 6px;
+                    color: var(--SmartThemeEmColor, inherit);
+                }
+                /* The settings-key caveat. Set apart from the intro rather than appended
+                   to it: it is a warning about editing a file by hand, and it has to
+                   survive being skim-read by someone who is not reading the intro. */
+                #memoryst-settings-panel .memoryst-settings-note {
+                    margin-top: 10px;
+                    padding: 6px 0 6px 10px;
+                    border-left: 3px solid var(--SmartThemeQuoteColor, #888);
                     color: var(--SmartThemeEmColor, inherit);
                 }
                 .memoryst-settings-baseline {
@@ -562,7 +577,7 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                 </div>
                 <div class="inline-drawer-content">
             <p class="memoryst-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
-            <p class="memoryst-settings-intro">Everything on this panel is saved under the <code>extension_settings</code> key <code>memory-service</code>, not <code>memoryst</code>. If you edit <code>settings.json</code> by hand, that key is this extension &mdash; deleting it as an orphan resets every value here.</p>
+            <p class="memoryst-settings-note">Everything on this panel is saved under the <code>extension_settings</code> key <code>memory-service</code>, not <code>memoryst</code>. If you edit <code>settings.json</code> by hand, that key is this extension &mdash; deleting it as an orphan resets every value here.</p>
             <div class="memoryst-settings-baseline">
                 <button type="button" id="memoryst-apply-baseline">Apply Recommended Baseline</button>
                 <span class="memoryst-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
@@ -590,7 +605,18 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                 <p class="memoryst-settings-group-copy">Import existing chat history into memory.</p>
                 <div style="margin-top:8px;">
                     <label style="font-weight:600;">Upload .jsonl file (SillyTavern chat format):</label><br>
-                    <input type="file" id="memoryst-backfill-file" accept=".jsonl,.json" style="margin-top:4px;">
+                    <!-- SillyTavern hides every file input globally - a rule setting
+                         display:none on input[type=file], in public/style.css - so this
+                         control was in
+                         the markup and absent from the screen: the label above promised
+                         an upload the panel gave no way to start. ST's own convention is
+                         a label styled as a button, and clicking a label still opens the
+                         picker for a hidden input, so the input stays as it is and gains
+                         a way in. The filename is echoed because the input being
+                         invisible means nothing else confirms which file was picked. -->
+                    <label for="memoryst-backfill-file" class="menu_button" style="margin-top:4px;display:inline-block;">Choose file</label>
+                    <span id="memoryst-backfill-filename" class="memoryst-setting-help"></span>
+                    <input type="file" id="memoryst-backfill-file" accept=".jsonl,.json">
                 </div>
                 <div style="margin-top:8px;">
                     <label style="font-weight:600;">Or paste messages (one per line: "user: text" / "assistant: text"):</label>
@@ -738,6 +764,7 @@ export function renderSettingsUi({
     const backfillText = panel.querySelector('#memoryst-backfill-text');
     const backfillFile = panel.querySelector('#memoryst-backfill-file');
     const backfillStatus = panel.querySelector('#memoryst-backfill-status');
+    const backfillFilename = panel.querySelector('#memoryst-backfill-filename');
     const deleteChatBtn = panel.querySelector('#memoryst-delete-chat-btn');
 
     /**
@@ -820,6 +847,14 @@ export function renderSettingsUi({
         } else {
             backfillStatus.textContent = `Error: ${resp.status} ${resp.statusText}`;
         }
+    }
+
+    if (backfillFile && backfillFilename && typeof backfillFile.addEventListener === 'function') {
+        backfillFile.addEventListener('change', () => {
+            // The only confirmation of the choice: the input itself cannot be seen, so
+            // without this a wrong file is discovered at Backfill time, after the reading.
+            backfillFilename.textContent = backfillFile.files?.[0]?.name || '';
+        });
     }
 
     if (backfillBtn) {
