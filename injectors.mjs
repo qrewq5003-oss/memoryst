@@ -21,9 +21,9 @@
 
 // Ours, so they are reported separately rather than counted as competition.
 export const MEMORYST_PROMPT_KEYS = [
-    'memory-service',
-    'memory-service-lore-anchor',
-    'memory-service-tracker',
+    'memoryst',
+    'memoryst-lore-anchor',
+    'memoryst-tracker',
 ];
 
 // Keys worth naming in a report, with what they are. Anything else is still counted and

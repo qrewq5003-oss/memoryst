@@ -1,17 +1,17 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=e147550';
+} from './settings.mjs?v=30a8ea5';
 import {
     PROMPT_POSITION_OPTIONS,
     PROMPT_ROLE_OPTIONS,
-} from './injection.mjs?v=e147550';
+} from './injection.mjs?v=30a8ea5';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=e147550';
+} from './http.mjs?v=30a8ea5';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -341,11 +341,11 @@ export function buildWarningBannerMarkup({
     status = '',
 } = {}) {
     const detailLine = details.length
-        ? `<small class="memory-service-compat-detail">${escapeHtml(details.join(' · '))}</small>`
+        ? `<small class="memoryst-compat-detail">${escapeHtml(details.join(' · '))}</small>`
         : '';
 
     return `
-        <div class="memory-service-compat-banner" role="alert" ${statusAttr}="${escapeHtml(status)}">
+        <div class="memoryst-compat-banner" role="alert" ${statusAttr}="${escapeHtml(status)}">
             <strong>⚠ ${escapeHtml(title)}</strong>
             <span>${escapeHtml(message)}</span>
             ${detailLine}
@@ -430,20 +430,20 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
             const inputHtml = buildFieldInputMarkup(field, value);
 
             return `
-                <label class="memory-service-setting-row">
-                    <span class="memory-service-setting-copy">
-                        <span class="memory-service-setting-label">${escapeHtml(field.label)}</span>
-                        <small class="memory-service-setting-help">${escapeHtml(field.help)}</small>
+                <label class="memoryst-setting-row">
+                    <span class="memoryst-setting-copy">
+                        <span class="memoryst-setting-label">${escapeHtml(field.label)}</span>
+                        <small class="memoryst-setting-help">${escapeHtml(field.help)}</small>
                     </span>
-                    <span class="memory-service-setting-control">${inputHtml}</span>
+                    <span class="memoryst-setting-control">${inputHtml}</span>
                 </label>
             `;
         }).join('');
 
         return `
-            <section class="memory-service-settings-group">
+            <section class="memoryst-settings-group">
                 <h4>${escapeHtml(section.group)}</h4>
-                <p class="memory-service-settings-group-copy">${escapeHtml(section.description)}</p>
+                <p class="memoryst-settings-group-copy">${escapeHtml(section.description)}</p>
                 ${fields}
             </section>
         `;
@@ -454,25 +454,25 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
         .join(' | ');
 
     return `
-        <div class="memory-service-settings">
+        <div class="memoryst-settings">
             <style>
-                #memory-service-settings-panel {
+                #memoryst-settings-panel {
                     border: 1px solid var(--SmartThemeBorderColor, #666);
                     border-radius: 10px;
                     padding: 14px;
                     margin-top: 12px;
                     background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.08));
                 }
-                #memory-service-settings-panel h3,
-                #memory-service-settings-panel h4,
-                #memory-service-settings-panel p {
+                #memoryst-settings-panel h3,
+                #memoryst-settings-panel h4,
+                #memoryst-settings-panel p {
                     margin: 0;
                 }
-                .memory-service-settings-intro {
+                .memoryst-settings-intro {
                     margin-top: 6px;
                     color: var(--SmartThemeEmColor, inherit);
                 }
-                .memory-service-settings-baseline {
+                .memoryst-settings-baseline {
                     display: flex;
                     flex-wrap: wrap;
                     gap: 10px;
@@ -480,55 +480,55 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                     margin-top: 12px;
                     margin-bottom: 14px;
                 }
-                .memory-service-settings-baseline-copy {
+                .memoryst-settings-baseline-copy {
                     font-size: 0.9em;
                     color: var(--SmartThemeQuoteColor, inherit);
                 }
-                .memory-service-settings-grid {
+                .memoryst-settings-grid {
                     display: grid;
                     gap: 12px;
                 }
-                .memory-service-settings-group {
+                .memoryst-settings-group {
                     border: 1px solid var(--SmartThemeBorderColor, #666);
                     border-radius: 8px;
                     padding: 12px;
                 }
-                .memory-service-settings-group-copy {
+                .memoryst-settings-group-copy {
                     margin-top: 4px;
                     margin-bottom: 10px;
                     font-size: 0.9em;
                     color: var(--SmartThemeQuoteColor, inherit);
                 }
-                .memory-service-setting-row {
+                .memoryst-setting-row {
                     display: grid;
                     grid-template-columns: minmax(0, 1fr) minmax(140px, 220px);
                     gap: 12px;
                     align-items: center;
                     margin-top: 10px;
                 }
-                .memory-service-setting-label {
+                .memoryst-setting-label {
                     display: block;
                     font-weight: 600;
                 }
-                .memory-service-setting-help {
+                .memoryst-setting-help {
                     display: block;
                     margin-top: 2px;
                     opacity: 0.8;
                 }
-                .memory-service-setting-control input {
+                .memoryst-setting-control input {
                     width: 100%;
                     box-sizing: border-box;
                 }
-                .memory-service-setting-control input[type="checkbox"] {
+                .memoryst-setting-control input[type="checkbox"] {
                     width: auto;
                     transform: scale(1.15);
                 }
                 @media (max-width: 720px) {
-                    .memory-service-setting-row {
+                    .memoryst-setting-row {
                         grid-template-columns: 1fr;
                     }
                 }
-                .memory-service-compat-banner {
+                .memoryst-compat-banner {
                     display: flex;
                     flex-direction: column;
                     gap: 4px;
@@ -540,7 +540,7 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                     background: rgba(224, 168, 0, 0.12);
                     color: var(--SmartThemeBodyColor, inherit);
                 }
-                .memory-service-compat-detail {
+                .memoryst-compat-detail {
                     opacity: 0.75;
                     font-family: monospace;
                     font-size: 0.85em;
@@ -561,45 +561,45 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                     <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                 </div>
                 <div class="inline-drawer-content">
-            <p class="memory-service-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
-            <p class="memory-service-settings-intro">Everything on this panel is saved under the <code>extension_settings</code> key <code>memory-service</code>, not <code>memoryst</code>. If you edit <code>settings.json</code> by hand, that key is this extension &mdash; deleting it as an orphan resets every value here.</p>
-            <div class="memory-service-settings-baseline">
-                <button type="button" id="memory-service-apply-baseline">Apply Recommended Baseline</button>
-                <span class="memory-service-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
+            <p class="memoryst-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
+            <p class="memoryst-settings-intro">Everything on this panel is saved under the <code>extension_settings</code> key <code>memory-service</code>, not <code>memoryst</code>. If you edit <code>settings.json</code> by hand, that key is this extension &mdash; deleting it as an orphan resets every value here.</p>
+            <div class="memoryst-settings-baseline">
+                <button type="button" id="memoryst-apply-baseline">Apply Recommended Baseline</button>
+                <span class="memoryst-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
             </div>
-            <div class="memory-service-settings-grid">${sections}</div>
-            <section class="memory-service-settings-group">
+            <div class="memoryst-settings-grid">${sections}</div>
+            <section class="memoryst-settings-group">
                 <h4>Scene Extraction</h4>
-                <p class="memory-service-settings-group-copy">Which model the automatic /memory/store pipeline calls for LLM scene extraction - independent of the LLM Provider panel's active model (that one is shared with consolidation and manual tools). Prefer a non-reasoning model: reasoning models can spend their token budget on hidden reasoning before emitting the extraction JSON, causing empty/failed calls that silently fall back to a cruder regex extractor.</p>
-                <label class="memory-service-setting-row">
-                    <span class="memory-service-setting-copy">
-                        <span class="memory-service-setting-label">Scene Extraction Model</span>
-                        <small class="memory-service-setting-help">Loaded from the backend's /memory/models catalog. Pick a model, then press Confirm to save it - selecting from the list alone does not save.</small>
+                <p class="memoryst-settings-group-copy">Which model the automatic /memory/store pipeline calls for LLM scene extraction - independent of the LLM Provider panel's active model (that one is shared with consolidation and manual tools). Prefer a non-reasoning model: reasoning models can spend their token budget on hidden reasoning before emitting the extraction JSON, causing empty/failed calls that silently fall back to a cruder regex extractor.</p>
+                <label class="memoryst-setting-row">
+                    <span class="memoryst-setting-copy">
+                        <span class="memoryst-setting-label">Scene Extraction Model</span>
+                        <small class="memoryst-setting-help">Loaded from the backend's /memory/models catalog. Pick a model, then press Confirm to save it - selecting from the list alone does not save.</small>
                     </span>
-                    <span class="memory-service-setting-control">
-                        <select id="memory-service-scene-extraction-model">${buildModelOptionsMarkup([], settings.sceneExtractionModel)}</select>
+                    <span class="memoryst-setting-control">
+                        <select id="memoryst-scene-extraction-model">${buildModelOptionsMarkup([], settings.sceneExtractionModel)}</select>
                     </span>
                 </label>
                 <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    <button type="button" id="memory-service-scene-extraction-save">Confirm</button>
-                    <span id="memory-service-scene-extraction-result" style="font-size:0.9em;"></span>
+                    <button type="button" id="memoryst-scene-extraction-save">Confirm</button>
+                    <span id="memoryst-scene-extraction-result" style="font-size:0.9em;"></span>
                 </div>
             </section>
-            <section class="memory-service-settings-group">
+            <section class="memoryst-settings-group">
                 <h4>Backfill</h4>
-                <p class="memory-service-settings-group-copy">Import existing chat history into memory.</p>
+                <p class="memoryst-settings-group-copy">Import existing chat history into memory.</p>
                 <div style="margin-top:8px;">
                     <label style="font-weight:600;">Upload .jsonl file (SillyTavern chat format):</label><br>
-                    <input type="file" id="memory-service-backfill-file" accept=".jsonl,.json" style="margin-top:4px;">
+                    <input type="file" id="memoryst-backfill-file" accept=".jsonl,.json" style="margin-top:4px;">
                 </div>
                 <div style="margin-top:8px;">
                     <label style="font-weight:600;">Or paste messages (one per line: "user: text" / "assistant: text"):</label>
-                    <textarea id="memory-service-backfill-text" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:monospace;font-size:0.85em;" placeholder="user: Hello Alice&#10;assistant: Hi, nice to meet you!"></textarea>
+                    <textarea id="memoryst-backfill-text" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:monospace;font-size:0.85em;" placeholder="user: Hello Alice&#10;assistant: Hi, nice to meet you!"></textarea>
                 </div>
                 <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                    <button type="button" id="memory-service-backfill-btn">Backfill Current Chat</button>
-                    <button type="button" id="memory-service-delete-chat-btn" style="color:#e74c3c;">Delete Chat Memories</button>
-                    <span id="memory-service-backfill-status" style="font-size:0.9em;"></span>
+                    <button type="button" id="memoryst-backfill-btn">Backfill Current Chat</button>
+                    <button type="button" id="memoryst-delete-chat-btn" style="color:#e74c3c;">Delete Chat Memories</button>
+                    <span id="memoryst-backfill-status" style="font-size:0.9em;"></span>
                 </div>
             </section>
                 </div>
@@ -669,10 +669,10 @@ export function renderSettingsUi({
         return false;
     }
 
-    let panel = host.querySelector('#memory-service-settings-panel');
+    let panel = host.querySelector('#memoryst-settings-panel');
     if (!panel) {
         panel = document.createElement('div');
-        panel.id = 'memory-service-settings-panel';
+        panel.id = 'memoryst-settings-panel';
         host.appendChild(panel);
     }
 
@@ -693,7 +693,7 @@ export function renderSettingsUi({
         }
     }
 
-    const baselineButton = panel.querySelector('#memory-service-apply-baseline');
+    const baselineButton = panel.querySelector('#memoryst-apply-baseline');
     if (baselineButton && typeof baselineButton.addEventListener === 'function') {
         baselineButton.addEventListener('click', () => {
             onApplyRecommendedBaseline(applyRecommendedBaselineSettings(settings));
@@ -710,9 +710,9 @@ export function renderSettingsUi({
     // index.js, not a re-normalize) - so this can't reintroduce the earlier
     // bug where re-running normalizeExtensionSettings on an already-flat
     // runtime settings object silently reset memoryServiceUrl to its default.
-    const sceneModelSelect = panel.querySelector('#memory-service-scene-extraction-model');
-    const sceneModelSaveBtn = panel.querySelector('#memory-service-scene-extraction-save');
-    const sceneModelResult = panel.querySelector('#memory-service-scene-extraction-result');
+    const sceneModelSelect = panel.querySelector('#memoryst-scene-extraction-model');
+    const sceneModelSaveBtn = panel.querySelector('#memoryst-scene-extraction-save');
+    const sceneModelResult = panel.querySelector('#memoryst-scene-extraction-result');
 
     if (sceneModelSaveBtn && sceneModelSelect && typeof sceneModelSaveBtn.addEventListener === 'function') {
         sceneModelSaveBtn.addEventListener('click', () => {
@@ -734,11 +734,11 @@ export function renderSettingsUi({
         });
     }
 
-    const backfillBtn = panel.querySelector('#memory-service-backfill-btn');
-    const backfillText = panel.querySelector('#memory-service-backfill-text');
-    const backfillFile = panel.querySelector('#memory-service-backfill-file');
-    const backfillStatus = panel.querySelector('#memory-service-backfill-status');
-    const deleteChatBtn = panel.querySelector('#memory-service-delete-chat-btn');
+    const backfillBtn = panel.querySelector('#memoryst-backfill-btn');
+    const backfillText = panel.querySelector('#memoryst-backfill-text');
+    const backfillFile = panel.querySelector('#memoryst-backfill-file');
+    const backfillStatus = panel.querySelector('#memoryst-backfill-status');
+    const deleteChatBtn = panel.querySelector('#memoryst-delete-chat-btn');
 
     /**
      * Parse a .jsonl export into messages, counting what it had to ignore.

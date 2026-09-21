@@ -26,7 +26,7 @@
 //
 // MEMORY_EXTENSION_BUILD below is the precise identifier and moves on every change;
 // this one is the human-facing summary and moves on features.
-export const EXTENSION_VERSION = '1.1.1';
+export const EXTENSION_VERSION = '1.2.0';
 
 // Keep in sync with PROTOCOL_VERSION in app/version.py.
 export const MEMORY_PROTOCOL_VERSION = 1;
@@ -35,7 +35,7 @@ export const MEMORY_PROTOCOL_VERSION = 1;
 // record: ES modules are cached aggressively (and Android has no hard-reload gesture), so
 // "the fix is not working" and "the fix is not loaded" are otherwise indistinguishable -
 // which cost several rounds of the live tracker test. Bump on every extension change.
-export const MEMORY_EXTENSION_BUILD = 'e147550';
+export const MEMORY_EXTENSION_BUILD = '30a8ea5';
 
 /**
  * Compare the extension's embedded protocol version against the backend's
