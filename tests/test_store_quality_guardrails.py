@@ -370,3 +370,65 @@ class RoleplayProseTests(unittest.TestCase):
             ],
         )
         self.assertEqual(wrapped, [])
+
+
+class OocFilterTests(unittest.TestCase):
+    """OOC is out of character, so it is not a fact about anyone.
+
+    Two things were wrong at once. The filter ran in backfill only, so an OOC line typed
+    during a live chat went straight into memory. And it would not have caught these
+    anyway: every OOC marker in data/memory.db on 2026-09-21 was written "ООС:" with
+    Cyrillic О-О-С (U+041E U+041E U+0421), typed on a Russian layout, drawn identically
+    to the Latin letters and invisible to a startswith("ooc:").
+
+    Two of those were stored as memories and handed to the model as facts about a
+    character - one an exchange about what was in the lorebook.
+    """
+
+    def test_a_cyrillic_marker_is_recognised(self) -> None:
+        from app.services.text_utils import is_ooc_text
+
+        # The exact bytes from the database, not a lookalike typed here.
+        marker = "ООС: Понял, отвечаю вне роли"
+        self.assertTrue(is_ooc_text(marker))
+
+    def test_the_latin_marker_still_works(self) -> None:
+        from app.services.text_utils import is_ooc_text
+
+        for text in ("OOC: understood", "ooc(note)", "(ooc) aside"):
+            self.assertTrue(is_ooc_text(text))
+
+    def test_a_mixed_alphabet_marker_is_recognised(self) -> None:
+        # Half typed on one layout, half on the other - which is how it actually happens.
+        from app.services.text_utils import is_ooc_text
+
+        self.assertTrue(is_ooc_text("ооc: смешанный"))
+
+    def test_ordinary_text_is_not_a_marker(self) -> None:
+        from app.services.text_utils import is_ooc_text
+
+        for text in ("Она согласилась пойти", "Оос вообще не маркер тут", "coocking dinner"):
+            self.assertFalse(is_ooc_text(text))
+
+    def test_live_extraction_skips_an_ooc_line(self) -> None:
+        from app.schemas import MessageInput
+        from app.services.extractor import extract_memories
+
+        candidates = extract_memories(
+            chat_id="c",
+            character_id="x",
+            messages=[
+                MessageInput(
+                    role="user",
+                    text="ООС: Рэйвен Чен присутствует в лорбуке, отвечаю вне роли",
+                )
+            ],
+        )
+        self.assertEqual(candidates, [])
+
+    def test_the_raw_buffer_filters_it_too(self) -> None:
+        # chat_buffer_service shares the predicate, so the same marker was reaching the
+        # raw transcript as well.
+        from app.services.chat_buffer_service import is_filtered_input
+
+        self.assertTrue(is_filtered_input("user", "ООС: вне роли"))

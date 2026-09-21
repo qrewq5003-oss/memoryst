@@ -379,10 +379,13 @@ def extract_memories(
         if is_roleplay_prose(text):
             continue
 
-        if mode == "backfill":
-            if is_ooc_text(text):
-                continue
-        elif (
+        # Both modes. It used to run in backfill only, so an OOC line typed during a
+        # live chat went straight into memory - and since the marker was Cyrillic it
+        # would not have been caught even there. See is_ooc_text.
+        if is_ooc_text(text):
+            continue
+
+        if mode != "backfill" and (
             # Narrow anti-artifact filter only:
             # - applies only to `role="user"`
             # - blocks raw question prompts from being stored as memories

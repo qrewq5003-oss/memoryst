@@ -37,9 +37,23 @@ def normalize_content(content: str) -> str:
     return text
 
 
+# Cyrillic letters that are drawn identically to the Latin ones in "ooc". A Russian
+# keyboard produces them without the typist noticing, and nothing downstream can tell
+# the difference by eye.
+_OOC_HOMOGLYPHS = str.maketrans({"о": "o", "с": "c", "О": "o", "С": "c"})
+
+
 def is_ooc_text(text: str) -> bool:
-    """Check whether text is an out-of-character (OOC) marker message, case-insensitively."""
-    lowered = text.strip().lower()
+    """Check whether text is an out-of-character (OOC) marker message.
+
+    Case-insensitive, and homoglyph-insensitive, which is the part that was missing.
+    Every OOC marker in data/memory.db on 2026-09-21 was written "ООС:" with Cyrillic
+    О-О-С (U+041E U+041E U+0421) rather than Latin o-o-c - typed on a Russian layout,
+    indistinguishable on screen, and invisible to a startswith("ooc:"). So the filter
+    never fired anywhere: two of those messages were stored as memories and presented to
+    the model as facts about a character, one of them an exchange about the lorebook.
+    """
+    lowered = text.strip().lower().translate(_OOC_HOMOGLYPHS)
     return lowered.startswith("ooc:") or lowered.startswith("ooc(") or lowered.startswith("(ooc")
 
 
