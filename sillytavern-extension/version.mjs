@@ -26,7 +26,7 @@
 //
 // MEMORY_EXTENSION_BUILD below is the precise identifier and moves on every change;
 // this one is the human-facing summary and moves on features.
-export const EXTENSION_VERSION = '1.1.0';
+export const EXTENSION_VERSION = '1.1.1';
 
 // Keep in sync with PROTOCOL_VERSION in app/version.py.
 export const MEMORY_PROTOCOL_VERSION = 1;

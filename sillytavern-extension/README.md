@@ -407,6 +407,24 @@ This extension uses the following SillyTavern APIs:
    - Check that memories exist in the database
    - Verify retrieval is finding relevant items
 
+4. **Every setting reset itself to defaults** (extension disabled, URL back to
+   `localhost:8001`, tracker thresholds and recent audit records gone):
+
+   Something removed `extension_settings['memory-service']` from
+   `data/<user>/settings.json`. That key belongs to **this** extension, even though the
+   directory and the panel are both called `memoryst`. It is the one name here that does
+   not match, so it reads like leftovers from an extension that was uninstalled, and it
+   is the obvious thing to delete when tidying that file by hand.
+
+   It is not leftovers, and it is not renamed to match on purpose: nothing derives the
+   key from the directory name, so renaming the string would orphan every stored value
+   in place and ST would start from defaults with no error explaining why. See the
+   comment on `SETTINGS_KEY` in `main.mjs`.
+
+   Recovery: restore that key from a `settings.json` backup if you have one; otherwise
+   reconfigure from the panel and press **Apply Recommended Baseline**. Note that ST
+   rewrites `settings.json` while it runs, so stop the server before restoring.
+
 ## License
 
 Same as memoryst project.
