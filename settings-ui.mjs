@@ -1,17 +1,17 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=7210b3a';
+} from './settings.mjs?v=29a6f53';
 import {
     PROMPT_POSITION_OPTIONS,
     PROMPT_ROLE_OPTIONS,
-} from './injection.mjs?v=7210b3a';
+} from './injection.mjs?v=29a6f53';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=7210b3a';
+} from './http.mjs?v=29a6f53';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -169,9 +169,6 @@ export const SETTINGS_UI_FIELDS = [
     {
         group: 'Trackers',
         description: 'Character trackers injected when a lorebook entry for that character fires. They do not compete with retrieved memories for the prompt budget above.',
-        // Renders the tracker-availability banner right above this group's fields, so a
-        // backend that can't serve trackers says so where the trackers are configured.
-        banner: 'trackers',
         fields: [
             {
                 key: 'trackerInjectionEnabled',
@@ -443,15 +440,10 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
             `;
         }).join('');
 
-        const banner = section.banner === 'trackers'
-            ? buildTrackerStatusBannerMarkup(trackerStatus)
-            : '';
-
         return `
             <section class="memory-service-settings-group">
                 <h4>${escapeHtml(section.group)}</h4>
                 <p class="memory-service-settings-group-copy">${escapeHtml(section.description)}</p>
-                ${banner}
                 ${fields}
             </section>
         `;
@@ -554,9 +546,22 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                     font-size: 0.85em;
                 }
             </style>
-            <h3>memoryst</h3>
-            <p class="memory-service-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
+            <!--
+                The warnings sit outside the drawer on purpose. A protocol mismatch means
+                a stale extension copy is talking to an updated backend, and an
+                unreachable tracker endpoint means the panel looks configured while
+                nothing is being injected - neither is worth hiding behind a collapsed
+                header nobody has a reason to open.
+            -->
             ${buildCompatibilityBannerMarkup(compatibility)}
+            ${buildTrackerStatusBannerMarkup(trackerStatus)}
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>memoryst</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+            <p class="memory-service-settings-intro">Native extension settings for current-turn retrieval, prompt budget, and audit controls.</p>
             <div class="memory-service-settings-baseline">
                 <button type="button" id="memory-service-apply-baseline">Apply Recommended Baseline</button>
                 <span class="memory-service-settings-baseline-copy">Long Russian chat baseline: ${escapeHtml(baselinePairs)}</span>
@@ -596,6 +601,8 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                     <span id="memory-service-backfill-status" style="font-size:0.9em;"></span>
                 </div>
             </section>
+                </div>
+            </div>
         </div>
     `;
 }
