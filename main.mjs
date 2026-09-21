@@ -39,17 +39,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=f9f767d';
+} from './audit.mjs?v=8295f12';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=f9f767d';
-import { mountSettingsUi } from './settings-ui.mjs?v=f9f767d';
-import { resolveEffectiveScope } from './scope.mjs?v=f9f767d';
+} from './settings.mjs?v=8295f12';
+import { mountSettingsUi } from './settings-ui.mjs?v=8295f12';
+import { resolveEffectiveScope } from './scope.mjs?v=8295f12';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=f9f767d';
+} from './lore-anchors.mjs?v=8295f12';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -57,26 +57,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=f9f767d';
+} from './trackers.mjs?v=8295f12';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=f9f767d';
+} from './version.mjs?v=8295f12';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=f9f767d';
+} from './injection.mjs?v=8295f12';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=f9f767d';
+} from './supersede.mjs?v=8295f12';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=f9f767d';
+} from './injectors.mjs?v=8295f12';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -87,7 +87,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=f9f767d';
+} from './http.mjs?v=8295f12';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:

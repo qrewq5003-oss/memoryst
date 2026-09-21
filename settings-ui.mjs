@@ -1,17 +1,17 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=f9f767d';
+} from './settings.mjs?v=8295f12';
 import {
     PROMPT_POSITION_OPTIONS,
     PROMPT_ROLE_OPTIONS,
-} from './injection.mjs?v=f9f767d';
+} from './injection.mjs?v=8295f12';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=f9f767d';
+} from './http.mjs?v=8295f12';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -614,7 +614,7 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
                          picker for a hidden input, so the input stays as it is and gains
                          a way in. The filename is echoed because the input being
                          invisible means nothing else confirms which file was picked. -->
-                    <label for="memoryst-backfill-file" class="menu_button" style="margin-top:4px;display:inline-block;">Choose file</label>
+                    <label for="memoryst-backfill-file" class="menu_button" style="margin-top:4px;display:inline-flex;white-space:nowrap;">Choose file</label>
                     <span id="memoryst-backfill-filename" class="memoryst-setting-help"></span>
                     <input type="file" id="memoryst-backfill-file" accept=".jsonl,.json">
                 </div>
