@@ -232,6 +232,24 @@ def chat_completion(
 _key_cursor = 0
 
 
+def _is_authentication_rate_limit(response: httpx.Response) -> bool:
+    """A 429 that is really "your credentials are wrong", not "your quota is spent".
+
+    Read from the body rather than the status, because the status cannot tell them
+    apart: nano-gpt returns 429 with type `authentication_error` and code
+    `authentication_rate_limited` after repeated invalid keys. Anything unparseable is
+    treated as a normal quota 429 - the rotation it allows is the existing behaviour,
+    and guessing "auth" from a body we could not read would disable failover for real
+    out-of-quota keys.
+    """
+    try:
+        error = (response.json() or {}).get("error") or {}
+    except ValueError:
+        return False
+    haystack = f"{error.get('type', '')} {error.get('code', '')}".lower()
+    return "authentication" in haystack
+
+
 def _chat_completion_with_key_rotation(
     messages: list[dict[str, str]],
     settings: dict,
@@ -248,6 +266,13 @@ def _chat_completion_with_key_rotation(
     triggers a switch - timeouts and 5xx propagate unchanged so the caller's own
     retry still handles transient blips. A single-key pool behaves exactly as
     before. On success the cursor sticks to the working key.
+
+    Not every 429 is a quota, though. nano-gpt answers repeated bad credentials with
+    429 `authentication_rate_limited` - a client-wide lockout, not a per-key limit.
+    Rotating on that makes it worse: the next key is tried with the same dead
+    credentials, which is another invalid attempt, which extends the lockout. Observed
+    on 2026-09-20 with both pool keys expired: every extraction burned two rejected
+    requests and pushed "Retry after" further out. Those are re-raised instead.
     """
     global _key_cursor
     keys = settings.get("api_keys") or [settings.get("api_key", "")]
@@ -270,6 +295,14 @@ def _chat_completion_with_key_rotation(
             return result
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 429 or n == 1:
+                raise
+            if _is_authentication_rate_limit(exc.response):
+                print(
+                    "[llm_client] 429 is an authentication lockout, not a quota - "
+                    "the other keys would fail the same way, so not rotating",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 raise
             last_429 = exc
             print(

@@ -516,3 +516,115 @@ class KeyRotationTests(ProviderConfigTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuthenticationLockoutTests(unittest.TestCase):
+    """A 429 is not always a quota.
+
+    nano-gpt answers repeated invalid credentials with 429 `authentication_rate_limited`
+    - a client-wide lockout, not a per-key limit. Rotating on it tries the next key with
+    credentials that are just as dead, which is another invalid attempt, which extends
+    the lockout. Observed on 2026-09-20 with both pool keys expired: every extraction
+    burned two rejected requests and pushed "Retry after" further out.
+    """
+
+    def _response(self, payload: dict, status: int = 429) -> httpx.Response:
+        return httpx.Response(
+            status_code=status,
+            json=payload,
+            request=httpx.Request("POST", "https://nano-gpt.com/api/v1/chat/completions"),
+        )
+
+    def test_an_authentication_lockout_is_recognised(self) -> None:
+        from app.services.llm_client import _is_authentication_rate_limit
+
+        response = self._response(
+            {
+                "error": {
+                    "message": "Authentication from this client is temporarily rate limited",
+                    "type": "authentication_error",
+                    "code": "authentication_rate_limited",
+                    "status": 429,
+                }
+            }
+        )
+        self.assertTrue(_is_authentication_rate_limit(response))
+
+    def test_a_real_quota_429_is_not_mistaken_for_one(self) -> None:
+        from app.services.llm_client import _is_authentication_rate_limit
+
+        response = self._response(
+            {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error", "code": "rate_limit_exceeded"}}
+        )
+        self.assertFalse(_is_authentication_rate_limit(response))
+
+    def test_an_unreadable_body_falls_back_to_rotating(self) -> None:
+        # Guessing "auth" from a body we could not parse would disable failover for keys
+        # that really are out of quota, which is the case this pool exists for.
+        from app.services.llm_client import _is_authentication_rate_limit
+
+        broken = httpx.Response(
+            status_code=429,
+            content=b"<html>429</html>",
+            request=httpx.Request("POST", "https://nano-gpt.com/api/v1/chat/completions"),
+        )
+        self.assertFalse(_is_authentication_rate_limit(broken))
+        self.assertFalse(_is_authentication_rate_limit(self._response({})))
+
+    def test_a_lockout_does_not_try_the_other_keys(self) -> None:
+        from app.services import llm_client
+
+        attempts: list[str] = []
+
+        def fake_call(messages, settings, **kwargs):
+            attempts.append(settings["api_key"])
+            raise httpx.HTTPStatusError(
+                "429",
+                request=httpx.Request("POST", "https://nano-gpt.com/api/v1/chat/completions"),
+                response=self._response(
+                    {"error": {"type": "authentication_error", "code": "authentication_rate_limited"}}
+                ),
+            )
+
+        with patch.object(llm_client, "_chat_completion_openai_compatible", side_effect=fake_call):
+            with self.assertRaises(httpx.HTTPStatusError):
+                llm_client._chat_completion_with_key_rotation(
+                    [{"role": "user", "content": "x"}],
+                    {"api_keys": ["dead-1", "dead-2"], "api_base": "https://nano-gpt.com/api/v1"},
+                    model="m",
+                    max_tokens=10,
+                    temperature=0.0,
+                    response_format=None,
+                    timeout=10,
+                )
+
+        self.assertEqual(attempts, ["dead-1"], "the second dead key must not be tried")
+
+    def test_a_quota_429_still_rotates(self) -> None:
+        from app.services import llm_client
+
+        attempts: list[str] = []
+
+        def fake_call(messages, settings, **kwargs):
+            attempts.append(settings["api_key"])
+            if settings["api_key"] == "spent":
+                raise httpx.HTTPStatusError(
+                    "429",
+                    request=httpx.Request("POST", "https://nano-gpt.com/api/v1/chat/completions"),
+                    response=self._response({"error": {"type": "rate_limit_error"}}),
+                )
+            return "ok"
+
+        with patch.object(llm_client, "_chat_completion_openai_compatible", side_effect=fake_call):
+            result = llm_client._chat_completion_with_key_rotation(
+                [{"role": "user", "content": "x"}],
+                {"api_keys": ["spent", "fresh"], "api_base": "https://nano-gpt.com/api/v1"},
+                model="m",
+                max_tokens=10,
+                temperature=0.0,
+                response_format=None,
+                timeout=10,
+            )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(attempts, ["spent", "fresh"])
