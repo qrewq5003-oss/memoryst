@@ -39,18 +39,18 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=8295f12';
-import { lastUserText, recentMessages } from './chat-history.mjs?v=8295f12';
+} from './audit.mjs?v=dab9538';
+import { lastUserText, recentMessages } from './chat-history.mjs?v=dab9538';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=8295f12';
-import { mountSettingsUi } from './settings-ui.mjs?v=8295f12';
-import { resolveEffectiveScope } from './scope.mjs?v=8295f12';
+} from './settings.mjs?v=dab9538';
+import { mountSettingsUi } from './settings-ui.mjs?v=dab9538';
+import { resolveEffectiveScope } from './scope.mjs?v=dab9538';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=8295f12';
+} from './lore-anchors.mjs?v=dab9538';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -58,26 +58,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=8295f12';
+} from './trackers.mjs?v=dab9538';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=8295f12';
+} from './version.mjs?v=dab9538';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=8295f12';
+} from './injection.mjs?v=dab9538';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=8295f12';
+} from './supersede.mjs?v=dab9538';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=8295f12';
+} from './injectors.mjs?v=dab9538';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -88,7 +88,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=8295f12';
+} from './http.mjs?v=dab9538';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
