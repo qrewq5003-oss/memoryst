@@ -147,11 +147,40 @@ APP_SETTINGS_TABLE_SQL = """
 """
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """A connection that closes itself when its `with` block ends.
+
+    `sqlite3.Connection.__exit__` commits or rolls back and then leaves the connection
+    open - it is a transaction context manager, not a resource one. Every
+    `with get_connection() as conn:` in this codebase therefore relied on refcounting to
+    close the handle, and the handles are held in reference cycles, so only the cyclic
+    collector freed them.
+
+    Measured 2026-09-21 on the running server: 40 requests to /memory/list left 40 new
+    descriptors and 47 open handles on memory.db, still there after 20 seconds idle.
+    Reproduced outside the web layer, where an explicit gc.collect() dropped 34 back to
+    4 - so it was a delay, not an unbounded leak, but a delay that tracked request rate
+    against a 32768 limit, and whose eventual failure would read as "the service stopped
+    responding" with nothing pointing here.
+
+    Subclassing rather than handing out a @contextmanager keeps both call styles working:
+    the 26 `with get_connection()` sites now close, and the 14 that keep a connection in
+    a variable and close it in a `finally` are untouched, since `close()` twice is a
+    no-op.
+    """
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def get_connection() -> sqlite3.Connection:
     """Get database connection."""
     db_path = Path(config.DATABASE_PATH)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), factory=_ClosingConnection)
     conn.row_factory = sqlite3.Row
     return conn
 
