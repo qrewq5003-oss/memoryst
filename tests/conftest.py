@@ -60,3 +60,27 @@ def reset_chat_buffer():
     reset_all_buffers()
     yield
     reset_all_buffers()
+
+
+@pytest.fixture(autouse=True)
+def isolate_backup_dir(tmp_path_factory):
+    """Keep every test's backups out of the real data/backups/.
+
+    Tests already redirect config.DATABASE_PATH, but BACKUP_DIR was left pointing at the
+    live directory - so anything that takes a backup wrote a snapshot of a tiny empty
+    test database into it. POST /ui/import does exactly that, by design, and once a few
+    of those landed the generational retention evicted real snapshots to keep them:
+    on 2026-09-21 a pre-migration backup of the live 57 MB database was lost that way,
+    replaced by 3.5 KB files holding nothing.
+
+    Autouse and global rather than per-test: the endpoints that back up are spread across
+    the API, and the failure is silent - a test that pollutes the directory still passes.
+    """
+    from app.config import config
+
+    original = config.BACKUP_DIR
+    config.BACKUP_DIR = str(tmp_path_factory.mktemp("backups"))
+    try:
+        yield
+    finally:
+        config.BACKUP_DIR = original

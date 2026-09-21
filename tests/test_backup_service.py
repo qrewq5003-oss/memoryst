@@ -282,3 +282,41 @@ class CompressionTests(BackupServiceTests):
         create_backup()
 
         self.assertEqual(list(self.backup_dir.glob("memory_*.db")), [])
+
+
+class BackupDirectoryIsolationTests(unittest.TestCase):
+    """No test may write into the real data/backups/.
+
+    It is not a hypothetical: POST /ui/import takes a backup by design, its test did not
+    redirect BACKUP_DIR, and the 3.5 KB snapshots of an empty test database it left
+    behind pushed a real pre-migration backup of the 57 MB live database out through the
+    generational retention. The directory filled with files holding nothing while every
+    test still passed.
+    """
+
+    def test_the_configured_backup_dir_is_not_the_real_one(self) -> None:
+        # conftest's autouse fixture redirects it for the whole suite.
+        from app.config import config
+
+        self.assertNotIn("memoryst/data/backups", config.BACKUP_DIR.replace("\\", "/"))
+
+    def test_an_endpoint_that_backs_up_writes_into_the_redirected_dir(self) -> None:
+        from pathlib import Path
+
+        from app.config import config
+        from app.services.backup_service import create_backup
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original_db = config.DATABASE_PATH
+            db_path = Path(tmp) / "live.db"
+            config.DATABASE_PATH = str(db_path)
+            from app.db import init_schema
+
+            init_schema()
+            try:
+                created = create_backup()
+            finally:
+                config.DATABASE_PATH = original_db
+
+        self.assertIsNotNone(created)
+        self.assertEqual(str(Path(created).parent), config.BACKUP_DIR)
