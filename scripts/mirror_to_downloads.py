@@ -5,9 +5,22 @@ here, and never treat it as a git checkout (its .git is deliberately skipped).
 
 rsync isn't available in this Termux sandbox (no network access to fetch it),
 so this reimplements the subset of `rsync -a --delete` behaviour needed here:
-copy new/changed files, remove files/dirs that vanished from the source, and
-leave alone anything under an excluded name on the destination side (e.g. its
-own database, if one were ever created there by mistake).
+copy new/changed files, and remove from the destination anything that vanished from
+the source *or* is excluded from the mirror.
+
+That last part is a fix, not the original behaviour. This used to skip excluded names on
+the destination side too, on the theory that it was protecting something deliberately
+created there. What it actually did was strand anything copied before an exclusion was
+added: the copy loop stopped refreshing it and the delete loop refused to remove it.
+
+Found 2026-09-21. `/storage/emulated/0/Download/memoryst/.env` had been sitting on Android
+shared storage - readable by any app holding the storage permission - since 2026-06-28,
+holding a Google API key that was still live when tested. Alongside it: a copy of
+memory.db, a chromadb directory, and 670 MB of .venv/.mimocode. Of the mirror's 736 MB,
+about 3 MB was the source it exists to show.
+
+A mirror that keeps what it excludes is not a mirror, and the hypothetical it protected
+was never worth a secret in a world-readable directory.
 """
 import os
 import shutil
@@ -31,9 +44,9 @@ def sync(src: str, dst: str) -> None:
     dst_entries = {e.name: e for e in os.scandir(dst)}
 
     for name, entry in dst_entries.items():
-        if is_excluded_name(name):
-            continue
-        if name not in src_entries:
+        # Excluded names are deleted here rather than skipped: whatever is excluded from
+        # the mirror has no business surviving in it. See the module docstring.
+        if name not in src_entries or is_excluded_name(name):
             if entry.is_dir():
                 shutil.rmtree(entry.path)
             else:
