@@ -152,53 +152,72 @@ class MemoryScopingSanityTests(unittest.TestCase):
         self.assertEqual(list_memories(chat_id="chat-a", character_id="char-1").items[0].id, existing.id)
         self.assertEqual(list_memories(chat_id="chat-b", character_id="char-1").total, 1)
 
-    def test_rolling_summary_is_scoped_per_chat_and_character_and_updates_only_own_scope(self) -> None:
+    def test_a_chat_has_one_rolling_summary_however_its_character_id_shifts(self) -> None:
+        # One summary per chat, deliberately. character_id is SillyTavern's array index,
+        # so a chat whose index shifted used to build a second summary over the same
+        # episodes and inject both.
         for content in (
             "Алиса поссорилась с Маркусом из-за бюджета.",
             "Позже они решили продолжить проект без новой ссоры.",
             "Алиса хочет закончить монтаж до конца недели.",
         ):
-            _create_memory(chat_id="chat-1", character_id="char-a", content=content)
+            _create_memory(chat_id="chat-1", character_id="20", content=content)
 
-        for content in (
-            "Елена вернулась к разговору о поездке.",
-            "Позже Елена купила новые билеты на поезд.",
-            "Елена хочет уехать утром и никого не ждать.",
-        ):
-            _create_memory(chat_id="chat-1", character_id="char-b", content=content)
-
-        first_a = generate_rolling_summary("chat-1", "char-a", window_size=8)
-        first_b = generate_rolling_summary("chat-1", "char-b", window_size=8)
+        first = generate_rolling_summary("chat-1", "20", window_size=8)
 
         for content in (
             "Маркус пообещал не возвращаться к старой ссоре.",
             "Они перенесли встречу команды на утро.",
             "Алиса всё ещё хочет удержать проект на плаву.",
         ):
-            _create_memory(chat_id="chat-1", character_id="char-a", content=content)
+            _create_memory(chat_id="chat-1", character_id="25", content=content)
 
-        updated_a = generate_rolling_summary("chat-1", "char-a", window_size=8)
-        skipped_b = generate_rolling_summary("chat-1", "char-b", window_size=8)
+        # Same chat, new index - this must refresh the existing summary, not start a second.
+        after_shift = generate_rolling_summary("chat-1", "25", window_size=8)
 
-        summaries_a = [
-            memory for memory in list_memories(chat_id="chat-1", character_id="char-a", limit=20).items
+        summaries = [
+            memory for memory in list_memories(chat_id="chat-1", limit=20).items
             if memory.type == "summary"
         ]
-        summaries_b = [
-            memory for memory in list_memories(chat_id="chat-1", character_id="char-b", limit=20).items
-            if memory.type == "summary"
-        ]
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(first.summary_memory_id, after_shift.summary_memory_id)
+        self.assertEqual(after_shift.action, "updated")
 
-        self.assertEqual(first_a.summary_memory_id, updated_a.summary_memory_id)
-        self.assertEqual(first_b.summary_memory_id, summaries_b[0].id)
-        self.assertEqual(updated_a.action, "updated")
-        self.assertEqual(skipped_b.action, "skipped_not_enough_new_inputs")
-        self.assertEqual(len(summaries_a), 1)
-        self.assertEqual(len(summaries_b), 1)
-        self.assertNotEqual(summaries_a[0].id, summaries_b[0].id)
-        self.assertNotIn("Елена", summaries_a[0].content)
-        self.assertNotIn("Алиса", summaries_b[0].content)
+    def test_the_summary_covers_episodes_from_every_index_the_chat_used(self) -> None:
+        # The input window is chat-scoped too, so a chat that drifted across indexes is
+        # summarized whole rather than one fragment of itself.
+        for content in (
+            "Алиса поссорилась с Маркусом из-за бюджета.",
+            "Позже они решили продолжить проект без новой ссоры.",
+        ):
+            _create_memory(chat_id="chat-1", character_id="20", content=content)
+        _create_memory(
+            chat_id="chat-1", character_id="25",
+            content="Алиса хочет закончить монтаж до конца недели.",
+        )
 
+        result = generate_rolling_summary("chat-1", "25", window_size=8)
 
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(result.summarized_count, 3)
+
+    def test_another_chat_keeps_its_own_summary(self) -> None:
+        # Widening the scope to the chat must not widen it past the chat.
+        for content in (
+            "Алиса поссорилась с Маркусом из-за бюджета.",
+            "Позже они решили продолжить проект без новой ссоры.",
+            "Алиса хочет закончить монтаж до конца недели.",
+        ):
+            _create_memory(chat_id="chat-1", character_id="20", content=content)
+        for content in (
+            "Елена вернулась к разговору о поездке.",
+            "Позже Елена купила новые билеты на поезд.",
+            "Елена хочет уехать утром и никого не ждать.",
+        ):
+            _create_memory(chat_id="chat-2", character_id="20", content=content)
+
+        one = generate_rolling_summary("chat-1", "20", window_size=8)
+        two = generate_rolling_summary("chat-2", "20", window_size=8)
+
+        self.assertNotEqual(one.summary_memory_id, two.summary_memory_id)
+        self.assertNotIn("Елена", one.summary_text)
+        self.assertNotIn("Алиса", two.summary_text)

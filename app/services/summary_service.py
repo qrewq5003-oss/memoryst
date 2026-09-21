@@ -13,7 +13,7 @@ from app.services.conflict_resolver import (
 )
 from app.services.llm_client import chat_completion, is_llm_enabled
 from app.services.summary_prompts import SYSTEM_PROMPT, build_user_prompt
-from app.services.text_utils import get_utc_now
+from app.services.text_utils import get_utc_now, scope_character_id
 
 CONSOLIDATED_REVIEW_STATUS = "consolidated"
 
@@ -201,8 +201,15 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
     )
 
 
-def _list_existing_summary(chat_id: str, character_id: str) -> MemoryItem | None:
+def _list_existing_summary(chat_id: str) -> MemoryItem | None:
     """Find this chat's rolling summary, if it already has one.
+
+    Scoped to the chat, deliberately - one rolling summary per chat, whatever
+    character_id the row happens to carry. The alternative is worse than it sounds:
+    character_id is SillyTavern's array index (see text_utils.scope_character_id), so a
+    chat whose index had shifted would build a second summary over the same episodes and
+    then inject both. Looking the summary up by chat means the next refresh finds the
+    existing row and rewrites it, so a chat that already drifted converges on its own.
 
     Was limited to 50 rows. list_memories orders by updated_at DESC and live chats
     hold 100-414 memories, so an existing summary that hadn't been touched recently
@@ -215,7 +222,8 @@ def _list_existing_summary(chat_id: str, character_id: str) -> MemoryItem | None
         memory
         for memory in list_memories(
             chat_id=chat_id,
-            character_id=character_id,
+            # None, not a character: see the docstring above.
+            character_id=None,
             archived=False,
             limit=CONSOLIDATION_SCAN_LIMIT,
             offset=0,
@@ -250,11 +258,13 @@ def generate_rolling_summary(
     working. A person pressing the button is asking for something now and gets the
     fallback; a background refresh waits instead.
     """
-    existing_summary = _list_existing_summary(chat_id, character_id)
+    existing_summary = _list_existing_summary(chat_id)
 
+    # The same scope as retrieval and as the summary lookup above: a chat whose
+    # character index had shifted was summarizing one fragment of its own episodes.
     episodic_memories = list_memories(
         chat_id=chat_id,
-        character_id=character_id,
+        character_id=scope_character_id(character_id),
         layer="episodic",
         archived=False,
         limit=max(window_size, 1),
