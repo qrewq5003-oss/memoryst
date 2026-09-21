@@ -17,6 +17,35 @@ from app.version import SERVICE_VERSION, get_version_info
 logger = logging.getLogger(__name__)
 
 
+def _configure_app_logging() -> None:
+    """Give the `app.*` loggers somewhere to write.
+
+    uvicorn configures only its own loggers, so everything under `app` propagated to a
+    root logger with no handler and was dropped below WARNING. That is why `logger.info`
+    never appeared in data/server.log while `logger.exception` did - the latter reaches
+    logging's lastResort handler, which starts at WARNING. Found on 2026-09-21 by adding
+    a handshake log line, watching the access log record the request, and finding no log
+    line beside it.
+
+    Deliberately narrow: a handler on `app` rather than `logging.basicConfig`, which
+    configures the root logger and would switch on INFO for every library in the process
+    - httpx logs a line per request, and this backend calls an LLM API per scene.
+    Propagation is off so a root handler added later cannot double every line. The format
+    matches uvicorn's so one file stays readable with one pair of eyes.
+    """
+    app_logger = logging.getLogger("app")
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+    app_logger.propagate = False
+
+
+_configure_app_logging()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Validate security config, snapshot a backup, then initialize the schema.

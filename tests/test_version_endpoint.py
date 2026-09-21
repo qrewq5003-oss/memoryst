@@ -11,6 +11,8 @@ updated backend). It must:
   - not be shadowed by the /memory/{id} catch-all route.
 """
 
+import io
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -110,6 +112,41 @@ class HandshakeBuildReportingTests(_VersionEndpointCase):
         logged = "".join(logs.output)
         self.assertNotIn("A" * 100, logged)
         self.assertIn("A" * 64, logged)
+
+
+class AppLoggingReachesAStreamTests(unittest.TestCase):
+    """`assertLogs` is not evidence that a log line is ever written.
+
+    It installs its own handler for the duration, so it passes against a logger that has
+    none - which is exactly what happened here. uvicorn configures only its own loggers,
+    so `app.*` propagated to a bare root logger and everything below WARNING vanished.
+    The handshake test above was green while data/server.log showed the access-log line
+    and nothing beside it.
+
+    So this asserts the plumbing rather than the message: `app` has a handler of its own,
+    INFO is enabled, and propagation is off so a root handler cannot double the output.
+    """
+
+    def test_app_logger_has_its_own_handler(self) -> None:
+        app_logger = logging.getLogger("app")
+        self.assertTrue(app_logger.handlers, "app logger has no handler; INFO is dropped")
+
+    def test_info_is_enabled_for_a_module_logger(self) -> None:
+        self.assertTrue(logging.getLogger("app.main").isEnabledFor(logging.INFO))
+
+    def test_records_do_not_also_propagate_to_root(self) -> None:
+        self.assertFalse(logging.getLogger("app").propagate)
+
+    def test_an_info_record_actually_reaches_a_stream(self) -> None:
+        # The end-to-end version: write through the real handler chain and read it back.
+        stream = io.StringIO()
+        app_logger = logging.getLogger("app")
+        handler = logging.StreamHandler(stream)
+        app_logger.addHandler(handler)
+        self.addCleanup(app_logger.removeHandler, handler)
+
+        logging.getLogger("app.main").info("handshake probe %s", "abc1234")
+        self.assertIn("abc1234", stream.getvalue())
 
 
 class GitCommitReaderTests(unittest.TestCase):
