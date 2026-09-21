@@ -54,12 +54,28 @@ LATIN_RE = re.compile(r"[a-zA-Z]")
 USER_NAME = "Wanted"
 
 
-def _language(text: str) -> str:
-    cyrillic = len(CYRILLIC_RE.findall(text))
-    latin = len(LATIN_RE.findall(text))
-    if not cyrillic and not latin:
-        return "none"
-    return "ru" if cyrillic > latin else "en"
+def _is_english_memory(text: str) -> bool:
+    """A memory written in English - meaning no Cyrillic in it at all.
+
+    Deliberately stricter than "more Latin than Cyrillic". A fact is one short sentence,
+    and these characters are named in Latin, so counting letters calls "Wanted пришёл на
+    репетицию Paris1893 в Théâtre de l'Odéon" English. Seven correctly-written Russian
+    memories were selected that way on 2026-09-21; re-extracting them would have replaced
+    good facts with different ones and left the run with nothing to converge on.
+
+    A Russian fact contains Russian words. One Cyrillic letter is enough to prove it.
+    """
+    return bool(LATIN_RE.search(text)) and not CYRILLIC_RE.search(text)
+
+
+def _is_russian_scene(text: str) -> bool:
+    """A scene is Russian when most of its letters are.
+
+    The looser test on purpose, and for the same reason the other one is strict: a scene
+    is long, and Latin names inside it do not make it an English scene. Requiring zero
+    Latin here would exclude nearly every chat in this database.
+    """
+    return len(CYRILLIC_RE.findall(text)) > len(LATIN_RE.findall(text))
 
 
 def _collect_scenes() -> dict[tuple, dict]:
@@ -81,7 +97,7 @@ def _collect_scenes() -> dict[tuple, dict]:
 
         scenes: dict[tuple, dict] = {}
         for row in rows:
-            if _language(row["content"]) != "en":
+            if not _is_english_memory(row["content"]):
                 continue
             source_ids = json.loads(row["metadata_json"]).get("source_message_ids") or []
             if not source_ids:
@@ -94,7 +110,7 @@ def _collect_scenes() -> dict[tuple, dict]:
             ).fetchall()
             if not messages:
                 continue
-            if _language(" ".join(m["text"] for m in messages)) != "ru":
+            if not _is_russian_scene(" ".join(m["text"] for m in messages)):
                 continue
 
             key = (row["chat_id"], tuple(m["id"] for m in messages))
