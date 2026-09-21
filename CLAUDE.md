@@ -123,6 +123,10 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
   (`ui.py:ui_export_memories`), иначе резервная копия молча перестанет быть полной.
   Формат версионируется через `EXPORT_SCHEMA_VERSION`; `import_service` обязан читать
   все версии, которые когда-либо писались
+- Пользовательские изменения расширения — поднимать `version` в `manifest.json` **и**
+  `EXTENSION_VERSION` в `version.mjs` (тест держит их в синхроне). Это то, что человек
+  видит в списке расширений ST; `MEMORY_EXTENSION_BUILD` — отдельная, точная метка,
+  которая двигается сама на каждое изменение
 - Менял `sillytavern-extension/` — после коммита прогнать
   `python -m scripts.stamp_extension_build`, затем
   `python -m scripts.publish_extension_branch --push`. Ветка `extension` — это то, что

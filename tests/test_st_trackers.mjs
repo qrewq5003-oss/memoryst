@@ -276,11 +276,19 @@ test('an unavailable tracker endpoint warns in the settings panel, not only in t
     assert.match(errored, /Бэкенд не ответил/);
     assert.match(errored, /Failed to fetch/);
 
-    // The banner has to land inside the Trackers group, next to the knobs it invalidates.
+    // It has to land ABOVE the collapsible drawer, not inside the Trackers group. A
+    // backend that cannot serve trackers leaves that group looking configured while
+    // nothing is injected - which is exactly the case where nobody opens the group to
+    // find out, and the panel is collapsed by default.
     const panel = buildSettingsUiMarkup({}, null, { status: 'unsupported', detail: 'trackers_http_404' });
-    const trackerSection = panel.slice(panel.indexOf('<h4>Trackers</h4>'), panel.indexOf('<h4>Audit</h4>'));
-    assert.match(trackerSection, /data-tracker-status="unsupported"/);
-    assert.match(trackerSection, /data-memory-setting="trackerInjectionEnabled"/);
+    const bannerAt = panel.indexOf('data-tracker-status="unsupported"');
+    const drawerAt = panel.indexOf('inline-drawer-toggle');
+
+    assert.notEqual(bannerAt, -1, 'the panel must carry the warning');
+    assert.notEqual(drawerAt, -1, 'the panel is a collapsible drawer');
+    assert.ok(bannerAt < drawerAt, 'the warning must be visible while the drawer is shut');
+    // The knobs it invalidates are still there, just behind the header.
+    assert.match(panel, /data-memory-setting="trackerInjectionEnabled"/);
 });
 
 test('the tracker banner escapes the backend-supplied failure detail', async () => {
