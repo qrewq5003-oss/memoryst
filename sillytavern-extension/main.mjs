@@ -39,19 +39,19 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=dab9538';
-import { lastUserText, recentMessages } from './chat-history.mjs?v=dab9538';
-import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=dab9538';
+} from './audit.mjs?v=0b26074';
+import { lastUserText, recentMessages } from './chat-history.mjs?v=0b26074';
+import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=0b26074';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=dab9538';
-import { mountSettingsUi } from './settings-ui.mjs?v=dab9538';
-import { resolveEffectiveScope } from './scope.mjs?v=dab9538';
+} from './settings.mjs?v=0b26074';
+import { mountSettingsUi } from './settings-ui.mjs?v=0b26074';
+import { resolveEffectiveScope } from './scope.mjs?v=0b26074';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=dab9538';
+} from './lore-anchors.mjs?v=0b26074';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -59,26 +59,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=dab9538';
+} from './trackers.mjs?v=0b26074';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=dab9538';
+} from './version.mjs?v=0b26074';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=dab9538';
+} from './injection.mjs?v=0b26074';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=dab9538';
+} from './supersede.mjs?v=0b26074';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=dab9538';
+} from './injectors.mjs?v=0b26074';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -89,7 +89,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=dab9538';
+} from './http.mjs?v=0b26074';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
