@@ -1,8 +1,11 @@
+import logging
 import sqlite3
 from pathlib import Path
 
 from app.config import config
 from app.services.text_utils import normalize_for_similarity
+
+logger = logging.getLogger(__name__)
 
 MEMORIES_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS memories (
@@ -369,6 +372,70 @@ def _run_tracker_migration(conn: sqlite3.Connection) -> None:
         raise
 
 
+# The schema this build expects, stamped into PRAGMA user_version once the migrations
+# below have run. Bump it in the same commit that appends to MIGRATIONS.
+SCHEMA_VERSION = 3
+
+# Migrations in order, each with the structural check that decides whether it is needed.
+#
+# The checks stay authoritative rather than being replaced by the version number, because
+# every database that existed before 2026-09-21 reads user_version 0 while already having
+# all of these applied - stamping alone would have been a lie, and trusting the stamp
+# alone would re-run them. So a database at an older version is probed, and one already at
+# SCHEMA_VERSION skips the probing entirely.
+#
+# One-time upgrades only. Anything that has to hold on every start - a DROP INDEX IF
+# EXISTS, say - is an assertion about the schema, not an upgrade to it, and belongs with
+# the CREATE statements in init_schema. Putting one here makes it run once and never
+# again.
+#
+# Numbering is what the version buys: before this, each migration added its own detector
+# and nothing recorded the order they must run in. The summary rebuild has to precede the
+# tracker one, for instance, because it recreates the table from MEMORIES_TABLE_SQL, which
+# already carries 'tracker' - that was a comment, and is now a position in a list.
+MIGRATIONS: tuple[tuple[int, str, object, object], ...] = (
+    (1, "memories.layer gains 'summary'", _needs_summary_migration, _run_summary_migration),
+    (2, "memories.type gains 'tracker'", _needs_tracker_migration, _run_tracker_migration),
+    (
+        3,
+        "chat_messages.normalized_text",
+        _needs_chat_messages_normalized_text_migration,
+        _run_chat_messages_normalized_text_migration,
+    ),
+)
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    cursor = conn.cursor()
+    version = cursor.execute("PRAGMA user_version").fetchone()[0]
+
+    if version > SCHEMA_VERSION:
+        # A database written by a newer build. Every migration here is additive, so
+        # reading it is safe, and refusing to start would lock someone out of their own
+        # memory over a rolled-back commit. Say so loudly instead.
+        logger.warning(
+            "database schema version %s is newer than this build expects (%s); "
+            "continuing, but anything the newer build added is invisible here",
+            version, SCHEMA_VERSION,
+        )
+        return
+
+    if version == SCHEMA_VERSION:
+        return
+
+    for number, _name, needs, run in MIGRATIONS:
+        if number <= version:
+            continue
+        if needs is None or needs(cursor):
+            run(conn)
+            conn.commit()
+
+    # Not parameterised: PRAGMA does not take bound parameters, and the value is an int
+    # literal defined above rather than anything that reaches here from outside.
+    cursor.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
+    conn.commit()
+
+
 def init_schema() -> None:
     """Initialize database schema with memories table and indexes."""
     conn = get_connection()
@@ -380,24 +447,12 @@ def init_schema() -> None:
         _create_chat_messages_table(cursor)
         _create_app_settings_table(cursor)
         _create_memory_embeddings_table(cursor)
-
-        conn.commit()
-
-        if _needs_summary_migration(cursor):
-            _run_summary_migration(conn)
-            conn.commit()
-
-        # No-op on a database the summary migration just rebuilt: it recreates the
-        # table from MEMORIES_TABLE_SQL, which already carries 'tracker'.
-        if _needs_tracker_migration(cursor):
-            _run_tracker_migration(conn)
-            conn.commit()
-
-        if _needs_chat_messages_normalized_text_migration(cursor):
-            _run_chat_messages_normalized_text_migration(conn)
-            conn.commit()
-
+        # The mirror of a CREATE INDEX IF NOT EXISTS above, so it lives here and runs
+        # every start rather than once. See the note on MIGRATIONS.
         _drop_unused_chat_messages_index(cursor)
+
         conn.commit()
+
+        _apply_migrations(conn)
     finally:
         conn.close()
