@@ -155,7 +155,7 @@ function injectionArgs() {
 function setMemoryPrompt(memoryBlock) {
     currentMemoryPromptBlock = memoryBlock || '';
     const { position, depth, scan, role } = injectionArgs();
-    setExtensionPrompt('memory-service', memoryBlock || '', position, depth, scan, role);
+    setExtensionPrompt(MEMORY_PROMPT_KEY, memoryBlock || '', position, depth, scan, role);
 }
 
 function clearMemoryPrompt() {
@@ -233,9 +233,23 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
     record.applied_to_current_turn = anyBlock;
 }
 
+// The key under which this extension's memory block is injected. Named rather than
+// written inline, because the literal it used to be read identically to SETTINGS_KEY
+// below while meaning something entirely different: this one lives in ST's runtime
+// `extension_prompts` object, which is rebuilt from scratch on every load, so renaming
+// it costs nothing. The one below is on disk. Keeping two strings that far apart in
+// consequence spelled the same way is what made the settings key look renameable.
+// `injectors.mjs` excludes this key from the foreign-injector summary, so the two must
+// agree; `TRACKER_PROMPT_KEY` and `LORE_ANCHOR_PROMPT_KEY` are the same idea in their
+// own modules.
+const MEMORY_PROMPT_KEY = 'memoryst';
+
 // The extension was renamed to memoryst everywhere the name is read by a human -
-// the ST panel label, the console prefix, the directory. This key is the one
-// deliberate exception, and it must NOT be "tidied up" to match.
+// the ST panel label, the console prefix, the directory, and as of the CSS classes,
+// DOM ids and prompt keys, everywhere it is read by a machine too. This key is the one
+// deliberate exception, and it must NOT be "tidied up" to match. It is now the only
+// `memory-service` left in the extension, which makes it stand out more, not less:
+// the odd name is the point, and deleting it is the mistake to guard against.
 //
 // It is where SillyTavern persists every configured value plus runtime state:
 // the tuned prompt budget, tracker thresholds, lastTrackerToastAt for every chat,

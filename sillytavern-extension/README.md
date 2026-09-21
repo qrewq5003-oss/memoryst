@@ -49,7 +49,10 @@ publication and only updates when someone runs the publish script.
 
 The extension keeps ST-facing settings grouped logically in storage, under the
 `extension_settings` key `memory-service` (deliberately *not* renamed to match the
-directory — see the comment on `SETTINGS_KEY` in `main.mjs`):
+directory — see the comment on `SETTINGS_KEY` in `main.mjs`). Since the CSS classes,
+DOM ids and extension-prompt keys were all renamed to `memoryst-*`, this is the only
+`memory-service` left anywhere in the extension — which is the point: the odd name is
+load-bearing, not a leftover.
 - `connection`
 - `retrieval`
 - `extraction`
@@ -124,7 +127,7 @@ Character POV Notes). The extension fetches them on chat change and injects the 
 character's trackers when a lorebook entry for that character activates.
 
 Like the anchors above, this rides the World Info activation event - but unlike them it is
-injected under its own extension-prompt key (`memory-service-tracker`) and does **not** pass
+injected under its own extension-prompt key (`memoryst-tracker`) and does **not** pass
 through the memory budget, so a tracker never costs a retrieved memory its slot.
 
 Trackers are never regenerated on mention: whatever the backend last stored is what gets
@@ -412,9 +415,10 @@ This extension uses the following SillyTavern APIs:
 
    Something removed `extension_settings['memory-service']` from
    `data/<user>/settings.json`. That key belongs to **this** extension, even though the
-   directory and the panel are both called `memoryst`. It is the one name here that does
-   not match, so it reads like leftovers from an extension that was uninstalled, and it
-   is the obvious thing to delete when tidying that file by hand.
+   directory, the panel, the CSS classes, the DOM ids and the extension-prompt keys are
+   all `memoryst`. It is the only name here that does not match, so it reads like
+   leftovers from an extension that was uninstalled, and it is the obvious thing to
+   delete when tidying that file by hand.
 
    It is not leftovers, and it is not renamed to match on purpose: nothing derives the
    key from the directory name, so renaming the string would orphan every stored value

@@ -14,7 +14,7 @@ import {
 } from './http.mjs?v=e147550';
 import { resolveStableCharacterId } from './scope.mjs?v=e147550';
 
-export const TRACKER_PROMPT_KEY = 'memory-service-tracker';
+export const TRACKER_PROMPT_KEY = 'memoryst-tracker';
 
 export const TRACKER_TYPES = ['timeline', 'relationship', 'npc_whoswho', 'character_pov_notes'];
 

@@ -270,7 +270,7 @@ test('an unavailable tracker endpoint warns in the settings panel, not only in t
     assert.match(unsupported, /Трекеры недоступны/);
     assert.match(unsupported, /не поддерживает эту функцию/);
     assert.match(unsupported, /data-tracker-status="unsupported"/);
-    assert.match(unsupported, /memory-service-compat-banner/, 'reuses the mismatch banner styling');
+    assert.match(unsupported, /memoryst-compat-banner/, 'reuses the mismatch banner styling');
 
     const errored = buildTrackerStatusBannerMarkup({ status: 'error', detail: 'Failed to fetch' });
     assert.match(errored, /Бэкенд не ответил/);

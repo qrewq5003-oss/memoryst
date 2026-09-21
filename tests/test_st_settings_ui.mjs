@@ -76,8 +76,8 @@ class FakeElement {
     }
 
     querySelector(selector) {
-        if (selector === '#memory-service-settings-panel') {
-            return this.children.find(child => child.id === 'memory-service-settings-panel') || null;
+        if (selector === '#memoryst-settings-panel') {
+            return this.children.find(child => child.id === 'memoryst-settings-panel') || null;
         }
 
         if (selector.startsWith('[data-memory-setting="')) {
@@ -140,7 +140,7 @@ test('renderSettingsUi mounts and persists field changes through callbacks', () 
     });
 
     assert.equal(rendered, true);
-    const panel = document.host.querySelector('#memory-service-settings-panel');
+    const panel = document.host.querySelector('#memoryst-settings-panel');
     assert.ok(panel);
 
     const enabledInput = panel.querySelector('[data-memory-setting="enabled"]');
@@ -169,8 +169,8 @@ test('baseline button uses recommended long-chat settings', () => {
         fetchImpl: rejectingFetch,
     });
 
-    const panel = document.host.querySelector('#memory-service-settings-panel');
-    const baselineButton = panel.querySelector('#memory-service-apply-baseline');
+    const panel = document.host.querySelector('#memoryst-settings-panel');
+    const baselineButton = panel.querySelector('#memoryst-apply-baseline');
     baselineButton.dispatch('click');
 
     assert.equal(applied.length, 1);
@@ -281,9 +281,9 @@ test('renderSettingsUi wires the Scene Extraction Model select+Confirm to the sa
     // Eager load on mount happens async - let the microtask queue drain.
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    const panel = document.host.querySelector('#memory-service-settings-panel');
-    const select = panel.querySelector('#memory-service-scene-extraction-model');
-    const confirmBtn = panel.querySelector('#memory-service-scene-extraction-save');
+    const panel = document.host.querySelector('#memoryst-settings-panel');
+    const select = panel.querySelector('#memoryst-scene-extraction-model');
+    const confirmBtn = panel.querySelector('#memoryst-scene-extraction-save');
     assert.ok(select);
     assert.ok(confirmBtn);
     assert.match(select.innerHTML, /zai-org\/glm-4\.7/);

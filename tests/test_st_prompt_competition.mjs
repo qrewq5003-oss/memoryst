@@ -15,7 +15,7 @@ function prompt(value, extra = {}) {
 
 test('ours and theirs are counted apart', () => {
     const summary = summarizeForeignInjectors({
-        'memory-service': prompt('x'.repeat(525)),
+        'memoryst': prompt('x'.repeat(525)),
         '3_vectors': prompt('y'.repeat(3047)),
         '4_vectors_data_bank': prompt('z'.repeat(14544)),
     });
@@ -29,7 +29,7 @@ test('ours and theirs are counted apart', () => {
 test('own_share is the number the exercise is about', () => {
     // Measured at under 2% in August; the field exists so nobody has to derive it again.
     const summary = summarizeForeignInjectors({
-        'memory-service': prompt('x'.repeat(525)),
+        'memoryst': prompt('x'.repeat(525)),
         '4_vectors_data_bank': prompt('z'.repeat(29075)),
     });
     assert.ok(summary.own_share < 0.02, `expected under 2%, got ${summary.own_share}`);
@@ -52,7 +52,7 @@ test('empty prompts are not reported as competitors', () => {
     const summary = summarizeForeignInjectors({
         '1_memory': prompt(''),
         '3_vectors': prompt(''),
-        'memory-service': prompt(''),
+        'memoryst': prompt(''),
         'DEPTH_PROMPT': prompt('real'),
     });
     assert.equal(summary.foreign_count, 1);

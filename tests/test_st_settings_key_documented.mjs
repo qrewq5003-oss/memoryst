@@ -74,3 +74,46 @@ test('the README explains the mismatch rather than only stating it', () => {
     // A bare "the key is memory-service" invites the rename it is there to prevent.
     assert.match(README, /SETTINGS_KEY/);
 });
+
+/**
+ * After the 2026-09-21 rename, `memory-service` survives as the settings key and nothing
+ * else: the CSS classes, DOM ids and extension-prompt keys are all `memoryst-*`. Those
+ * were safe to move because none of them is persisted - ST rebuilds `extension_prompts`
+ * from scratch on every load and classes live only in the DOM - whereas the settings key
+ * is on disk.
+ *
+ * The rename makes the remaining name rarer, which cuts both ways: it is easier to spot
+ * as deliberate, and easier to "finish the job" on. These tests are the second half of
+ * that trade - a prefixed identifier creeping back in is caught here rather than in a
+ * stylesheet that silently stops matching.
+ */
+test('no memory-service-prefixed identifiers are left in the extension', () => {
+    for (const [name, source] of [['main.mjs', MAIN], ['settings-ui.mjs', PANEL]]) {
+        const stragglers = source.match(/memory-service-[a-z-]+/g) ?? [];
+        assert.deepEqual(stragglers, [], `${name} still has prefixed identifiers`);
+    }
+});
+
+test('main.mjs mentions memory-service only for the settings key', () => {
+    // Line-by-line rather than by count: a new *use* must fail, a new sentence of
+    // explanation must not.
+    const offenders = MAIN.split('\n').filter(
+        line => line.includes('memory-service')
+            && !line.trimStart().startsWith('//')
+            && !line.includes('const SETTINGS_KEY'),
+    );
+    assert.deepEqual(offenders, [], 'memory-service is used somewhere other than SETTINGS_KEY');
+});
+
+test('the memory block injects under its own named key, distinct from the settings key', () => {
+    const promptKey = MAIN.match(/const MEMORY_PROMPT_KEY = '([^']+)'/)?.[1];
+    assert.ok(promptKey, 'MEMORY_PROMPT_KEY is no longer a named constant');
+    assert.notEqual(promptKey, SETTINGS_KEY);
+    // injectors.mjs subtracts our own keys before summarising foreign injectors; if it
+    // falls out of step, memoryst reports itself as competition in every audit record.
+    const injectors = read('sillytavern-extension/injectors.mjs');
+    assert.ok(
+        injectors.includes(`'${promptKey}'`),
+        `injectors.mjs does not list '${promptKey}' as one of our own prompt keys`,
+    );
+});
