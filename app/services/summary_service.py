@@ -12,8 +12,8 @@ from app.services.conflict_resolver import (
     format_conflict_resolution_notes,
 )
 from app.services.llm_client import chat_completion, is_llm_enabled
-from app.services.summary_prompts import SYSTEM_PROMPT, build_user_prompt
-from app.services.text_utils import get_utc_now, scope_character_id
+from app.services.summary_prompts import build_system_prompt, build_user_prompt
+from app.services.text_utils import dominant_language, get_utc_now, scope_character_id
 
 CONSOLIDATED_REVIEW_STATUS = "consolidated"
 
@@ -159,8 +159,13 @@ def build_llm_summary_text(memories: list[MemoryItem], conflict_notes: str = "")
         excerpts.append(f"- [{memory.type}] {memory.content}")
     memories_text = "\n".join(excerpts)
 
+    # The language is decided here and named in the prompt, not left to the model to
+    # infer from the excerpts. These chats mix alphabets - the roleplay is Russian, the
+    # character names and some quoted lines are Latin - and on 2026-09-21 four summaries
+    # came back in English from windows that were 6:2, 5:3 and 4:4 Russian to English.
+    language = dominant_language(memories_text)
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": build_system_prompt(language)},
         {"role": "user", "content": build_user_prompt(memories_text, conflict_notes)},
     ]
 

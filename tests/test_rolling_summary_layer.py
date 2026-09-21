@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from app.config import config
@@ -388,3 +389,63 @@ class RollingSummaryLayerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SummaryLanguageTests(unittest.TestCase):
+    """The summary language is decided here, not inferred by the model.
+
+    These chats mix alphabets: the roleplay is Russian, the character names and some
+    quoted lines are Latin. "Write in the same language as the input" is not an
+    instruction a model can follow on that, and on 2026-09-21 four summaries came back in
+    English from windows that were 6:2, 5:3 and 4:4 Russian to English. The rule is now
+    stated last and names the language outright - the same fix this project needed once
+    before, when a correct-looking prompt flipped extraction to English.
+    """
+
+    def test_a_mixed_window_that_is_mostly_russian_is_called_russian(self) -> None:
+        from app.services.text_utils import dominant_language
+
+        self.assertEqual(
+            dominant_language("Валерия напоминает Wanted о его обещании пойти в спортзал"),
+            "Russian",
+        )
+
+    def test_a_mostly_latin_window_is_called_english(self) -> None:
+        from app.services.text_utils import dominant_language
+
+        self.assertEqual(dominant_language("Valeria cooked arepas in Wanted's shirt"), "English")
+
+    def test_the_prompt_names_the_language_and_says_it_last(self) -> None:
+        from app.services.summary_prompts import build_system_prompt
+
+        prompt = build_system_prompt("Russian")
+        self.assertNotIn("{language}", prompt)
+        self.assertIn("write the entire reply in Russian", prompt)
+        # Last, not first. The old prompt put the language rule at the top of the list
+        # and a loud character-limit rule between it and the generation.
+        self.assertGreater(prompt.index("LANGUAGE:"), prompt.index("under 1200 characters"))
+
+    def test_the_language_reaches_the_model(self) -> None:
+        from app.schemas import MemoryItem, MemoryMetadata
+        from app.services import summary_service
+
+        memory = MemoryItem(
+            id="m1", chat_id="c", character_id="x", type="event",
+            content="Валерия солгала маме, что уезжает по работе",
+            normalized_content="", source="auto", layer="episodic", importance=0.5,
+            created_at="2026-09-21T00:00:00+00:00", updated_at="2026-09-21T00:00:00+00:00",
+            last_accessed_at=None, access_count=0, pinned=False, archived=False,
+            metadata=MemoryMetadata(),
+        )
+
+        captured = {}
+
+        def fake_chat_completion(messages, **kwargs):
+            captured["system"] = messages[0]["content"]
+            return "## Chronology\nТекст."
+
+        with patch.object(summary_service, "is_llm_enabled", return_value=True), \
+             patch.object(summary_service, "chat_completion", side_effect=fake_chat_completion):
+            summary_service.build_llm_summary_text([memory])
+
+        self.assertIn("write the entire reply in Russian", captured["system"])

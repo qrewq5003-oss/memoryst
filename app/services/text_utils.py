@@ -208,3 +208,20 @@ def scope_character_id(character_id: str | None) -> str | None:
     with one explanation, and so the call sites still say what they are scoping.
     """
     return None
+
+
+CYRILLIC_RE = re.compile(r"[а-яА-ЯёЁ]")
+LATIN_RE = re.compile(r"[a-zA-Z]")
+
+
+def dominant_language(text: str) -> str:
+    """"Russian" or "English", by which alphabet carries more of the text.
+
+    Crude on purpose. It exists because "write in the same language as the input" is not
+    an instruction a model can follow when the input is half and half - and this chat
+    data is exactly that: the roleplay is Russian, but names, place names and whole
+    quoted lines are Latin. Measured on 2026-09-21: four summaries came back in English
+    from windows that were 6:2, 5:3 and 4:4 Russian to English. Naming the language
+    outright takes the judgement away from the model.
+    """
+    return "Russian" if len(CYRILLIC_RE.findall(text)) >= len(LATIN_RE.findall(text)) else "English"

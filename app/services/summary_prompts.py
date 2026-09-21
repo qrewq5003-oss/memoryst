@@ -1,3 +1,5 @@
+SUMMARY_LANGUAGE_PLACEHOLDER = "{language}"
+
 SYSTEM_PROMPT = """You are analyzing a fragment of a roleplay conversation. Update long-term memory with a structured summary.
 
 Write exactly three sections:
@@ -12,11 +14,26 @@ How did the characters' relationship change? Trust, resentment, flirtation, tens
 What emotions did characters hide? What atmosphere dominates the scene? What unspoken tensions exist?
 
 Rules:
-- Write in the same language as the input (Russian or English)
 - Be concise — max 150 words total
 - ВАЖНО / IMPORTANT: your entire reply, all three sections combined, MUST be under 1200 characters total (not words — characters, including spaces and headers). This is a hard limit. Count as you write, and stop before you reach it even if a section feels unfinished. A reply over 1200 characters will be rejected.
 - Focus on what changed, not what stayed the same
-- If a section has no relevant info, write "No significant changes.\""""
+- If a section has no relevant info, write "No significant changes."
+
+LANGUAGE: write the entire reply in {language}. This applies to all three sections
+and overrides the language of these instructions and of the section headings above.
+The input mixes alphabets - names and quoted lines may be in another language - and
+that does not change the language you write in."""
+
+
+def build_system_prompt(language: str) -> str:
+    """The system prompt with the output language named outright.
+
+    Named rather than inferred, and stated last: this project has already watched a
+    correct-looking prompt flip extraction to English, and the fix both times was to put
+    the language requirement after every other rule rather than before them. Here the
+    loud character-limit rule sat between the old language line and the generation.
+    """
+    return SYSTEM_PROMPT.replace(SUMMARY_LANGUAGE_PLACEHOLDER, language)
 
 
 def build_user_prompt(memories_text: str, conflict_notes: str = "") -> str:
