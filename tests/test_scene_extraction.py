@@ -495,3 +495,68 @@ class SceneExtractionTimeoutTests(unittest.TestCase):
         self.assertEqual(
             completion.call_args.kwargs["timeout"], config.SCENE_LLM_TIMEOUT
         )
+
+
+class ExtractionLanguageTests(unittest.TestCase):
+    """The fact language is decided from the scene, not inferred by the model.
+
+    The prompt already said "write in the SAME LANGUAGE as the input" and restated it at
+    the end - but only inside the names block, which is appended only when the caller
+    knows who the participants are. A scene without them ended on "return an empty facts
+    list", leaving the language rule at the top of the list, five rules and a schema away
+    from the generation.
+
+    Measured over data/memory.db on 2026-09-21: 170 of the 2603 memories whose source
+    messages are still on disk were written in English from Russian scenes. A fact in the
+    wrong language cannot match a query's keywords, so those are stored and unreachable.
+    """
+
+    def test_the_prompt_names_the_language_rather_than_asking_for_a_judgement(self) -> None:
+        from app.services.llm_extractor import build_scene_facts_prompt
+
+        prompt = build_scene_facts_prompt("Алина", "Wanted", language="Russian")
+        self.assertNotIn("{language}", prompt)
+        self.assertIn("must be written in Russian", prompt)
+
+    def test_the_language_rule_is_last_even_without_participant_names(self) -> None:
+        from app.services.llm_extractor import build_scene_facts_prompt
+
+        prompt = build_scene_facts_prompt(language="Russian")
+        self.assertGreater(prompt.index("LANGUAGE,"), prompt.index("return an empty"))
+        self.assertTrue(prompt.rstrip().endswith("language you write in."))
+
+    def test_the_language_rule_is_still_last_with_names(self) -> None:
+        from app.services.llm_extractor import build_scene_facts_prompt
+
+        prompt = build_scene_facts_prompt("Алина", "Wanted", language="Russian")
+        self.assertGreater(prompt.index("LANGUAGE,"), prompt.index("The participants are"))
+        self.assertTrue(prompt.rstrip().endswith("language you write in."))
+
+    def test_a_caller_with_no_scene_keeps_the_old_wording(self) -> None:
+        from app.services.llm_extractor import build_scene_facts_prompt
+
+        self.assertIn("the same language as the scene", build_scene_facts_prompt())
+
+    def test_the_detected_language_reaches_the_model(self) -> None:
+        from app.schemas import ChatMessageItem
+        from app.services import llm_extractor
+
+        messages = [
+            ChatMessageItem(
+                id="m0", chat_id="c", character_id="x", role="user",
+                text="*Wanted обнимает Valeria* Ты обещала сходить со мной в зал завтра.",
+                created_at="2026-09-21T00:00:00+00:00", sequence_index=0,
+            )
+        ]
+        captured = {}
+
+        def fake_chat_completion(llm_messages, **kwargs):
+            captured["system"] = llm_messages[0]["content"]
+            return '{"facts": []}'
+
+        with patch.object(llm_extractor, "is_llm_enabled", return_value=True), \
+             patch.object(llm_extractor, "chat_completion", side_effect=fake_chat_completion):
+            llm_extractor.extract_scene_facts(messages, character_name="Valeria", user_name="Wanted")
+
+        # A Latin name in a Russian line must not tip the scene into English.
+        self.assertIn("must be written in Russian", captured["system"])

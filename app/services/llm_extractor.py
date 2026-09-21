@@ -5,7 +5,7 @@ import traceback
 from app.config import config
 from app.schemas import ChatMessageItem
 from app.services.llm_client import chat_completion, is_llm_enabled
-from app.services.text_utils import clean_memory_text
+from app.services.text_utils import clean_memory_text, dominant_language
 
 EXTRACTION_PROMPT = """You are a memory extraction system for a roleplay conversation.
 
@@ -100,8 +100,7 @@ For each fact, list the indices (the N in "[N]") of every message that fact was
 drawn from, in "source_message_indices".
 
 Rules:
-- Write each fact's content in the SAME LANGUAGE as the input (Russian if Russian,
-  English if English).
+- Write each fact's content in {language}.
 - Skip small talk, greetings, and questions that weren't answered in the scene.
 - "type" must be one of: profile, relationship, event.
 - "layer" must be "stable" for durable facts (who someone is, an ongoing
@@ -131,20 +130,44 @@ SCENE_FACTS_NAMES_TEMPLATE = """
   ("девушка", "пользователь", "the girl", "the user"), even when the scene does not
   say the name aloud. Use the form of the name that fits the language of the fact.
 - Repeating the first rule because it outranks the one above: each fact's "content"
-  MUST be in the SAME LANGUAGE as the scene. A Russian scene produces Russian facts,
-  whatever language these instructions are written in."""
+  MUST be in {language}, whatever language these instructions are written in."""
+
+# Always the last thing the model reads, names known or not.
+#
+# The restatement used to live only in the names block, which is appended only when the
+# caller knows who the participants are - so a scene without them ended on "return an
+# empty facts list" and the language rule was left sitting at the top of the list, five
+# rules and a schema away from the generation. Measured over data/memory.db on
+# 2026-09-21: 170 of 2603 memories whose source messages are still on disk were written
+# in English from Russian scenes. A fact in the wrong language cannot match a query's
+# keywords, so those 170 are stored and unreachable.
+SCENE_FACTS_LANGUAGE_TEMPLATE = """
+- LANGUAGE, last because it outranks everything above: every fact's "content",
+  "keywords" and "entities" must be written in {language}. The scene mixes alphabets -
+  names and quoted lines may be in another language - and that does not change the
+  language you write in."""
 
 
 def build_scene_facts_prompt(
-    character_name: str | None = None, user_name: str | None = None
+    character_name: str | None = None,
+    user_name: str | None = None,
+    language: str = "the same language as the scene",
 ) -> str:
-    """Scene extraction prompt, naming the participants when they are known."""
-    if not character_name and not user_name:
-        return SCENE_FACTS_PROMPT
-    return SCENE_FACTS_PROMPT + SCENE_FACTS_NAMES_TEMPLATE.format(
-        character_name=character_name or "unknown",
-        user_name=user_name or "unknown",
-    )
+    """Scene extraction prompt, naming the participants and the output language.
+
+    `language` is decided by the caller from the scene text rather than inferred by the
+    model: these scenes mix alphabets, so "the same language as the input" is not a
+    question with one answer. The default keeps the old wording for callers that have no
+    scene to measure.
+    """
+    prompt = SCENE_FACTS_PROMPT.format(language=language)
+    if character_name or user_name:
+        prompt += SCENE_FACTS_NAMES_TEMPLATE.format(
+            character_name=character_name or "unknown",
+            user_name=user_name or "unknown",
+            language=language,
+        )
+    return prompt + SCENE_FACTS_LANGUAGE_TEMPLATE.format(language=language)
 
 SCENE_FACTS_SCHEMA = {
     "name": "scene_fact_extraction",
@@ -290,7 +313,11 @@ def extract_scene_facts(
     llm_messages = [
         {
             "role": "system",
-            "content": build_scene_facts_prompt(character_name, user_name),
+            "content": build_scene_facts_prompt(
+                character_name,
+                user_name,
+                language=dominant_language(scene_text),
+            ),
         },
         {"role": "user", "content": f"Scene to analyze:\n\n{scene_text}"},
     ]
