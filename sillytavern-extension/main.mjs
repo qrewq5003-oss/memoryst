@@ -39,17 +39,17 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=eebabad';
+} from './audit.mjs?v=7210b3a';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=eebabad';
-import { mountSettingsUi } from './settings-ui.mjs?v=eebabad';
-import { resolveEffectiveScope } from './scope.mjs?v=eebabad';
+} from './settings.mjs?v=7210b3a';
+import { mountSettingsUi } from './settings-ui.mjs?v=7210b3a';
+import { resolveEffectiveScope } from './scope.mjs?v=7210b3a';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=eebabad';
+} from './lore-anchors.mjs?v=7210b3a';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -57,26 +57,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=eebabad';
+} from './trackers.mjs?v=7210b3a';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=eebabad';
+} from './version.mjs?v=7210b3a';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=eebabad';
+} from './injection.mjs?v=7210b3a';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=eebabad';
+} from './supersede.mjs?v=7210b3a';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=eebabad';
+} from './injectors.mjs?v=7210b3a';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -87,7 +87,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=eebabad';
+} from './http.mjs?v=7210b3a';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -747,7 +747,7 @@ function getAlwaysInjectMatches() {
     const roster = getCharacterRoster();
     return [{
         characterId: String(chatContext.characterId),
-        characterName: roster[Number(chatContext.characterId)]?.name || null,
+        characterName: chatContext.characterName || null,
         source: 'always',
         entryIds: [],
     }];
@@ -822,7 +822,7 @@ function injectTrackersFor(entries = []) {
         entries,
         characters: roster,
         currentCharacterId: chatContext?.characterId || null,
-        currentCharacterName: roster[Number(chatContext?.characterId)]?.name || null,
+        currentCharacterName: chatContext?.characterName || null,
         isGroupChat: Boolean(chatContext?.groupId),
     });
     const unresolved = resolved.unresolved;
@@ -898,7 +898,7 @@ function notifyStaleTrackers(storeResult) {
     const chatContext = getChatContext();
     const characterId = chatContext?.characterId || null;
     const roster = getCharacterRoster();
-    const characterName = roster[Number(characterId)]?.name || null;
+    const characterName = chatContext?.characterName || null;
 
     const { toasts, lastTrackerToastAt } = evaluateTrackerToasts({
         trackers,

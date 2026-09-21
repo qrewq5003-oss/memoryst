@@ -13,9 +13,9 @@ import {
 } from '../sillytavern-extension/trackers.mjs';
 
 const CHARACTERS = [
-    { name: 'Маркус' },
-    { name: 'Алиса' },
-    { name: 'Валерия' },
+    { name: 'Маркус', avatar: 'Markus.png' },
+    { name: 'Алиса', avatar: 'Alisa.png' },
+    { name: 'Валерия', avatar: 'Valeria.png' },
 ];
 
 test('explicit @memory-tracker marker wins over the entry name and the fallback', () => {
@@ -25,7 +25,7 @@ test('explicit @memory-tracker marker wins over the entry name and the fallback'
         currentCharacterId: '0',
     });
 
-    assert.deepEqual(matches.map(m => [m.characterId, m.characterName, m.source]), [['2', 'Валерия', 'marker']]);
+    assert.deepEqual(matches.map(m => [m.characterId, m.characterName, m.source]), [['Valeria.png', 'Валерия', 'marker']]);
 });
 
 test('a numeric marker is already a character_id', () => {
@@ -50,7 +50,7 @@ test('name matching honours Cyrillic word boundaries and reads the entry keys', 
         isGroupChat: true,
     });
 
-    assert.deepEqual(matches.map(m => m.characterId), ['2']);
+    assert.deepEqual(matches.map(m => m.characterId), ['Valeria.png']);
 });
 
 test('an unmatched entry falls back to the current character in a solo chat only', () => {
@@ -334,12 +334,12 @@ test('an unresolvable marker must not suppress the other branches', () => {
 test('a marker matches a partial name rather than demanding the full card name', () => {
     const { matches } = resolveTrackerCharacterIds({
         entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
-        characters: [{ name: 'Маркус' }, { name: 'Валерия Мендоса' }],
+        characters: [{ name: 'Маркус', avatar: 'Markus.png' }, { name: 'Валерия Мендоса', avatar: 'ValeriaMendoza.png' }],
         currentCharacterId: '0',
     });
 
     assert.deepEqual(matches.map(m => [m.characterId, m.characterName, m.source]), [
-        ['1', 'Валерия Мендоса', 'marker'],
+        ['ValeriaMendoza.png', 'Валерия Мендоса', 'marker'],
     ]);
 });
 
@@ -368,7 +368,11 @@ test('the strongest resolution wins regardless of lorebook entry order', () => {
             { uid: 'marked', comment: '001 - Массаж @memory-tracker: Валерия' },
         ],
         characters: CHARACTERS,
-        currentCharacterId: '2',
+        // The scope now hands over the stable id, not the array position - so the
+        // marker's name lookup and the fallback resolve to the same character instead of
+        // to two, which is what kept this regression alive in the first place.
+        currentCharacterId: 'Valeria.png',
+        currentCharacterName: 'Валерия',
         isGroupChat: false,
     });
 
@@ -384,7 +388,7 @@ test('a marker naming the current character takes the id from the chat scope, no
     // exist, making the marker worse than useless. The scope's id is authoritative.
     const { matches } = resolveTrackerCharacterIds({
         entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
-        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        characters: [{ name: 'Маркус', avatar: 'Markus.png' }, { name: 'Валерия', avatar: 'Valeria.png' }],
         currentCharacterId: '20',
         currentCharacterName: 'Валерия',
         isGroupChat: false,
@@ -395,16 +399,16 @@ test('a marker naming the current character takes the id from the chat scope, no
     ]);
 });
 
-test('other characters still resolve by roster index', () => {
+test('other characters resolve to their own stable id, not their position', () => {
     const { matches } = resolveTrackerCharacterIds({
         entries: [{ uid: 'e1', comment: '@memory-tracker: Маркус' }],
-        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        characters: [{ name: 'Маркус', avatar: 'Markus.png' }, { name: 'Валерия', avatar: 'Valeria.png' }],
         currentCharacterId: '20',
         currentCharacterName: 'Валерия',
         isGroupChat: true,
     });
 
-    assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['0', 'marker']]);
+    assert.deepEqual(matches.map(m => [m.characterId, m.source]), [['Markus.png', 'marker']]);
 });
 
 test('the current character is injected on its own, with no lorebook activation at all', () => {
@@ -422,7 +426,7 @@ test('a lorebook match upgrades how the current character was resolved, never dr
     const always = [{ characterId: '20', characterName: null, source: 'always', entryIds: [] }];
     const { matches } = resolveTrackerCharacterIds({
         entries: [{ uid: 'e1', comment: '@memory-tracker: Валерия' }],
-        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        characters: [{ name: 'Маркус', avatar: 'Markus.png' }, { name: 'Валерия', avatar: 'Valeria.png' }],
         currentCharacterId: '20',
         currentCharacterName: 'Валерия',
         isGroupChat: false,
@@ -441,7 +445,7 @@ test('a lorebook entry about a secondary character adds them alongside the curre
     const always = [{ characterId: '20', characterName: 'Валерия', source: 'always', entryIds: [] }];
     const { matches } = resolveTrackerCharacterIds({
         entries: [{ uid: 'e1', comment: 'Досье @memory-tracker: Маркус' }],
-        characters: [{ name: 'Маркус' }, { name: 'Валерия' }],
+        characters: [{ name: 'Маркус', avatar: 'Markus.png' }, { name: 'Валерия', avatar: 'Valeria.png' }],
         currentCharacterId: '20',
         currentCharacterName: 'Валерия',
         isGroupChat: true,
@@ -451,6 +455,6 @@ test('a lorebook entry about a secondary character adds them alongside the curre
 
     assert.deepEqual(
         merged.map(m => [m.characterId, m.source]).sort(),
-        [['0', 'marker'], ['20', 'always']],
+        [['20', 'always'], ['Markus.png', 'marker']].sort(),
     );
 });

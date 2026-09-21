@@ -11,7 +11,8 @@
 import {
     DEFAULT_TRACKERS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=eebabad';
+} from './http.mjs?v=7210b3a';
+import { resolveStableCharacterId } from './scope.mjs?v=7210b3a';
 
 export const TRACKER_PROMPT_KEY = 'memory-service-tracker';
 
@@ -97,8 +98,9 @@ function containsName(haystack, name) {
 }
 
 /**
- * name -> SillyTavern character index, as a string, because memoryst's character_id is
- * that index stringified (see scope.mjs). Longest names first so "Валерия Ким" wins over
+ * name -> the character's stable id (its avatar filename, see scope.mjs). It used to map
+ * to the array position, which is what made a tracker follow whichever card happened to
+ * sit at that index after a reorder. Longest names first so "Валерия Ким" wins over
  * "Валерия" when both exist.
  */
 export function buildCharacterNameIndex(characters = [], currentCharacterId = null, currentCharacterName = null) {
@@ -114,7 +116,9 @@ export function buildCharacterNameIndex(characters = [], currentCharacterId = nu
         const isCurrent = currentName && foldCase(name) === foldCase(currentName);
         byName.push({
             name,
-            characterId: isCurrent && currentCharacterId ? String(currentCharacterId) : String(index),
+            characterId: isCurrent && currentCharacterId
+                ? String(currentCharacterId)
+                : resolveStableCharacterId(characters, index),
         });
     });
 
@@ -139,10 +143,16 @@ function resolveMarker(entry, nameIndex) {
         return null;
     }
 
-    // "@memory-tracker: 20" is already a character_id; anything else is a name to look up.
+    // A marker may name the character directly by id - "@memory-tracker: Alina.png", or
+    // the bare array index that older lorebooks were written against. Both are matched
+    // against the resolved index rather than assumed, so a stale numeric marker resolves
+    // to whoever that position holds now instead of being trusted blindly.
+    const known = nameIndex.find(candidate => candidate.characterId === token);
+    if (known) {
+        return { characterId: known.characterId, characterName: known.name || null, source: 'marker' };
+    }
     if (/^\d+$/.test(token)) {
-        const known = nameIndex.find(candidate => candidate.characterId === token);
-        return { characterId: token, characterName: known?.name || null, source: 'marker' };
+        return { characterId: token, characterName: null, source: 'marker' };
     }
 
     const exact = nameIndex.find(candidate => foldCase(candidate.name) === foldCase(token));
