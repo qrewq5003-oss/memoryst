@@ -288,6 +288,32 @@ def _get_layer(
     return "stable"
 
 
+# A stage direction: *он приподнимает бровь*, *Valeria hears the door open*. Paired
+# asterisks, with something between them - a stray asterisk is not a stage direction.
+STAGE_DIRECTION_RE = re.compile(r"\*[^*\n]{3,}\*")
+
+
+def is_roleplay_prose(text: str) -> bool:
+    """Is this a line of roleplay rather than a statement of fact?
+
+    This path stores the source line close to verbatim - it has no model to summarise
+    with - so a roleplay line becomes a "memory" that is really a quotation. Retrieval
+    then feeds the scene back to the model to re-narrate, in the speaker's own voice.
+
+    Measured over data/memory.db on 2026-09-21: 108 memories carry stage directions,
+    and of the 90 whose text could be traced back to a message, 63 came from the user's
+    own messages and 27 from the character's. Both halves are the same defect - a
+    verbatim line is not a fact, whoever said it - so this filters on the shape of the
+    text rather than on who wrote it.
+
+    Stage directions are the signal because they are unambiguous and cheap: in this
+    database 79% of the user's messages carry them, and no test fixture does. Plain
+    declarative messages from either party are untouched, which is what keeps the
+    extractor useful when the LLM path is unavailable and this one is all there is.
+    """
+    return bool(STAGE_DIRECTION_RE.search(text))
+
+
 def _is_meaningful(text: str) -> bool:
     """Check if text is meaningful enough to store."""
     if len(text.strip()) < 10:
@@ -346,6 +372,11 @@ def extract_memories(
         text = clean_memory_text(msg.text)
 
         if not _is_meaningful(text):
+            continue
+
+        # Applies to both roles and both modes: the character's prose is quotation just
+        # as much as the persona's, and 27 of the traced-back memories came from it.
+        if is_roleplay_prose(text):
             continue
 
         if mode == "backfill":

@@ -287,3 +287,86 @@ class StoreQualityGuardrailsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RoleplayProseTests(unittest.TestCase):
+    """A verbatim roleplay line is a quotation, not a fact.
+
+    The rule-based path has no model to summarise with - it stores the source line close
+    to verbatim - so a line of roleplay became a "memory" that was really a quote, and
+    retrieval fed the scene back to the model to re-narrate in the speaker's own voice.
+
+    Measured over data/memory.db on 2026-09-21: 108 memories carry stage directions. Of
+    the 90 whose text could be traced back to a message, 63 came from the user's own
+    messages and 27 from the character's - the same defect on both sides, which is why
+    this filters on the shape of the text rather than on who wrote it.
+    """
+
+    def test_a_line_with_a_stage_direction_is_prose(self) -> None:
+        from app.services.extractor import is_roleplay_prose
+
+        self.assertTrue(is_roleplay_prose("*мягко, спокойно* все зависит от обстоятельств"))
+
+    def test_the_characters_prose_counts_too(self) -> None:
+        # 27 of the traced memories came from assistant messages. Filtering only the
+        # persona would have left those.
+        from app.services.extractor import is_roleplay_prose
+
+        self.assertTrue(is_roleplay_prose("*Valeria hears the apartment door open*"))
+
+    def test_a_plain_statement_is_not_prose(self) -> None:
+        from app.services.extractor import is_roleplay_prose
+
+        for text in ("Меня зовут Марк, я живу в Казани", "Алина работает ветеринаром"):
+            self.assertFalse(is_roleplay_prose(text))
+
+    def test_a_stray_asterisk_is_not_a_stage_direction(self) -> None:
+        from app.services.extractor import is_roleplay_prose
+
+        for text in ("Он сказал 5*5 это 25", "Алина работает ветеринаром*", "**"):
+            self.assertFalse(is_roleplay_prose(text))
+
+    def test_the_extractor_skips_a_roleplay_line(self) -> None:
+        from app.schemas import MessageInput
+        from app.services.extractor import extract_memories
+
+        candidates = extract_memories(
+            chat_id="c",
+            character_id="x",
+            messages=[
+                MessageInput(
+                    role="user",
+                    text="*мягко, спокойно* все зависит от обстоятельств и от людей вокруг меня",
+                )
+            ],
+        )
+        self.assertEqual(candidates, [])
+
+    def test_the_extractor_still_reads_a_plain_statement(self) -> None:
+        # The path has to stay useful: it is all there is when the LLM is unavailable.
+        from app.schemas import MessageInput
+        from app.services.extractor import extract_memories
+
+        candidates = extract_memories(
+            chat_id="c",
+            character_id="x",
+            messages=[MessageInput(role="user", text="Алина работает ветеринаром в клинике")],
+        )
+        self.assertTrue(candidates, "a plain declarative line must still be extracted")
+
+    def test_the_same_line_with_a_stage_direction_is_skipped(self) -> None:
+        # The pair that isolates the filter: identical content, one wrapped in prose.
+        from app.schemas import MessageInput
+        from app.services.extractor import extract_memories
+
+        wrapped = extract_memories(
+            chat_id="c",
+            character_id="x",
+            messages=[
+                MessageInput(
+                    role="user",
+                    text="*кивает* Алина работает ветеринаром в клинике",
+                )
+            ],
+        )
+        self.assertEqual(wrapped, [])
