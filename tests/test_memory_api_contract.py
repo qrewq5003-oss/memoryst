@@ -364,3 +364,90 @@ class BackfillUsesTheSceneExtractorTests(_ApiCase):
             "chat_id": "c", "character_id": "c", "messages": [], "scene_size": 9999,
         })
         self.assertEqual(response.status_code, 422)
+
+
+class SummarizeAndConsolidateTests(_ApiCase):
+    """The two endpoints that ran against the real model but were never pinned in the suite.
+
+    Both were verified live on 2026-09-21 - summarize produced a three-section Russian
+    summary, consolidate an `arc` covering a sister studying in Lisbon - but a live check
+    proves the day, not the contract. What matters here is the shape of the response and
+    what happens when there is nothing to summarise, because the extension and the web UI
+    both read `action` to decide what to tell the user.
+    """
+
+    def _result(self, **overrides):
+        from types import SimpleNamespace
+        base = {
+            "action": "created",
+            "summary_memory_id": "sum-1",
+            "summary_text": "## Хронология\nЧто-то произошло.",
+            "summarized_count": 7,
+            "new_input_count": 7,
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    def test_summarize_passes_the_window_and_threshold_through(self) -> None:
+        # Both are request fields with defaults; a silent failure to forward them would
+        # look like the endpoint working while ignoring what it was asked for.
+        with patch("app.services.summary_service.generate_rolling_summary",
+                   return_value=self._result()) as generate:
+            response = self.client.post("/memory/summarize", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "window_size": 12, "min_new": 2,
+            })
+
+        self.assertEqual(response.status_code, 200, response.text)
+        kwargs = generate.call_args.kwargs
+        self.assertEqual(kwargs["window_size"], 12)
+        self.assertEqual(kwargs["min_new_memories_for_refresh"], 2)
+
+    def test_summarize_reports_a_skip_rather_than_pretending_to_have_written(self) -> None:
+        skipped = self._result(action="skipped_not_enough_inputs",
+                               summary_memory_id=None, summary_text="", summarized_count=1)
+        with patch("app.services.summary_service.generate_rolling_summary", return_value=skipped):
+            body = self.client.post("/memory/summarize", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+            }).json()
+
+        self.assertEqual(body["action"], "skipped_not_enough_inputs")
+        self.assertIsNone(body["summary_memory_id"])
+
+    def test_consolidate_forwards_the_tier_and_the_chosen_sources(self) -> None:
+        # source_ids is how the web UI's checkbox picker says "consolidate exactly these";
+        # dropping it would silently consolidate the whole chat instead.
+        with patch("app.services.summary_service.generate_tiered_consolidation",
+                   return_value=self._result()) as generate:
+            response = self.client.post("/memory/consolidate", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "tier": "arc", "source_ids": ["a", "b"],
+            })
+
+        self.assertEqual(response.status_code, 200, response.text)
+        kwargs = generate.call_args.kwargs
+        self.assertEqual(kwargs["tier"], "arc")
+        self.assertEqual(kwargs["source_ids"], ["a", "b"])
+
+    def test_consolidate_turns_an_empty_selection_into_none_not_an_empty_list(self) -> None:
+        # The service treats None as "pick the sources yourself" and [] would otherwise
+        # read as "these zero memories".
+        with patch("app.services.summary_service.generate_tiered_consolidation",
+                   return_value=self._result()) as generate:
+            self.client.post("/memory/consolidate", json={
+                "chat_id": "chat-1", "character_id": "char-1", "tier": "arc",
+            })
+
+        self.assertIsNone(generate.call_args.kwargs["source_ids"])
+
+    def test_an_llm_outage_during_consolidation_is_not_a_500(self) -> None:
+        from types import SimpleNamespace
+        failed = SimpleNamespace(action="failed_no_llm", summary_memory_id=None,
+                                 summary_text="", summarized_count=0)
+        with patch("app.services.summary_service.generate_tiered_consolidation", return_value=failed):
+            response = self.client.post("/memory/consolidate", json={
+                "chat_id": "chat-1", "character_id": "char-1", "tier": "arc",
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["action"], "failed_no_llm")
