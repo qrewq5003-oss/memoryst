@@ -23,15 +23,20 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
 - `app/services/text_features.py` — текстовые фичи для скоринга
 - `app/services/scene_extractor.py` + `app/services/llm_extractor.py` — извлечение по сцене
   через LLM (structured output) с regex-фоллбэком
-- `tests/` — 56 Python + 8 mjs тест-файлов на 2026-09-20 (`ls tests/test_*.py | wc -l`),
+- `tests/` — 65 Python + 12 mjs тест-файлов на 2026-09-21 (`ls tests/test_*.py | wc -l`),
   все должны проходить после любых изменений
 
 ### Живой код, который легко принять за мёртвый
 - **`app/services/llm_extractor.py` — НЕ мёртвый код, не удалять.** Его
-  `extract_scene_facts` — основной путь извлечения (`scene_extractor.py:100`), а
-  `extract_with_llm` обслуживает эндпоинт `/memory/scene`, который вызывает вкладка
-  Tools в web UI (`app/templates/_scripts.html:249`). По `data/server.log` на
-  2026-08-01: 1583 успешных вызова и 568 фоллбэков на regex.
+  `extract_scene_facts` — основной путь извлечения (зовётся из
+  `scene_extractor.extract_scene_memories`), а `extract_with_llm` обслуживает эндпоинт
+  `/memory/scene`, который вызывает вкладка Tools в web UI (`fetch('/memory/scene'` в
+  `app/templates/_scripts.html`). По `data/server.log` на 2026-08-01: 1583 успешных
+  вызова и 568 фоллбэков на regex.
+  Ссылки здесь намеренно на символы, а не на номера строк: прежние
+  `scene_extractor.py:100` и `_scripts.html:249` уехали на 2 и 11 строк, и тот, кто
+  пошёл бы их проверять, увидел бы не то, о чём речь — то есть довод «это не мёртвый
+  код» выглядел бы опровергнутым собственной сноской.
   Прежняя редакция этого файла предписывала «удалить как мёртвый код» — указание
   было ошибочным и снято 2026-08-01.
 
@@ -161,7 +166,8 @@ FastAPI + SQLite, локальное хранилище, извлечение ч
   `docs/extension_audit_2026-09-20.md`. **Не поднимай `semantic_boost`, чтобы он
   «заработал»** — измерено, что это вернёт шум. Бэкфилл — `scripts/embed_memories.py`,
   по умолчанию только два самых свежих чата, каждый вызов стоит денег
-- Тесты: pytest (Python), node/vitest (JS extension)
+- Тесты: pytest (Python), `node --test` (расширение). Vitest в проекте нет — ни
+  `package.json`, ни конфига; им пользуются Memory Books и CharMemory, не memoryst
 
 ## Что не трогать
 
