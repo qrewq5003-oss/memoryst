@@ -346,6 +346,14 @@ test('the hidden file input is reachable through a label', () => {
     assert.match(html, /<label for="memoryst-backfill-file"[^>]*class="menu_button"/);
 });
 
+test('the file button keeps its label on one line', () => {
+    // ST's .menu_button is `width: min-content`, which wrapped "Choose file" onto two
+    // lines. min-content of nowrap text is the whole string, so the button sizes to fit.
+    const html = buildSettingsUiMarkup(DEFAULT_SETTINGS);
+    const label = html.match(/<label for="memoryst-backfill-file"[^>]*>/)?.[0] ?? '';
+    assert.match(label, /white-space:\s*nowrap/);
+});
+
 test('the chosen filename is echoed, since the input cannot be seen', () => {
     const html = buildSettingsUiMarkup(DEFAULT_SETTINGS);
     assert.match(html, /id="memoryst-backfill-filename"/);
