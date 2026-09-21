@@ -182,6 +182,24 @@ def get_connection() -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), factory=_ClosingConnection)
     conn.row_factory = sqlite3.Row
+    # WAL so a reader cannot block a writer. In the default `delete` mode it can, and
+    # did: measured 2026-09-21 on the live 79 MB database, a read transaction held past
+    # busy_timeout made a concurrent write fail with "database is locked". Real reads are
+    # fast (0.08 s for a chat, 0.18 s for every vector), so the window was narrow - but
+    # the file is shared by the retrieve that blocks generation, the background summary
+    # scheduler, the web UI and the CLI scripts, and it grew from 57 MB to 79 MB in a day.
+    #
+    # Set per connection rather than once at init: the mode is persistent in the file, so
+    # this is a 6 microsecond no-op afterwards, and it also covers a database that never
+    # went through init_schema - a restored backup, say.
+    #
+    # busy_timeout is deliberately left at Python's 5 s default. The measured fault was
+    # the journal mode; changing both at once would leave neither attributable.
+    #
+    # Safe for the backup path: create_backup uses SQLite's online backup API, not a file
+    # copy, and that is WAL-aware. Nothing else copies the database file - the Downloads
+    # mirror excludes data/ entirely.
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
