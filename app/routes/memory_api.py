@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
 from app.config import config
@@ -298,6 +298,14 @@ class BackfillRequest(BaseModel):
     chat_id: str
     character_id: str
     messages: list[MessageInput]
+    # Messages per scene. Defaults to config.BACKFILL_SCENE_SIZE; raising it means fewer,
+    # larger LLM calls, and past SCENE_TEXT_MAX_CHARS the scene is truncated rather than
+    # split, so larger is not free.
+    scene_size: int | None = Field(default=None, ge=1, le=64)
+    # Overrides the active provider's model for extraction only, like the live path.
+    model: str | None = None
+    character_name: str | None = None
+    user_name: str | None = None
 
 
 class BackfillResponse(BaseModel):
@@ -305,26 +313,73 @@ class BackfillResponse(BaseModel):
     stored: int
     skipped: int
     duplicates: int
+    # Which path served each scene, e.g. {"llm": 3, "regex_fallback": 1}. Backfill used to
+    # be rule-based only and said nothing about it; an import that quietly degraded to the
+    # cruder extractor for every scene looked identical to one that did not.
+    extraction_methods: dict[str, int] = Field(default_factory=dict)
+    scenes: int = 0
 
 
 @router.post("/backfill", response_model=BackfillResponse)
 def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
-    """Backfill memories from existing chat history."""
-    from app.services.extractor import extract_memories
+    """Backfill memories from existing chat history, one scene at a time.
+
+    Uses the same LLM scene path as a live turn. It used to run the rule-based
+    line-by-line extractor over the whole request, which stored verbatim first-person
+    lines - "Устала. Вчера была двойная смена в кафе" - as though they were facts.
+    Measured 2026-09-21 against the live service: 4 messages in, 2 memories out, both
+    direct quotes.
+
+    Scenes rather than one call, because `build_scene_text` caps a scene at
+    SCENE_TEXT_MAX_CHARS and truncates past it - a long import would have been extracted
+    from its first few messages and silently dropped the rest.
+
+    The rule-based extractor is still the floor, not a discarded path:
+    extract_scene_memories falls back to it per scene whenever the LLM returns nothing,
+    which also covers running with no API key at all. The response now says which path
+    served each scene, so a wholly degraded import stops being indistinguishable from a
+    good one.
+    """
     from app.repositories.memory_repo import (
         create_memory,
         find_memory_by_normalized_content,
     )
-    from app.services.text_utils import normalize_content
+    from app.services import chat_buffer_service, vector_store
+    from app.services.scene_extractor import extract_scene_memories
     from app.services.store_service import passes_memory_quality_gate
-    from app.services import vector_store
+    from app.services.text_utils import normalize_content
 
-    candidates = extract_memories(
-        chat_id=request.chat_id,
-        character_id=request.character_id,
-        messages=request.messages,
-        mode="backfill",
-    )
+    scene_size = request.scene_size or config.BACKFILL_SCENE_SIZE
+    candidates: list[CreateMemoryRequest] = []
+    extraction_methods: dict[str, int] = {}
+    scenes = 0
+
+    for start in range(0, len(request.messages), scene_size):
+        batch = request.messages[start : start + scene_size]
+        # Through the buffer, like the live path: it filters OOC and system messages and
+        # assigns the stable ids that let an extracted fact point back at its source
+        # messages. A side effect worth knowing about: backfill now populates
+        # chat_messages, so the raw-history FTS fallback covers imported chats too - it
+        # did not before. Minus the trailing HOT_BUFFER_SIZE messages, which stay in
+        # memory until something cools them: measured, a 12-message import leaves 8 rows.
+        buffered = chat_buffer_service.add_messages(
+            request.chat_id, request.character_id, batch
+        )
+        if not buffered:
+            continue
+
+        scenes += 1
+        scene_candidates, method = extract_scene_memories(
+            chat_id=request.chat_id,
+            character_id=request.character_id,
+            messages=buffered,
+            model=request.model,
+            character_name=request.character_name,
+            user_name=request.user_name,
+        )
+        candidates.extend(scene_candidates)
+        if method:
+            extraction_methods[method] = extraction_methods.get(method, 0) + 1
 
     stored = 0
     skipped = 0
@@ -356,6 +411,8 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
         )
 
     return BackfillResponse(
+        extraction_methods=extraction_methods,
+        scenes=scenes,
         processed=len(request.messages),
         stored=stored,
         skipped=skipped,

@@ -291,3 +291,76 @@ class LlmBackedEndpointTests(_ApiCase):
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertFalse(response.json()["stored"])
+
+
+class BackfillUsesTheSceneExtractorTests(_ApiCase):
+    """Backfill extracts like a live turn, not line by line.
+
+    It used to run the rule-based extractor over the whole request, which stored verbatim
+    first-person lines as facts. Measured against the live service 2026-09-21, four
+    messages produced two memories and both were direct quotes: "Устала. Вчера была
+    двойная смена в кафе, домой пришла за полночь." The same four through the scene path
+    produced four third-person facts with entities and source_message_ids.
+    """
+
+    MESSAGES = [
+        {"role": "user", "text": "Привет! Ты сегодня какая-то тихая."},
+        {"role": "assistant", "text": "Устала. Вчера была двойная смена в кафе."},
+        {"role": "user", "text": "Может, возьмёшь выходной?"},
+        {"role": "assistant", "text": "Не могу, копим с сестрой на поездку."},
+    ]
+
+    def test_backfill_calls_the_scene_extractor(self) -> None:
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   return_value=([], "llm")) as scene:
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1", "messages": self.MESSAGES,
+            })
+
+        self.assertEqual(response.status_code, 200, response.text)
+        scene.assert_called_once()
+
+    def test_a_long_import_is_split_into_scenes_not_sent_as_one(self) -> None:
+        # build_scene_text caps a scene at SCENE_TEXT_MAX_CHARS and truncates past it, so
+        # a single call would extract from the first messages and drop the rest in
+        # silence.
+        messages = [{"role": "user", "text": f"реплика {i}"} for i in range(20)]
+
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   return_value=([], "llm")) as scene:
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "messages": messages, "scene_size": 5,
+            })
+
+        self.assertEqual(scene.call_count, 4)
+        self.assertEqual(response.json()["scenes"], 4)
+
+    def test_the_response_says_which_path_served_each_scene(self) -> None:
+        # A wholly degraded import used to be indistinguishable from a good one.
+        messages = [{"role": "user", "text": f"реплика {i}"} for i in range(10)]
+
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   side_effect=[([], "llm"), ([], "regex_fallback")]):
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "messages": messages, "scene_size": 5,
+            })
+
+        self.assertEqual(response.json()["extraction_methods"], {"llm": 1, "regex_fallback": 1})
+
+    def test_an_import_of_nothing_makes_no_llm_call(self) -> None:
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   side_effect=AssertionError("must not be called")):
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1", "messages": [],
+            })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["scenes"], 0)
+
+    def test_scene_size_is_bounded(self) -> None:
+        response = self.client.post("/memory/backfill", json={
+            "chat_id": "c", "character_id": "c", "messages": [], "scene_size": 9999,
+        })
+        self.assertEqual(response.status_code, 422)

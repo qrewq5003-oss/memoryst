@@ -102,6 +102,14 @@ class Config:
     # than 250 characters, 228 came from the rule-based path. Cutting there drops prose
     # without touching anything the LLM path produces.
     RULE_EXTRACT_MAX_CONTENT_CHARS: int = int(os.getenv("RULE_EXTRACT_MAX_CONTENT_CHARS", "250"))
+    # How many messages of an imported history make one scene for /memory/backfill.
+    # Backfill used to run the rule-based extractor over the whole request, which stored
+    # verbatim first-person lines ("Устала. Вчера была двойная смена...") as facts. It now
+    # uses the same LLM scene path as a live turn, and a live turn is about this many
+    # messages - the extension sends 8 by default. Whole-request extraction is not an
+    # option: build_scene_text caps a scene at SCENE_TEXT_MAX_CHARS, so a long import
+    # would have been silently truncated to its first few messages.
+    BACKFILL_SCENE_SIZE: int = int(os.getenv("BACKFILL_SCENE_SIZE", "8"))
 
     TRACKER_LLM_TIMEOUT: int = int(os.getenv("TRACKER_LLM_TIMEOUT", "120"))
     TRACKER_LLM_MAX_TOKENS: int = int(os.getenv("TRACKER_LLM_MAX_TOKENS", "10000"))

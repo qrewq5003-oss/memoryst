@@ -55,6 +55,7 @@ next to the constant in `app/config.py`.
 | `SCENE_MESSAGE_MAX_CHARS` | `1500` | Per-message cap before a scene is sent to the model |
 | `SCENE_TEXT_MAX_CHARS` | `12000` | Cap for the whole scene |
 | `RULE_EXTRACT_MAX_CONTENT_CHARS` | `250` | Length above which the rule-based path is storing prose, not a fact |
+| `BACKFILL_SCENE_SIZE` | `8` | Messages per scene for `/memory/backfill`. It extracts through the LLM scene path like a live turn; larger scenes mean fewer calls, but past `SCENE_TEXT_MAX_CHARS` a scene is truncated rather than split |
 | `ROLLING_SUMMARY_AUTO` | `true` | Refresh the rolling summary in the background after a store |
 | `ROLLING_SUMMARY_WINDOW` | `8` | Memories fed into one summary |
 | `ROLLING_SUMMARY_MIN_NEW` | `3` | New memories required before a refresh |
