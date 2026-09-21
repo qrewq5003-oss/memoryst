@@ -1,5 +1,7 @@
 # Question Guard Policy
 
+> **Политика, действует. Перепроверена 2026-09-21.**
+
 ## Scope
 
 The question-form guard is a narrow anti-artifact filter in the store/extractor path.

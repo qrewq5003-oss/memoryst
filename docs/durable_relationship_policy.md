@@ -1,5 +1,9 @@
 # Durable Relationship Policy
 
+> **Политика, действует. Перепроверена по коду 2026-09-21.**
+> Актуальное состояние архитектуры — `CLAUDE.md`; открытые проблемы —
+> `docs/extension_audit_2026-09-20.md`.
+
 ## Scope
 
 The durable relationship formation layer is a narrow store/extractor policy for long-chat Russian relationship carry-over.

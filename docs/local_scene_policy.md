@@ -1,5 +1,9 @@
 # Local Scene Policy
 
+> **Политика, действует. Перепроверена по коду 2026-09-21** —
+> `episodic_specificity_bonus` и `episodic_low_value_penalty` на месте в
+> `config/retrieval_weights.yaml`.
+
 ## Scope
 
 The local-scene layer is a narrow Russian episodic precision channel for queries such as:

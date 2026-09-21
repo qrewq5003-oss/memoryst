@@ -1,5 +1,9 @@
 # Lorebook World-Info Payload Debug
 
+> **Отчёт о замере, 2026-03-27. Это запись того, что было измерено тогда, а не
+> описание текущего состояния.** Актуальное — в `CLAUDE.md` и
+> `docs/extension_audit_2026-09-20.md`.
+
 ## Setup
 
 This pass compared two live paths in the real SillyTavern runtime:

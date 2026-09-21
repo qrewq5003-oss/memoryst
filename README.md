@@ -29,6 +29,54 @@ Environment variables:
 | `CORS_ALLOW_ORIGINS` | `` | Comma-separated list of origins allowed to call this service from a browser. Set it and it **replaces** the regex below rather than adding to it |
 | `CORS_ALLOW_ORIGIN_REGEX` | loopback only | Origins allowed when no explicit list is set. Defaults to `http(s)://localhost`, `127.0.0.1` or `[::1]` on any port |
 
+### LLM (fact extraction, summaries, trackers)
+
+Without `LLM_API_KEY` the service still runs, but extraction falls back to the
+deterministic regex path and no summaries or trackers are written.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ACTIVE_LLM_PROVIDER` | `nanogpt` | One of `nanogpt`, `openai`, `anthropic`. A value stored in the database overrides this |
+| `LLM_API_KEY` | `` | Key for the active provider. **Comma-separated pool** — the client rotates to the next key on a 429 |
+| `LLM_API_BASE` | `` | OpenAI-compatible base URL, e.g. `https://nano-gpt.com/api/v1` |
+| `LLM_MODEL` | `deepseek/deepseek-v4-pro` | Model for extraction and consolidation |
+| `LLM_TIMEOUT` | `30` | Seconds for a normal LLM call |
+| `OPENAI_API_KEY` / `OPENAI_API_BASE` / `OPENAI_MODEL` | `` / `https://api.openai.com` / `gpt-4o-mini` | Used when the provider is `openai` |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_API_BASE` / `ANTHROPIC_MODEL` | `` / `https://api.anthropic.com` / `claude-opus-4-8` | Used when the provider is `anthropic` |
+
+### Extraction and consolidation thresholds
+
+Each of these was set from a measurement rather than by taste; the reasoning sits
+next to the constant in `app/config.py`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SCENE_LLM_TIMEOUT` | `90` | Deadline for scene extraction. The extension's store timeout must stay above it, or the client aborts a call that was about to succeed |
+| `SCENE_MESSAGE_MAX_CHARS` | `1500` | Per-message cap before a scene is sent to the model |
+| `SCENE_TEXT_MAX_CHARS` | `12000` | Cap for the whole scene |
+| `RULE_EXTRACT_MAX_CONTENT_CHARS` | `250` | Length above which the rule-based path is storing prose, not a fact |
+| `ROLLING_SUMMARY_AUTO` | `true` | Refresh the rolling summary in the background after a store |
+| `ROLLING_SUMMARY_WINDOW` | `8` | Memories fed into one summary |
+| `ROLLING_SUMMARY_MIN_NEW` | `3` | New memories required before a refresh |
+| `TRACKER_LLM_TIMEOUT` / `TRACKER_LLM_MAX_TOKENS` / `TRACKER_LLM_RETRIES` | `120` / `10000` / `1` | Tracker generation budget |
+
+### Embeddings (semantic retrieval)
+
+Optional. Without a provider the retrieval stays lexical + entity, which works;
+the semantic layer only adds paraphrase recall (see
+`docs/extension_audit_2026-09-20.md` for the measured effect and its limits).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMBEDDING_PROVIDER` | `google` | `google`, `nanogpt` or `cohere`. This deployment uses `nanogpt` |
+| `EMBEDDING_MODEL` | *(falls back to `GOOGLE_EMBEDDING_MODEL`)* | e.g. `bge-m3`. **Stored on every row and filtered on read** — changing it requires a full re-backfill, see `scripts/embed_memories.py` |
+| `EMBEDDING_DIM` | *(falls back to `GOOGLE_EMBEDDING_DIM`)* | Dimensions; must match the model |
+| `GOOGLE_API_KEYS` | `` | Comma-separated pool for the `google` provider |
+| `GOOGLE_EMBEDDING_MODEL` | `gemini-embedding-2-preview` | Legacy default, kept so an existing `.env` keeps working |
+| `GOOGLE_EMBEDDING_DIM` | `768` | As above |
+| `COHERE_API_KEY` | `` | For the `cohere` provider. Its trial tier allows 1000 requests a month and a turn costs two, so it suits measurement rather than daily use |
+| `CHROMADB_PATH` | `data/chromadb` | Only used when `chromadb` is installed; the SQLite backend is the working one |
+
 ## Security
 
 Authentication is **opt-in**: leave `API_KEY` empty for the local-only default

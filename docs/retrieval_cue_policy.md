@@ -1,5 +1,9 @@
 # Retrieval Cue Policy
 
+> **Политика, действует. Перепроверена по коду 2026-09-21** — все шесть групп
+> (`conflict`, `repair`, `trust`, `distance`, `together`, `attitude`) на месте
+> в `app/services/text_features.py`.
+
 ## Scope
 
 The Russian relationship cue layer is a narrow robustness channel for broad relationship and general-state phrasing such as:

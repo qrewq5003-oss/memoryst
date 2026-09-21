@@ -1,5 +1,9 @@
 # Lorebook Anchor Usefulness Re-check
 
+> **Отчёт о замере, 2026-03-27. Это запись того, что было измерено тогда, а не
+> описание текущего состояния.** Актуальное — в `CLAUDE.md` и
+> `docs/extension_audit_2026-09-20.md`.
+
 ## Setup
 
 This re-check repeated the live usefulness pass after the real installed world-info path fix from PR 46.
