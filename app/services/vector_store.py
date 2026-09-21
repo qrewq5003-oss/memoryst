@@ -5,6 +5,8 @@ import threading
 from array import array
 from pathlib import Path
 
+import logging
+
 import httpx
 
 from app.config import config
@@ -64,6 +66,63 @@ def _rotate_key() -> bool:
             return False
         _key_index = (_key_index + 1) % len(_keys)
         return True
+
+
+logger = logging.getLogger(__name__)
+
+NANOGPT_EMBED_URL = "https://nano-gpt.com/api/v1/embeddings"
+COHERE_EMBED_URL = "https://api.cohere.ai/v2/embed"
+
+
+def _call_embed_openai_shaped(text: str | list[str]) -> list[list[float]]:
+    """OpenAI-shaped /v1/embeddings, which is what nano-gpt serves.
+
+    Its batch path actually works, unlike the Google one below: a list of 50 texts is
+    one request. That matters beyond tidiness - the Google batch has always been broken
+    (see _call_embed), so every backfill ran one call per memory, which is why only 585
+    of 4660 memories ever got a vector.
+    """
+    batch = text if isinstance(text, list) else [text]
+    key = (config.LLM_API_KEY or "").split(",")[0].strip()
+    if not key:
+        raise RuntimeError("LLM_API_KEY is required for the nanogpt embedding provider")
+    resp = httpx.post(
+        NANOGPT_EMBED_URL,
+        headers={"Authorization": f"Bearer {key}"},
+        json={"model": config.active_embedding_model(), "input": batch},
+        timeout=180,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Embedding API error {resp.status_code}: {resp.text[:300]}")
+    data = sorted(resp.json()["data"], key=lambda d: d["index"])
+    return [d["embedding"] for d in data]
+
+
+def _call_embed_cohere(text: str | list[str], is_query: bool = False) -> list[list[float]]:
+    """Cohere v2, the one provider that embeds a query differently from a document.
+
+    `input_type` is the whole reason it is here; without it this is just another
+    symmetric embedder. Note the monthly request ceiling on the trial tier - this is a
+    measurement tool here, not the default provider.
+    """
+    batch = text if isinstance(text, list) else [text]
+    if not config.COHERE_API_KEY:
+        raise RuntimeError("COHERE_API_KEY is required for the cohere embedding provider")
+    resp = httpx.post(
+        COHERE_EMBED_URL,
+        headers={"Authorization": f"Bearer {config.COHERE_API_KEY}"},
+        json={
+            "texts": batch,
+            "model": config.active_embedding_model(),
+            "embedding_types": ["float"],
+            "input_type": "search_query" if is_query else "search_document",
+            "truncate": "END",
+        },
+        timeout=180,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Embedding API error {resp.status_code}: {resp.text[:300]}")
+    return resp.json()["embeddings"]["float"]
 
 
 def _call_embed(text: str | list[str]) -> list[list[float]]:
@@ -227,7 +286,7 @@ def _sqlite_add(memory_id: str, embedding: list[float], metadata: dict) -> None:
                 str(metadata.get("chat_id") or ""),
                 str(metadata.get("character_id") or ""),
                 len(embedding),
-                config.GOOGLE_EMBEDDING_MODEL,
+                config.active_embedding_model(),
                 _vector_to_blob(embedding),
             ),
         )
@@ -240,14 +299,19 @@ def _sqlite_query(embedding: list[float], n_results: int, where: dict | None) ->
     conn = get_connection()
     try:
         sql = "SELECT memory_id, chat_id, character_id, dimensions, vector FROM memory_embeddings"
-        params: list[object] = []
-        clauses = []
+        # Filtering by model, not only by dimensionality. Two models can agree on the
+        # number of dimensions and still share no vector space at all - switching
+        # gemini-embedding-2-preview for gemini-embedding-001 keeps 768 on both sides,
+        # so the dimension guard below would wave every stale row through and compare
+        # it, returning confident numbers that mean nothing. The column was already
+        # written on every insert and read by nothing.
+        params: list[object] = [config.active_embedding_model()]
+        clauses = ["model = ?"]
         for column in ("chat_id", "character_id"):
             if where and where.get(column):
                 clauses.append(f"{column} = ?")
                 params.append(str(where[column]))
-        if clauses:
-            sql += " WHERE " + " AND ".join(clauses)
+        sql += " WHERE " + " AND ".join(clauses)
         rows = conn.execute(sql, params).fetchall()
     finally:
         conn.close()
@@ -302,8 +366,56 @@ def _use_chroma() -> bool:
 
 
 def is_vector_store_enabled() -> bool:
+    """Whether embedding is possible at all - per provider, not per Google key.
+
+    This used to ask only about GOOGLE_API_KEYS, which silently reported the layer as
+    off for every other provider.
+    """
+    provider = (config.EMBEDDING_PROVIDER or "google").lower()
+    if provider == "nanogpt":
+        return bool((config.LLM_API_KEY or "").strip())
+    if provider == "cohere":
+        return bool(config.COHERE_API_KEY)
     _ensure_keys()
     return bool(_keys)
+
+
+def add_memories_batch(items: list[tuple[str, str, dict]]) -> int:
+    """Embed and store many memories in one request where the provider allows it.
+
+    One call per memory is what kept coverage at 585 of 4660: the Google batch path has
+    never worked (it posts to the single-embed endpoint), so a backfill of this database
+    meant 4660 sequential round trips, each with a pacing sleep. The nano-gpt path takes
+    the whole list.
+
+    Returns the number stored. Best-effort per the same reasoning as add_memory: a
+    missing vector costs a memory its semantic boost and nothing else.
+    """
+    if not items:
+        return 0
+    try:
+        vectors = embed_batch([content for _, content, _ in items])
+    except RuntimeError as error:
+        # bge-m3 caps a *request*, not a text: 50 short facts fit and 50 long scene
+        # excerpts do not. Measured 2026-09-21, one batch of 50 in 95 blew the limit and
+        # the whole batch was lost. Halving is enough because the limit is on the sum -
+        # and a single item over the cap still ends up alone, where the error is real
+        # and belongs to that memory rather than to its 49 neighbours.
+        if "context_length_exceeded" not in str(error) and "too large" not in str(error):
+            raise
+        if len(items) == 1:
+            logger.warning("memory %s is too long to embed on its own", items[0][0])
+            return 0
+        half = len(items) // 2
+        return add_memories_batch(items[:half]) + add_memories_batch(items[half:])
+    stored = 0
+    for (memory_id, _content, metadata), vector in zip(items, vectors):
+        try:
+            _sqlite_add(memory_id, vector, metadata)
+            stored += 1
+        except Exception:
+            logger.exception("failed to store embedding for %s", memory_id)
+    return stored
 
 
 def get_active_key_index() -> int:
@@ -316,12 +428,21 @@ def get_key_count() -> int:
     return len(_keys)
 
 
-def embed_text(text: str) -> list[float]:
-    return _call_embed(text)[0]
+def _dispatch_embed(text: str | list[str], is_query: bool = False) -> list[list[float]]:
+    provider = (config.EMBEDDING_PROVIDER or "google").lower()
+    if provider == "nanogpt":
+        return _call_embed_openai_shaped(text)
+    if provider == "cohere":
+        return _call_embed_cohere(text, is_query=is_query)
+    return _call_embed(text)
 
 
-def embed_batch(texts: list[str]) -> list[list[float]]:
-    return _call_embed(texts)
+def embed_text(text: str, is_query: bool = False) -> list[float]:
+    return _dispatch_embed(text, is_query=is_query)[0]
+
+
+def embed_batch(texts: list[str], is_query: bool = False) -> list[list[float]]:
+    return _dispatch_embed(texts, is_query=is_query)
 
 
 def add_key(key: str) -> None:

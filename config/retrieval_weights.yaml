@@ -4,7 +4,7 @@
 # and logs. Tune via scripts/run_retrieval_eval.py, not by hand-guessing —
 # these are tightly coupled to the eval cases in app/evals/retrieval_eval_cases.py.
 
-version: 1
+version: 2
 
 weights:
   keyword_weight: 0.50
@@ -16,7 +16,13 @@ weights:
   min_retrieval_score: 0.15
   near_duplicate_token_overlap: 0.80
   close_score_layer_tie_epsilon: 0.05
-  semantic_boost: 0.15
+  # Raised above min_retrieval_score on purpose, 2026-09-21. At 0.15 it was exactly
+  # equal to it, so a memory with no lexical match needed a *perfect* semantic hit to
+  # land exactly on the pass mark - and the graded strength below kept it under. The
+  # layer could never act alone, whatever the embedding model did. Measured hits on
+  # bge-m3 over the live "Alina volkova" chat were +0.121, +0.167, +0.183 and +0.213
+  # over the chat median; only one of the four reached the old full-strength point.
+  semantic_boost: 0.28
   # A semantic hit is not a yes/no. Measured over data/memory.db on 2026-09-20 with
   # gemini-embedding-2-preview: inside one chat the median cosine between arbitrary
   # memories is 0.591, p90 is 0.689 and genuinely related pairs sit at 0.81-0.86.
@@ -30,7 +36,14 @@ weights:
   # a match has to sit; semantic_min_similarity is a backstop for the Chroma path, which
   # reports no distribution.
   semantic_relative_margin: 0.12
-  semantic_min_similarity: 0.62
+  # Lowered from 0.62 with the move to bge-m3, 2026-09-21. That value came from
+  # gemini-embedding-2-preview, whose within-chat median was 0.591; bge-m3's is 0.380 on
+  # the same chat, and its real paraphrase hits land at 0.501-0.593 - so the old backstop
+  # sat above *every* correct answer and the relative margin never got a say, because the
+  # floor is max() of the two. An absolute number is model-specific by nature; this one
+  # is set below the relative floor for bge-m3 (0.380 + 0.12 = 0.50) so it binds only on
+  # the Chroma path, which reports no distribution to be relative to.
+  semantic_min_similarity: 0.45
   # Where the graded boost reaches full strength, also measured from the median and for
   # the same reason. The first cut of this was an absolute 0.82, taken from a
   # memory-to-memory measurement where both sides are extracted facts in the same terse
@@ -39,7 +52,11 @@ weights:
   # "Alina volkova" chat (144 memories) on 2026-09-20, the best match for two real user
   # messages sat 0.139 and 0.138 above the median, so every surviving hit scored a
   # strength under 0.15 and the whole layer did nothing.
-  semantic_full_strength_margin: 0.20
+  # Lowered from 0.20 to the top of the measured range rather than above it. The old
+  # value was taken from memory-to-memory similarity, where both sides are terse facts;
+  # a real retrieve compares prose to a fact and never gets there. See the note above
+  # for the four measured margins.
+  semantic_full_strength_margin: 0.18
   relationship_cue_weight: 0.14
   episodic_specificity_bonus: 0.06
   episodic_low_value_penalty: 0.12

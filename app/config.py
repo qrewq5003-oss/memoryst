@@ -138,7 +138,44 @@ class Config:
     # path that blocks generation. Changing this invalidates every stored vector: rows
     # whose dimensions differ from the query are skipped, so a change means a re-backfill.
     GOOGLE_EMBEDDING_DIM: int = int(os.getenv("GOOGLE_EMBEDDING_DIM", "768"))
+
+    # Which service embeds. Measured 2026-09-21 on the 139-memory "Alina volkova" chat,
+    # where every memory has a vector, against three lexically-disjoint paraphrase
+    # queries ("где ты работаешь?" -> "работает в кафе Ботаника", and two more):
+    #
+    #   gemini-embedding-2-preview  the target ranked #107 of 139 - below the median
+    #   bge-m3 (nanogpt)            #1, #1, #2 at +0.121 / +0.213 / +0.167 over median
+    #   embed-multilingual-v3.0     #1, #1, #2 at +0.184 / +0.223 / +0.183
+    #
+    # Cohere wins because it is the only one that embeds a query and a document with
+    # different functions (input_type), which is exactly the asymmetry here: a short
+    # question against a declarative fact. It is not the default anyway - the trial key
+    # allows 1000 requests a month, and a retrieve plus a store is two of them per turn,
+    # so the memory layer would stop working mid-month. nanogpt has no monthly ceiling.
+    #
+    # None of them retrieves "предпочитает медленный темп" for "поедем ко мне?" - that
+    # is an inference (home -> intimacy -> pace), not a similarity, and all three rank it
+    # at #108. Embeddings close the paraphrase gap, not the inference one.
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "google")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "")
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "0"))
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+
     CHROMADB_PATH: str = os.getenv("CHROMADB_PATH", "data/chromadb")
+
+    def active_embedding_model(self) -> str:
+        """The model name as stored on every row, so a switch is detectable.
+
+        Falls back to the Google setting so an existing .env keeps working untouched.
+        """
+        if self.EMBEDDING_MODEL:
+            return self.EMBEDDING_MODEL
+        return self.GOOGLE_EMBEDDING_MODEL
+
+    def active_embedding_dim(self) -> int:
+        if self.EMBEDDING_DIM:
+            return self.EMBEDDING_DIM
+        return self.GOOGLE_EMBEDDING_DIM
 
 
 config = Config()

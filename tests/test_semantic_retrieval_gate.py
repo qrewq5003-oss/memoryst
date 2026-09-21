@@ -159,6 +159,43 @@ class SqliteVectorStoreTests(_IsolatedDatabase):
         hits = self.vs._sqlite_query([1.0, 0.0, 0.0], 5, {"chat_id": "c", "character_id": "x"})
         self.assertEqual([hit["id"] for hit in hits], ["right"])
 
+    def test_a_vector_from_another_model_is_skipped_even_at_the_same_dimension(self) -> None:
+        """The dimension guard is not enough, and this is the case it misses.
+
+        Two embedding models can agree on 768 dimensions and still share no vector space:
+        gemini-embedding-2-preview and gemini-embedding-001 both emit 768, so a switch
+        between them leaves every stale row the same length as the query. Before this
+        filter the stale rows were compared and returned confident, meaningless
+        similarities - and the `model` column, written on every insert since the store
+        was built, was read by nothing.
+        """
+        original = config.EMBEDDING_MODEL
+        self.addCleanup(setattr, config, "EMBEDDING_MODEL", original)
+
+        config.EMBEDDING_MODEL = "old-model"
+        self.vs._sqlite_add("stale", [1.0, 0.0], {"chat_id": "c", "character_id": "x"})
+        config.EMBEDDING_MODEL = "new-model"
+        self.vs._sqlite_add("fresh", [0.0, 1.0], {"chat_id": "c", "character_id": "x"})
+
+        # The stale row is the *better* cosine match, so if it is not filtered it wins.
+        hits = self.vs._sqlite_query([1.0, 0.0], 5, {"chat_id": "c", "character_id": "x"})
+        self.assertEqual([hit["id"] for hit in hits], ["fresh"])
+
+    def test_the_scanned_median_counts_only_comparable_rows(self) -> None:
+        # The median is the floor other candidates are judged against, so counting rows
+        # that were never compared would move the gate for everything else.
+        original = config.EMBEDDING_MODEL
+        self.addCleanup(setattr, config, "EMBEDDING_MODEL", original)
+
+        config.EMBEDDING_MODEL = "old-model"
+        for index in range(5):
+            self.vs._sqlite_add(f"stale{index}", [1.0, 0.0], {"chat_id": "c", "character_id": "x"})
+        config.EMBEDDING_MODEL = "new-model"
+        self.vs._sqlite_add("fresh", [1.0, 0.0], {"chat_id": "c", "character_id": "x"})
+
+        hits = self.vs._sqlite_query([1.0, 0.0], 5, {"chat_id": "c", "character_id": "x"})
+        self.assertEqual(hits[0]["scanned_count"], 1)
+
     def test_re_adding_a_memory_replaces_its_vector(self) -> None:
         self.vs._sqlite_add("a", [1.0, 0.0], {"chat_id": "c", "character_id": "x"})
         self.vs._sqlite_add("a", [0.0, 1.0], {"chat_id": "c", "character_id": "x"})

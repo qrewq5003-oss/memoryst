@@ -690,8 +690,76 @@ SANITY_RETRIEVAL_EVAL_CASES = [
 ]
 
 
+# The semantic layer, which every case above deliberately runs without.
+#
+# Modelled on the 2026-09-21 measurement over the live "Alina volkova" chat with bge-m3:
+# a genuine paraphrase hit sits +0.12 to +0.22 above the chat's median cosine, while
+# arbitrary memories in the same chat sit within a few hundredths of it - everything in
+# one chat shares a cast, a setting and a narrator, so the whole distribution is high and
+# narrow. Both numbers below come from that run, not from taste.
+SEMANTIC_RETRIEVAL_EVAL_CASES = [
+    RetrievalEvalCase(
+        name="ru_a_strong_semantic_hit_surfaces_a_memory_lexical_search_cannot",
+        query="где ты работаешь?",
+        fixture_memories=[
+            _memory("shifts", "Алина проводит смены за стойкой в «Ботанике»",
+                    memory_type="profile", layer="stable"),
+            _memory("decoy", "Wanteda работает без формального образования",
+                    memory_type="profile", layer="stable"),
+        ],
+        # The decoy shares the stem "работ-" with the query and the target shares nothing,
+        # so lexical ranking puts the wrong memory first and never returns the right one.
+        # This is the live failure in miniature: on the real chat the same query answered
+        # with "откинулась на спинку дивана".
+        # +0.167, a real measured margin ("ты сегодня потрясающе выглядишь" -> the
+        # compliment fact), deliberately not the strongest one. A fixture pinned at full
+        # strength lands the score exactly on min_retrieval_score, where a >= decides the
+        # case - true but useless as a guard, since it passes under the old weights too.
+        semantic_hits={"shifts": 0.667},
+        semantic_median=0.50,
+        expected_contains_ids=["shifts"],
+        notes="A mid-strength paraphrase hit must still reach the prompt on its own.",
+    ),
+    RetrievalEvalCase(
+        name="ru_a_near_median_semantic_hit_stays_out",
+        query="где ты работаешь?",
+        fixture_memories=[
+            _memory("shifts", "Алина проводит смены за стойкой в «Ботанике»",
+                    memory_type="profile", layer="stable"),
+            _memory("decoy", "Wanteda работает без формального образования",
+                    memory_type="profile", layer="stable"),
+        ],
+        # +0.04. Inside one chat 45% of arbitrary pairs clear a plain absolute threshold,
+        # which is why the gate is relative - and why this must buy nothing on its own.
+        semantic_hits={"shifts": 0.54},
+        semantic_median=0.50,
+        forbidden_top_ids=["shifts"],
+        notes="A hit near the chat median is noise; it must not reach the prompt alone.",
+    ),
+    RetrievalEvalCase(
+        name="ru_inference_is_not_something_embeddings_promise",
+        query="поедем ко мне?",
+        fixture_memories=[
+            _memory("pace", "Алина Волкова предпочитает медленный темп в интимной близости",
+                    memory_type="profile", layer="stable"),
+            _memory("taxi", "Wanteda заказал такси", memory_type="event", layer="episodic"),
+        ],
+        # Documentation, not aspiration. Home -> intimacy -> pace is two hops of world
+        # knowledge, not similarity: all three models measured on 2026-09-21 put this
+        # target at #107-#108 of 139, below the chat median. The fixture says so, and the
+        # case exists so nobody reads the failure as a regression and "fixes" it by
+        # lowering the floor until noise gets in.
+        semantic_hits={"pace": 0.47, "taxi": 0.61},
+        semantic_median=0.50,
+        forbidden_top_ids=["pace"],
+        notes="Embeddings close the paraphrase gap, not the inference one.",
+    ),
+]
+
+
 DEFAULT_RETRIEVAL_EVAL_CASES = [
     *RUSSIAN_RETRIEVAL_EVAL_CASES,
     *LONG_CHAT_RUSSIAN_RP_EVAL_CASES,
     *SANITY_RETRIEVAL_EVAL_CASES,
+    *SEMANTIC_RETRIEVAL_EVAL_CASES,
 ]

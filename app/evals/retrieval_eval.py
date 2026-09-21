@@ -33,6 +33,13 @@ class RetrievalEvalCase:
     forbidden_top_ids: list[str] = field(default_factory=list)
     expected_layer_counts: dict[str, int] = field(default_factory=dict)
     limit: int = 5
+    # Semantic hits this case pretends the vector store returned: {memory_id: cosine}.
+    # Empty means the case runs with the layer off, which is what every existing case
+    # wants - they were written to pin lexical and entity behaviour.
+    semantic_hits: dict[str, float] = field(default_factory=dict)
+    # The chat's median similarity, which is what the gate measures a hit against: the
+    # thresholds are relative because the absolute scale shifts per chat.
+    semantic_median: float = 0.5
     notes: str = ""
 
 
@@ -52,9 +59,27 @@ class RetrievalEvalResult:
 
 def run_retrieval_eval_case(case: RetrievalEvalCase) -> RetrievalEvalResult:
     """Run one retrieval eval case against in-memory fixtures."""
+    # The vector store is stubbed, not left live. Retrieval calls query_similar on every
+    # request, which embeds the query - so an unstubbed eval made one paid, networked API
+    # call per case (21 per run), on a harness CI runs as a gate. Worse, it bought
+    # nothing: the fixtures below exist only in memory and have no vectors in the store,
+    # so every one of those calls returned an empty list. A gate that is nondeterministic,
+    # costs money and cannot fail is the wrong three things at once.
+    #
+    # Cases declare their semantic hits instead (`semantic_hits`), which is also what
+    # makes the semantic thresholds tunable here at all: before this there was no way to
+    # exercise them from the harness.
+    semantic_results = [
+        {"id": memory_id, "similarity": similarity,
+         "scanned_median_similarity": case.semantic_median, "scanned_count": len(case.fixture_memories)}
+        for memory_id, similarity in (case.semantic_hits or {}).items()
+    ]
+
     with (
         patch("app.services.retrieve_service.list_retrieval_candidates", return_value=case.fixture_memories),
         patch("app.services.retrieve_service.increment_access_count"),
+        patch("app.services.retrieve_service.vector_store.is_vector_store_enabled", return_value=bool(semantic_results)),
+        patch("app.services.retrieve_service.vector_store.query_similar", return_value=semantic_results),
     ):
         response = retrieve_memories(
             RetrieveMemoryRequest(
