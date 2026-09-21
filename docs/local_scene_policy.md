@@ -1,8 +1,8 @@
 # Local Scene Policy
 
-> **Политика, действует. Перепроверена по коду 2026-09-21** —
-> `episodic_specificity_bonus` и `episodic_low_value_penalty` на месте в
-> `config/retrieval_weights.yaml`.
+> **Политика** · с 2026-03-27, перепроверена 2026-09-21 · **действует**
+>
+> `episodic_specificity_bonus` и `episodic_low_value_penalty` сверены с `config/retrieval_weights.yaml`. Актуальное состояние — `CLAUDE.md`; что чинить дальше — `docs/roadmap_2026-09-21.md`.
 
 ## Scope
 

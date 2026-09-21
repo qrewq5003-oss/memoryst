@@ -1,8 +1,8 @@
 # Retrieval Cue Policy
 
-> **Политика, действует. Перепроверена по коду 2026-09-21** — все шесть групп
-> (`conflict`, `repair`, `trust`, `distance`, `together`, `attitude`) на месте
-> в `app/services/text_features.py`.
+> **Политика** · с 2026-03-27, перепроверена 2026-09-21 · **действует**
+>
+> Все шесть групп сверены с `app/services/text_features.py`. Актуальное состояние — `CLAUDE.md`; что чинить дальше — `docs/roadmap_2026-09-21.md`.
 
 ## Scope
 
