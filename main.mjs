@@ -39,18 +39,19 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=dab9538';
-import { lastUserText, recentMessages } from './chat-history.mjs?v=dab9538';
+} from './audit.mjs?v=0b26074';
+import { lastUserText, recentMessages } from './chat-history.mjs?v=0b26074';
+import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=0b26074';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=dab9538';
-import { mountSettingsUi } from './settings-ui.mjs?v=dab9538';
-import { resolveEffectiveScope } from './scope.mjs?v=dab9538';
+} from './settings.mjs?v=0b26074';
+import { mountSettingsUi } from './settings-ui.mjs?v=0b26074';
+import { resolveEffectiveScope } from './scope.mjs?v=0b26074';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=dab9538';
+} from './lore-anchors.mjs?v=0b26074';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -58,26 +59,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=dab9538';
+} from './trackers.mjs?v=0b26074';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=dab9538';
+} from './version.mjs?v=0b26074';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=dab9538';
+} from './injection.mjs?v=0b26074';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=dab9538';
+} from './supersede.mjs?v=0b26074';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=dab9538';
+} from './injectors.mjs?v=0b26074';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -88,7 +89,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=dab9538';
+} from './http.mjs?v=0b26074';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -411,18 +412,16 @@ function getRecentMessagesForRetrieve(count) {
  * Call memoryst /memory/store endpoint
  */
 async function storeMemories() {
-    if (!settings.enabled) {
-        return { called: false, reason: 'extension_disabled' };
-    }
-
     const chatContext = getChatContext();
-    if (!chatContext || !chatContext.chatId) {
-        return { called: false, reason: 'missing_chat_context' };
-    }
-
     const messages = getRecentMessages(settings.recentMessagesCount);
-    if (messages.length === 0) {
-        return { called: false, reason: 'no_messages' };
+
+    const decision = shouldStore({
+        enabled: settings.enabled,
+        chatContext,
+        messageCount: messages.length,
+    });
+    if (!decision.proceed) {
+        return { called: false, reason: decision.reason };
     }
 
     try {
@@ -498,18 +497,19 @@ async function storeMemories() {
  * Call memoryst /memory/retrieve endpoint for current-turn injection.
  */
 async function retrieveMemories() {
-    if (!settings.enabled) {
-        return { called: false, reason: 'extension_disabled', memoryBlock: '' };
-    }
-
     const chatContext = getChatContext();
-    if (!chatContext || !chatContext.chatId) {
-        return { called: false, reason: 'missing_chat_context', memoryBlock: '' };
-    }
-
     const user_input = getLastUserMessage();
-    if (!user_input) {
-        return { called: false, reason: 'no_last_user_message', memoryBlock: '' };
+
+    // The order of these checks and the names of their reasons are in retrieve-policy.mjs:
+    // the reasons reach the audit, and they are what tells "switched off" from "the hook
+    // fired before the user's message existed" weeks later.
+    const decision = shouldRetrieve({
+        enabled: settings.enabled,
+        chatContext,
+        userInput: user_input,
+    });
+    if (!decision.proceed) {
+        return { called: false, reason: decision.reason, memoryBlock: '' };
     }
 
     // Was a hardcoded 3, which made the configured Recent Messages Count apply to store
@@ -555,7 +555,10 @@ async function retrieveMemories() {
                 maxStableItems: settings.maxStableItems,
                 maxEpisodicItems: settings.maxEpisodicItems,
             });
-            const injectedMemoryBlock = budgeted.memoryBlock || result.memory_block || '';
+            const injectedMemoryBlock = chooseMemoryBlock({
+                budgetedBlock: budgeted.memoryBlock,
+                backendBlock: result.memory_block,
+            });
             console.log(
                 '[memoryst] Retrieved:',
                 retrievedItems.length,
