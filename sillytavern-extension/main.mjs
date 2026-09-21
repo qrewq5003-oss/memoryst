@@ -40,6 +40,7 @@ import {
     resolvePreGenerationHookNames,
     willAppendUserMessage,
 } from './audit.mjs?v=8295f12';
+import { lastUserText, recentMessages } from './chat-history.mjs?v=8295f12';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
@@ -389,50 +390,21 @@ function getChatContext() {
  * Get recent messages from chat context
  * Returns array of { role, text } objects
  */
+// The selection itself lives in chat-history.mjs, which is pure and therefore testable;
+// these read the chat out of SillyTavern and hand it over. See that module for why the
+// field aliases and the backwards scan are not incidental.
 function getRecentMessages(count) {
-    const chatContext = getChatContext();
-    if (!chatContext || !chatContext.chat) {
-        return [];
-    }
-
-    // Take last N messages from chat
-    const recent = chatContext.chat.slice(-count);
-
-    return recent.map(msg => ({
-        role: msg.role || (msg.is_user ? 'user' : 'assistant'),
-        text: msg.mes || msg.text || '',
-    }));
+    return recentMessages(getChatContext()?.chat, count);
 }
 
-/**
- * Get the last user message for retrieval query
- */
 function getLastUserMessage() {
-    const chatContext = getChatContext();
-    if (!chatContext || !chatContext.chat) {
-        return '';
-    }
-
-    // Find last user message
-    for (let i = chatContext.chat.length - 1; i >= 0; i--) {
-        const msg = chatContext.chat[i];
-        if (msg.is_user || msg.role === 'user') {
-            return msg.mes || msg.text || '';
-        }
-    }
-
-    return '';
+    return lastUserText(getChatContext()?.chat);
 }
 
-/**
- * Get recent messages for retrieval context
- */
 function getRecentMessagesForRetrieve(count) {
-    const messages = getRecentMessages(count);
-    return messages.map(msg => ({
-        role: msg.role,
-        text: msg.text,
-    }));
+    // Was a second map producing an object identical to the one above. Kept as a named
+    // entry point because the two call sites mean different things, not the shape.
+    return getRecentMessages(count);
 }
 
 /**
