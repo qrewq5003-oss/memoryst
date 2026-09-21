@@ -40,11 +40,20 @@ class ScenePromptTests(unittest.TestCase):
         self.assertIn("Wanted", prompt)
         self.assertIn("девушка", prompt)  # the forbidden role words are named explicitly
 
-    def test_prompt_is_untouched_when_no_names_are_known(self) -> None:
-        """An older extension sends no names; extraction must behave exactly as before
-        rather than telling the model the participants are called "unknown"."""
-        self.assertEqual(build_scene_facts_prompt(), SCENE_FACTS_PROMPT)
-        self.assertEqual(build_scene_facts_prompt(None, None), SCENE_FACTS_PROMPT)
+    def test_no_participants_are_invented_when_no_names_are_known(self) -> None:
+        """An older extension sends no names; the model must not be told the
+        participants are called "unknown"."""
+        for prompt in (build_scene_facts_prompt(), build_scene_facts_prompt(None, None)):
+            self.assertNotIn("The participants are", prompt)
+            self.assertNotIn("unknown", prompt)
+
+    def test_the_language_block_is_present_without_names_too(self) -> None:
+        """It used to live only in the names block, so a scene with no names ended on
+        "return an empty facts list" and the language rule stayed at the top of the
+        list. 170 memories were written in English from Russian scenes that way."""
+        prompt = build_scene_facts_prompt(language="Russian")
+        self.assertIn("LANGUAGE,", prompt)
+        self.assertGreater(prompt.index("LANGUAGE,"), prompt.index("return an empty"))
 
     def test_the_language_rule_still_has_the_last_word(self) -> None:
         """Regression from the first live run.
@@ -59,14 +68,14 @@ class ScenePromptTests(unittest.TestCase):
         prompt = build_scene_facts_prompt("Аллина Волкова", "Wanteda")
 
         names_at = prompt.index("Аллина Волкова")
-        language_at = prompt.rindex("SAME LANGUAGE")
+        language_at = prompt.rindex("LANGUAGE,")
         self.assertGreater(
             language_at,
             names_at,
             "the language requirement must come after the names, or the model follows "
             "the English instruction it read last",
         )
-        self.assertTrue(prompt.rstrip().endswith("whatever language these instructions are written in."))
+        self.assertTrue(prompt.rstrip().endswith("language you write in."))
 
     def test_the_names_are_rules_not_a_trailing_block(self) -> None:
         prompt = build_scene_facts_prompt("Аллина Волкова", "Wanteda")
