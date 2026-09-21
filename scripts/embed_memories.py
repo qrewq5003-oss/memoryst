@@ -22,7 +22,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.db import get_connection
-from app.services.vector_store import add_memory, is_vector_store_enabled, get_collection_count, get_key_count
+from app.services.vector_store import (
+    BULK_EMBED_DELAY_SECONDS,
+    add_memory,
+    get_collection_count,
+    get_key_count,
+    is_vector_store_enabled,
+)
 
 
 def _select_rows(cursor, args) -> list:
@@ -106,7 +112,7 @@ def main() -> int:
             embedded += 1
             if embedded % 50 == 0:
                 print(f"  embedded {embedded}/{len(rows)}...")
-            time.sleep(0.6)
+            time.sleep(BULK_EMBED_DELAY_SECONDS)
         except Exception as e:
             errors += 1
             print(f"  ERROR {memory_id}: {e}", file=sys.stderr)

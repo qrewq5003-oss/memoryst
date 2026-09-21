@@ -355,6 +355,20 @@ def list_keys() -> list[dict[str, str]]:
         return result
 
 
+# How long a bulk caller should wait between embeddings.
+#
+# The library itself never sleeps: a live /memory/store embeds one or two facts a turn
+# and pacing it would only slow a request the user is waiting on. Bursts come from the
+# scripts - a re-extraction writes 3-5 facts per scene back to back, and on 2026-09-21
+# that tripped Google's per-minute limit and returned 429 RESOURCE_EXHAUSTED. The quota
+# came back within minutes, which is what a per-minute limit looks like; a daily one
+# would have held until midnight Pacific.
+#
+# 0.6s is what scripts/embed_memories.py had been using without ever hitting the limit,
+# so it is a measured value rather than a guess - roughly 100 calls a minute.
+BULK_EMBED_DELAY_SECONDS = 0.6
+
+
 def add_memory(memory_id: str, content: str, metadata: dict | None = None) -> None:
     """Embed one memory. Best-effort: a failure here must not fail the write it follows.
 

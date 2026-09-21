@@ -81,3 +81,63 @@ class RussianSceneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmbedPacingTests(unittest.TestCase):
+    """Bulk writes pace their embeddings; the live path does not.
+
+    A scene writes 3-5 facts back to back, and that burst hit Google's per-minute limit
+    on 2026-09-21 - 429 RESOURCE_EXHAUSTED, recovered within minutes, which is what a
+    per-minute limit looks like rather than a daily one. A live /memory/store embeds one
+    or two facts a turn and must not be slowed: the user is waiting on that request.
+    """
+
+    def test_the_library_itself_never_sleeps(self) -> None:
+        # The constant is advice for bulk callers, not behaviour of add_memory.
+        import inspect
+
+        from app.services import vector_store
+
+        self.assertGreater(vector_store.BULK_EMBED_DELAY_SECONDS, 0)
+        self.assertNotIn("sleep", inspect.getsource(vector_store.add_memory))
+
+    def test_both_bulk_scripts_use_the_same_constant(self) -> None:
+        # embed_memories.py had 0.6 hardcoded and never hit the limit; that measured
+        # value is now shared rather than copied.
+        root = Path(__file__).resolve().parent.parent
+        for name in ("embed_memories.py", "reextract_english_memories.py"):
+            source = (root / "scripts" / name).read_text(encoding="utf-8")
+            with self.subTest(script=name):
+                self.assertIn("BULK_EMBED_DELAY_SECONDS", source)
+
+    def test_storing_waits_after_embedding(self) -> None:
+        from unittest.mock import patch
+
+        slept: list[float] = []
+        with patch.object(reextract, "passes_memory_quality_gate", return_value=True), \
+             patch.object(reextract, "find_memory_by_normalized_content", return_value=None), \
+             patch.object(reextract, "create_memory") as create, \
+             patch.object(reextract.vector_store, "add_memory"), \
+             patch.object(reextract.time, "sleep", side_effect=slept.append):
+            create.return_value = type(
+                "M", (), {"id": "m1", "content": "x", "chat_id": "c", "character_id": "x"}
+            )()
+            reextract._store({"content": "Валерия готовит арепы"}, "c", "x", 0.6)
+
+        self.assertEqual(slept, [0.6])
+
+    def test_pacing_can_be_switched_off(self) -> None:
+        from unittest.mock import patch
+
+        slept: list[float] = []
+        with patch.object(reextract, "passes_memory_quality_gate", return_value=True), \
+             patch.object(reextract, "find_memory_by_normalized_content", return_value=None), \
+             patch.object(reextract, "create_memory") as create, \
+             patch.object(reextract.vector_store, "add_memory"), \
+             patch.object(reextract.time, "sleep", side_effect=slept.append):
+            create.return_value = type(
+                "M", (), {"id": "m1", "content": "x", "chat_id": "c", "character_id": "x"}
+            )()
+            reextract._store({"content": "Валерия готовит арепы"}, "c", "x", 0.0)
+
+        self.assertEqual(slept, [])

@@ -27,6 +27,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -131,7 +132,7 @@ def _collect_scenes() -> dict[tuple, dict]:
         conn.close()
 
 
-def _store(fact: dict, chat_id: str, character_id: str) -> bool:
+def _store(fact: dict, chat_id: str, character_id: str, embed_delay: float) -> bool:
     """Store one extracted fact, through the same gates the live path uses."""
     content = (fact.get("content") or "").strip()
     if not content:
@@ -172,6 +173,12 @@ def _store(fact: dict, chat_id: str, character_id: str) -> bool:
         created.content,
         {"chat_id": created.chat_id, "character_id": created.character_id},
     )
+    # Paced because a scene writes 3-5 facts back to back, and that burst is what hit
+    # Google's per-minute limit on the first run. The sleep is per embedding rather than
+    # per scene: the gap between scenes is already an LLM call several seconds long, so
+    # it is the burst inside one that needs flattening, not the interval between them.
+    if embed_delay > 0:
+        time.sleep(embed_delay)
     return True
 
 
@@ -179,6 +186,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="report the plan, call nothing")
     parser.add_argument("--limit", type=int, help="process only the first N scenes")
+    parser.add_argument(
+        "--embed-delay",
+        type=float,
+        default=vector_store.BULK_EMBED_DELAY_SECONDS,
+        help="seconds to wait after each embedding; 0 disables the pacing",
+    )
     args = parser.parse_args()
 
     scenes = _collect_scenes()
@@ -222,7 +235,10 @@ def main() -> int:
             if delete_memory(memory_id):
                 removed += 1
 
-        stored = sum(_store(f, scene["chat_id"], scene["character_id"]) for f in facts)
+        stored = sum(
+            _store(f, scene["chat_id"], scene["character_id"], args.embed_delay)
+            for f in facts
+        )
         created_count += stored
         replaced += 1
         print(f"  [{index}/{len(keys)}] {scene['chat_id'][:36]}: -{len(scene['old_ids'])} +{stored}")
