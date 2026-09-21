@@ -21,6 +21,7 @@ from app.schemas import (
     ListMemoriesResponse,
     ListTrackersResponse,
     MemoryItem,
+    MemoryMetadata,
     MessageInput,
     PinMemoryRequest,
     PinMemoryResponse,

@@ -224,3 +224,70 @@ class StoreFailureTests(_ApiCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LlmBackedEndpointTests(_ApiCase):
+    """The two endpoints that were dead with a 500 and nothing noticed.
+
+    `MemoryMetadata` is used at memory_api.py:188 and :454 and was never imported, so
+    `/memory/clip` and `/memory/scene` both raised `NameError` inside the request and
+    returned 500. Found 2026-09-21 by calling them against the live service - they were
+    among the endpoints this module's coverage gap left untested, and `/memory/scene` is
+    what the web UI's Tools tab calls, so scene extraction from the UI had simply stopped
+    working.
+
+    The LLM is stubbed here rather than called. A suite that calls a real model is
+    non-deterministic, costs money per run and needs network, and CI gates on this suite -
+    but note that a stub would have caught this too. The bug was never about the model;
+    it was that nothing exercised the endpoint at all.
+    """
+
+    def test_clip_stores_the_text_it_was_given(self) -> None:
+        response = self.client.post("/memory/clip", json={
+            "chat_id": "chat-1", "character_id": "char-1",
+            "text": "Алина работает бариста в кафе «Ботаника»",
+        })
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertTrue(response.json()["stored"])
+
+    def test_clip_pins_what_it_stores(self) -> None:
+        # A clip is an explicit "remember this" from the user, so it must not be subject
+        # to the same eviction as an extracted fact.
+        memory_id = self.client.post("/memory/clip", json={
+            "chat_id": "chat-1", "character_id": "char-1", "text": "запомни это",
+        }).json()["memory_id"]
+
+        self.assertTrue(self.client.get(f"/memory/{memory_id}").json()["pinned"])
+
+    def test_scene_returns_the_extracted_memory(self) -> None:
+        extracted = {
+            "title": "Смена заканчивается в 23:00",
+            "content": "Рабочая смена заканчивается в одиннадцать вечера.",
+            "type": "profile",
+            "keywords": ["смена", "работа"],
+            "mood": "нейтральное",
+        }
+        with patch("app.services.llm_extractor.extract_with_llm", return_value=extracted):
+            response = self.client.post("/memory/scene", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "messages": [
+                    {"role": "user", "text": "Во сколько смена заканчивается?"},
+                    {"role": "assistant", "text": "В одиннадцать вечера."},
+                ],
+            })
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertTrue(body["stored"])
+        self.assertEqual(body["keywords"], ["смена", "работа"])
+
+    def test_scene_survives_an_extraction_that_returns_nothing(self) -> None:
+        with patch("app.services.llm_extractor.extract_with_llm", return_value=None):
+            response = self.client.post("/memory/scene", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "messages": [{"role": "user", "text": "ага"}],
+            })
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()["stored"])
