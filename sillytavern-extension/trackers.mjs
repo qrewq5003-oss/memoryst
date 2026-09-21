@@ -11,8 +11,8 @@
 import {
     DEFAULT_TRACKERS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=29a6f53';
-import { resolveStableCharacterId } from './scope.mjs?v=29a6f53';
+} from './http.mjs?v=e147550';
+import { resolveStableCharacterId } from './scope.mjs?v=e147550';
 
 export const TRACKER_PROMPT_KEY = 'memory-service-tracker';
 
