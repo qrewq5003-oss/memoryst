@@ -39,20 +39,20 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=dfdba76';
-import { classifyOutcome, createBackendStatus } from './backend-status.mjs?v=dfdba76';
-import { lastUserText, recentMessages } from './chat-history.mjs?v=dfdba76';
-import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=dfdba76';
+} from './audit.mjs?v=9d3b3ba';
+import { classifyOutcome, createBackendStatus } from './backend-status.mjs?v=9d3b3ba';
+import { lastUserText, recentMessages } from './chat-history.mjs?v=9d3b3ba';
+import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=9d3b3ba';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=dfdba76';
-import { mountSettingsUi } from './settings-ui.mjs?v=dfdba76';
-import { resolveEffectiveScope } from './scope.mjs?v=dfdba76';
+} from './settings.mjs?v=9d3b3ba';
+import { mountSettingsUi } from './settings-ui.mjs?v=9d3b3ba';
+import { resolveEffectiveScope } from './scope.mjs?v=9d3b3ba';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=dfdba76';
+} from './lore-anchors.mjs?v=9d3b3ba';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -60,26 +60,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=dfdba76';
+} from './trackers.mjs?v=9d3b3ba';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=dfdba76';
+} from './version.mjs?v=9d3b3ba';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=dfdba76';
+} from './injection.mjs?v=9d3b3ba';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=dfdba76';
+} from './supersede.mjs?v=9d3b3ba';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=dfdba76';
+} from './injectors.mjs?v=9d3b3ba';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -90,7 +90,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=dfdba76';
+} from './http.mjs?v=9d3b3ba';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -313,7 +313,14 @@ function refreshSettingsUi() {
         },
         getChatContext: () => {
             const ctx = getChatContext();
-            return { chatId: ctx.chatId, characterId: ctx.characterId };
+            return {
+                chatId: ctx.chatId,
+                characterId: ctx.characterId,
+                // The whole open chat, for Backfill with no file and nothing pasted - the
+                // recovery the outage toast points at. The chat file itself sits in Termux's
+                // private storage, where a browser file picker on Android cannot reach.
+                messages: recentMessages(ctx.chat, ctx.chat?.length || 0),
+            };
         },
     });
 }

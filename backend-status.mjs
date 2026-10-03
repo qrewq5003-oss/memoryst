@@ -9,8 +9,8 @@
  *
  * So the rule is: say it once when the backend goes away, and once when it comes back -
  * never on every turn. The recovery notice also counts the turns that were not stored,
- * because those are recoverable (the chat file is intact; Backfill re-reads it) only if
- * someone knows they are missing.
+ * because those are recoverable (Backfill with nothing selected re-reads the open chat,
+ * and already stored facts come back as duplicates) only if someone knows they are missing.
  *
  * Kept free of SillyTavern so it can be tested; main.mjs only feeds it outcomes and
  * shows what it returns.
@@ -55,7 +55,7 @@ export function backendBackMessage(missedStores) {
         return 'memoryst снова на связи.';
     }
     return `memoryst снова на связи. Не сохранено ходов: ${missedStores} — `
-        + 'их можно дописать бэкфиллом этого чата.';
+        + 'их допишет кнопка Backfill Current Chat в панели memoryst.';
 }
 
 /**
