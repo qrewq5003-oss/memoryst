@@ -403,6 +403,11 @@ This extension uses the following SillyTavern APIs:
    - Check browser console for errors
 
 2. **No memories being stored:**
+   - A red "memoryst не отвечает" toast means the backend is down, and every turn from
+     then on is not stored. It is shown once per outage and stays until closed. When the
+     backend answers again a green toast says how many turns were missed; the chat file
+     is intact, so **Backfill** for this chat recovers them. Since 1.5.0 - before that an
+     outage was reported to the browser console only.
    - Ensure extension is enabled in SillyTavern
    - Check that chat has started (character selected)
 

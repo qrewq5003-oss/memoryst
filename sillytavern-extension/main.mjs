@@ -40,6 +40,7 @@ import {
     resolvePreGenerationHookNames,
     willAppendUserMessage,
 } from './audit.mjs?v=0b26074';
+import { classifyOutcome, createBackendStatus } from './backend-status.mjs?v=0b26074';
 import { lastUserText, recentMessages } from './chat-history.mjs?v=0b26074';
 import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=0b26074';
 import {
@@ -117,6 +118,9 @@ let currentMemoryPromptBlock = '';
 let currentRetrieveBudget = null;
 let currentLoreAnchorInfo = null;
 let currentCompatibility = null;
+// Said once when the backend stops answering and once when it is back - see
+// backend-status.mjs for why the console alone cost an evening of memory.
+const backendStatus = createBackendStatus();
 // character_id -> the trackers the backend last stored for them. Filled on CHAT_CHANGED
 // and after a manual update; the lorebook handler only ever reads it, so a mention never
 // triggers a regeneration (or an await) in the injection path.
@@ -322,6 +326,24 @@ function refreshSettingsUi() {
  * mode is a stale extension copy (broken symlink into SillyTavern's public/)
  * silently talking to an updated backend.
  */
+function reportBackendOutcome(kind, outcome) {
+    const notice = backendStatus.record(kind, outcome);
+    if (!notice) {
+        return;
+    }
+    if (notice.level === 'error') {
+        // Sticky: it fires once per outage, so a toast that fades in five seconds while
+        // the user is reading the reply is as good as none.
+        globalThis.toastr?.error?.(notice.message, 'memoryst', {
+            timeOut: 0,
+            extendedTimeOut: 0,
+            closeButton: true,
+        });
+    } else {
+        globalThis.toastr?.success?.(notice.message, 'memoryst');
+    }
+}
+
 async function checkBackendCompatibility() {
     if (!settings.enabled || !settings.memoryServiceUrl) {
         return;
@@ -329,6 +351,7 @@ async function checkBackendCompatibility() {
 
     let backendInfo = null;
     let reachable = true;
+    let responded = false;
 
     try {
         const headers = {};
@@ -346,6 +369,8 @@ async function checkBackendCompatibility() {
             { timeoutMs: DEFAULT_VERSION_TIMEOUT_MS },
         );
 
+        responded = true;
+        reportBackendOutcome('handshake', classifyOutcome({ httpStatus: response.status }));
         if (response.ok) {
             backendInfo = await response.json();
         } else if (response.status === 404) {
@@ -357,6 +382,11 @@ async function checkBackendCompatibility() {
         }
     } catch (error) {
         reachable = false;
+        // Only a request that got no answer says anything about the backend: a throw
+        // after the response (bad JSON, a bug in our own handling) is not an outage.
+        if (!responded) {
+            reportBackendOutcome('handshake', classifyOutcome({ error }));
+        }
         console.warn('[memoryst] Version check request failed:', error?.message || error);
     }
 
@@ -424,6 +454,7 @@ async function storeMemories() {
         return { called: false, reason: decision.reason };
     }
 
+    let responded = false;
     try {
         const headers = {
             'Content-Type': 'application/json',
@@ -456,6 +487,8 @@ async function storeMemories() {
             { method: 'POST', headers, body: JSON.stringify(body) },
             { timeoutMs: resolveTimeoutMs(settings.storeTimeoutMs, DEFAULT_STORE_TIMEOUT_MS) },
         );
+        responded = true;
+        reportBackendOutcome('store', classifyOutcome({ httpStatus: response.status }));
 
         if (response.ok) {
             const result = await response.json();
@@ -474,6 +507,11 @@ async function storeMemories() {
             };
         }
     } catch (error) {
+        // Only a request that got no answer says anything about the backend: a throw
+        // after the response (bad JSON, a bug in our own handling) is not an outage.
+        if (!responded) {
+            reportBackendOutcome('store', classifyOutcome({ error }));
+        }
         if (isTimeoutError(error)) {
             // The request was abandoned here, not on the server: the backend goes on and
             // very likely still writes the memories. What is lost is this turn's store
@@ -517,6 +555,7 @@ async function retrieveMemories() {
     // retrieve that had ignored it.
     const recent_messages = getRecentMessagesForRetrieve(settings.recentMessagesCount);
 
+    let responded = false;
     try {
         const headers = {
             'Content-Type': 'application/json',
@@ -543,6 +582,8 @@ async function retrieveMemories() {
             },
             { timeoutMs: resolveTimeoutMs(settings.retrieveTimeoutMs, DEFAULT_RETRIEVE_TIMEOUT_MS) },
         );
+        responded = true;
+        reportBackendOutcome('retrieve', classifyOutcome({ httpStatus: response.status }));
 
         if (response.ok) {
             const result = await response.json();
@@ -598,6 +639,11 @@ async function retrieveMemories() {
             };
         }
     } catch (error) {
+        // Only a request that got no answer says anything about the backend: a throw
+        // after the response (bad JSON, a bug in our own handling) is not an outage.
+        if (!responded) {
+            reportBackendOutcome('retrieve', classifyOutcome({ error }));
+        }
         if (isTimeoutError(error)) {
             console.warn(
                 '[memoryst] Retrieve timed out after', error.timeoutMs,
