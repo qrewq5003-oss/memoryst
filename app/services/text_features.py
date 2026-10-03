@@ -270,7 +270,27 @@ def _normalize_russian_word(word: str) -> str:
 
     try:
         morph = _get_morph()
-        parsed = morph.parse(word)[0]
+        parses = morph.parse(word)
+        # A name that reads as itself in the nominative is its own lemma. pymorphy ranks
+        # `Валерия` as the genitive of the masculine `Валерий` (0.455) above the feminine
+        # nominative (0.182), so the heroine of the second-largest chat became `Валерий`
+        # in every query - and `valeri` never meets the `valeria` her 452 stored facts
+        # carry. Same trap for Евгения and Виталия.
+        # Capitalised words only, i.e. entities: keywords arrive lowercased, and there the
+        # rule would stop `мира` reducing to `мир` because Мира is also a name - measured,
+        # it failed three retrieval-eval cases.
+        # Indeclinable (`Fixd`) readings are excluded: pymorphy offers one for almost any
+        # form - `Алисе` as an indeclinable masculine name - and accepting it stopped
+        # the dative reducing to `Алиса`.
+        if word[:1].isupper():
+            for candidate in parses:
+                tag = candidate.tag
+                if (
+                    "Name" in tag and "nomn" in tag and "Fixd" not in tag
+                    and candidate.normal_form == word.lower()
+                ):
+                    return candidate.normal_form
+        parsed = parses[0]
         normalized = parsed.normal_form
         if not normalized or len(normalized) < 2 or any(char.isdigit() for char in normalized):
             return word
@@ -430,6 +450,12 @@ def entity_match_keys(entity: str) -> set[str]:
         latin = _DOUBLED_RE.sub(r"\1", latin)
         if len(latin) >= 3:
             keys.add(latin)
+        # An oblique form cannot be told apart by grammar alone: `Валерию` is equally the
+        # feminine accusative and the masculine dative, and the lemmatiser picks the
+        # masculine. So `-ia` names also answer to the key without the final `a`, which
+        # is where `Валерий` lands once doubled letters collapse (`valerii` -> `valeri`).
+        if latin.endswith("ia") and len(latin) >= 5:
+            keys.add(latin[:-1])
     return keys
 
 

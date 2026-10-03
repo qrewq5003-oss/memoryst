@@ -99,3 +99,42 @@ class OverlapTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FeminineNamesSurviveLemmatisationTests(unittest.TestCase):
+    """pymorphy reads `Валерия` first as the genitive of the masculine `Валерий`.
+
+    Found 2026-10-03: every Russian query naming the heroine of the second-largest chat
+    resolved to `Валерий`, whose key `valeri` never met the `valeria` on her 452 stored
+    facts - entity overlap 0 on exactly the queries it exists for. This file's own
+    module docstring cites that very name as the matching it fixed.
+    """
+
+    def test_a_name_in_the_nominative_is_its_own_lemma(self) -> None:
+        for text, name in [
+            ("Валерия приготовила арепас.", "Валерия"),
+            ("Где Валерия?", "Валерия"),
+            ("Евгения пришла.", "Евгения"),
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(extract_entities(text), [name])
+
+    def test_an_indeclinable_reading_does_not_stop_declension(self) -> None:
+        # pymorphy also reads `Алисе` as an indeclinable masculine nominative; taking it
+        # kept the dative unreduced and failed three retrieval-eval cases.
+        self.assertEqual(extract_entities("Маркус снова доверяет Алисе."), ["Маркус", "Алиса"])
+
+    def test_unambiguous_names_are_unchanged(self) -> None:
+        self.assertEqual(extract_entities("Дмитрий пришёл."), ["Дмитрий"])
+        self.assertEqual(extract_entities("Алина пришла."), ["Алина"])
+
+    def test_an_oblique_form_still_finds_her_facts(self) -> None:
+        # `Валерию` is feminine accusative or masculine dative, and grammar cannot say
+        # which; the lemmatiser says Валерий. Matching has to absorb it.
+        query = extract_entities("Расскажи про Валерию")
+        self.assertEqual(entity_overlap_ratio(["Валерия"], query), 1.0)
+        self.assertEqual(entity_overlap_ratio(["Valeria Mendoza"], query), 1.0)
+
+    def test_the_extra_key_is_limited_to_ia_endings(self) -> None:
+        self.assertEqual(entity_match_keys("Алина"), {"alina"})
+        self.assertEqual(entity_match_keys("Лия"), {"lia"}, "too short to strip safely")
