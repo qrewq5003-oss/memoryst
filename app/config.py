@@ -110,6 +110,10 @@ class Config:
     # option: build_scene_text caps a scene at SCENE_TEXT_MAX_CHARS, so a long import
     # would have been silently truncated to its first few messages.
     BACKFILL_SCENE_SIZE: int = int(os.getenv("BACKFILL_SCENE_SIZE", "8"))
+    # How many of a chat's existing memories backfill compares each candidate against
+    # for a soft (reworded) duplicate. The largest live chat holds ~414; this is a cap
+    # against a corrupt scope, not a sample.
+    BACKFILL_SOFT_MATCH_POOL: int = int(os.getenv("BACKFILL_SOFT_MATCH_POOL", "2000"))
 
     TRACKER_LLM_TIMEOUT: int = int(os.getenv("TRACKER_LLM_TIMEOUT", "120"))
     TRACKER_LLM_MAX_TOKENS: int = int(os.getenv("TRACKER_LLM_MAX_TOKENS", "10000"))

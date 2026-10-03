@@ -365,6 +365,66 @@ class BackfillUsesTheSceneExtractorTests(_ApiCase):
         })
         self.assertEqual(response.status_code, 422)
 
+    @staticmethod
+    def _candidate(content: str, character_id: str = "char-1"):
+        from app.schemas import CreateMemoryRequest
+
+        return CreateMemoryRequest(
+            chat_id="chat-1", character_id=character_id, type="profile", layer="stable",
+            source="auto", content=content,
+            metadata={"entities": ["Алина"], "keywords": ["работать", "кафе"]},
+        )
+
+    def test_re_reading_a_chat_does_not_store_a_reworded_fact_twice(self) -> None:
+        # Recovery after an outage re-reads the whole open chat, so facts stored before
+        # the outage are extracted again - in other words. Exact-text dedup missed all
+        # of them.
+        self._create()
+        reworded = self._candidate("Алина работает официанткой в кафе")
+
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   return_value=([reworded], "llm")):
+            response = self.client.post("/memory/backfill", json={
+                # A different card index than the stored row: scope is the chat.
+                "chat_id": "chat-1", "character_id": "char-7", "messages": self.MESSAGES,
+            })
+
+        body = response.json()
+        self.assertEqual((body["stored"], body["duplicates"]), (0, 1))
+        listed = self.client.get("/memory/list", params={"chat_id": "chat-1"}).json()
+        self.assertEqual(
+            [item["content"] for item in listed["items"]],
+            ["Алина работает в кафе «Ботаника»"],
+            "a backfill match is skipped, not merged into the stored row",
+        )
+
+    def test_two_scenes_of_one_import_do_not_store_the_same_fact_twice(self) -> None:
+        messages = [{"role": "user", "text": f"реплика {i}"} for i in range(10)]
+        first = self._candidate("Алина работает в кафе")
+        second = self._candidate("Алина по-прежнему работает в том же кафе")
+
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   side_effect=[([first], "llm"), ([second], "llm")]):
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "messages": messages, "scene_size": 5,
+            })
+
+        self.assertEqual((response.json()["stored"], response.json()["duplicates"]), (1, 1))
+
+    def test_an_unrelated_fact_is_still_stored(self) -> None:
+        self._create()
+        unrelated = self._candidate("Алина копит с сестрой на поездку")
+        unrelated.metadata.keywords = ["копить", "поездка", "сестра"]
+
+        with patch("app.services.scene_extractor.extract_scene_memories",
+                   return_value=([unrelated], "llm")):
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1", "messages": self.MESSAGES,
+            })
+
+        self.assertEqual(response.json()["stored"], 1)
+
 
 class SummarizeAndConsolidateTests(_ApiCase):
     """The two endpoints that ran against the real model but were never pinned in the suite.

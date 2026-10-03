@@ -47,7 +47,20 @@ def check_soft_match(
     """
     if not can_auto_update(existing):
         return False
-    
+
+    return is_soft_duplicate(candidate, existing)
+
+
+def is_soft_duplicate(
+    candidate: CreateMemoryRequest,
+    existing: MemoryItem,
+) -> bool:
+    """Whether candidate says the same thing as existing, in other words.
+
+    The question check_soft_match asks, minus "and may existing be updated". Backfill
+    needs only this half: it skips a match rather than merging it, so a pinned or
+    manual memory is just as much a duplicate as any other.
+    """
     if (
         candidate.chat_id != existing.chat_id
         or candidate.type != existing.type

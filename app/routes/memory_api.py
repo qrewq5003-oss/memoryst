@@ -343,11 +343,13 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
     from app.repositories.memory_repo import (
         create_memory,
         find_memory_by_normalized_content,
+        list_memories,
     )
     from app.services import chat_buffer_service, vector_store
+    from app.services.deduper import is_soft_duplicate
     from app.services.scene_extractor import extract_scene_memories
     from app.services.store_service import passes_memory_quality_gate
-    from app.services.text_utils import normalize_content
+    from app.services.text_utils import normalize_content, scope_character_id
 
     scene_size = request.scene_size or config.BACKFILL_SCENE_SIZE
     candidates: list[CreateMemoryRequest] = []
@@ -385,6 +387,19 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
     skipped = 0
     duplicates = 0
 
+    # Backfill is how turns missed during an outage are recovered, and the open chat is
+    # re-read whole: whatever was stored before the outage gets extracted again, and the
+    # model words it differently the second time. The exact check below caught none of
+    # that, so the soft match a live turn relies on is applied too - minus its
+    # "may this row be updated" half, which is about merging, not about sameness. Unlike a live turn,
+    # a match is skipped rather than merged: backfill restores what is missing, it does
+    # not rewrite what the live path already shaped.
+    existing_memories = list_memories(
+        chat_id=request.chat_id,
+        character_id=scope_character_id(request.character_id),
+        limit=config.BACKFILL_SOFT_MATCH_POOL,
+    ).items
+
     for candidate in candidates:
         if not passes_memory_quality_gate(candidate):
             skipped += 1
@@ -397,12 +412,16 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
             normalized_content=normalized,
         )
 
-        if existing is not None:
+        if existing is not None or any(
+            is_soft_duplicate(candidate, memory) for memory in existing_memories
+        ):
             duplicates += 1
             continue
 
         created = create_memory(candidate)
         stored += 1
+        # Two scenes of one import can yield the same fact, too.
+        existing_memories.append(created)
 
         vector_store.add_memory(
             created.id,
