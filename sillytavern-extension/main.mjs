@@ -39,20 +39,20 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=0b26074';
-import { classifyOutcome, createBackendStatus } from './backend-status.mjs?v=0b26074';
-import { lastUserText, recentMessages } from './chat-history.mjs?v=0b26074';
-import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=0b26074';
+} from './audit.mjs?v=dfdba76';
+import { classifyOutcome, createBackendStatus } from './backend-status.mjs?v=dfdba76';
+import { lastUserText, recentMessages } from './chat-history.mjs?v=dfdba76';
+import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=dfdba76';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=0b26074';
-import { mountSettingsUi } from './settings-ui.mjs?v=0b26074';
-import { resolveEffectiveScope } from './scope.mjs?v=0b26074';
+} from './settings.mjs?v=dfdba76';
+import { mountSettingsUi } from './settings-ui.mjs?v=dfdba76';
+import { resolveEffectiveScope } from './scope.mjs?v=dfdba76';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=0b26074';
+} from './lore-anchors.mjs?v=dfdba76';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -60,26 +60,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=0b26074';
+} from './trackers.mjs?v=dfdba76';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=0b26074';
+} from './version.mjs?v=dfdba76';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=0b26074';
+} from './injection.mjs?v=dfdba76';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=0b26074';
+} from './supersede.mjs?v=dfdba76';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=0b26074';
+} from './injectors.mjs?v=dfdba76';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
@@ -90,7 +90,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=0b26074';
+} from './http.mjs?v=dfdba76';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
