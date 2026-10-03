@@ -190,6 +190,27 @@ class ConsolidationConflictResolutionTests(unittest.TestCase):
 
         self.assertEqual(metadata.source_message_ids, ["msg-1", "msg-2", "msg-3"])
 
+    def test_summary_metadata_drops_role_words_inherited_from_old_rows(self) -> None:
+        # Rows written before the stoplist still carry `user`/`пользователь`. The
+        # 2026-09-21 sweep copied them into 13 summaries, and a role word that comes
+        # first in the union takes one of the ten slots ahead of a real name.
+        old_rows = [
+            _create_memory(
+                chat_id="chat-1", character_id="char-1",
+                content=f"Событие {i}.", layer="episodic",
+                entities=["user", "Пользователь", f"Гость{i}"],
+            )
+            for i in range(6)
+        ]
+
+        metadata = _build_summary_metadata(old_rows, "Валерия приготовила арепас.")
+
+        lowered = [entity.lower() for entity in metadata.entities]
+        self.assertNotIn("user", lowered)
+        self.assertNotIn("пользователь", lowered)
+        self.assertIn("Валерия", metadata.entities)
+        self.assertIn("Гость5", metadata.entities, "noise must not crowd names out of the ten")
+
     def test_summary_metadata_aggregates_source_message_ids_transitively_through_summary_of_summaries(self) -> None:
         chapter_summary = _create_memory(
             chat_id="chat-1", character_id="char-1",

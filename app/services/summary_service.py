@@ -195,7 +195,11 @@ def _build_summary_metadata(memories: list[MemoryItem], summary_text: str) -> Me
                 raw_message_ids.append(message_id)
 
     return MemoryMetadata(
-        entities=entity_candidates[:10],
+        # Filtered here as well, and before the cut to ten: the union pulls in entities
+        # from source rows written before the role-word stoplist existed, and the
+        # 2026-09-21 summary sweep wrote `user`/`пользователь` into 13 summaries that
+        # way - each taking a slot a real name could have had.
+        entities=text_features.filter_entities(entity_candidates)[:10],
         keywords=keyword_candidates[:12],
         is_summary=True,
         summary_kind=ROLLING_SUMMARY_KIND,
