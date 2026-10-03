@@ -54,7 +54,7 @@ test('the recovery says how many turns were not stored, then forgets them', () =
     const back = status.record('handshake', 'ok');
     assert.deepEqual(back, { level: 'success', message: backendBackMessage(2) });
     assert.match(back.message, /2/);
-    assert.match(back.message, /бэкфилл/);
+    assert.match(back.message, /Backfill Current Chat/);
     assert.deepEqual(status.snapshot(), { state: 'up', missedStores: 0 });
 
     // Nothing more to say while it stays up.

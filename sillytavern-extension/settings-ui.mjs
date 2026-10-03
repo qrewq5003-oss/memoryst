@@ -602,7 +602,7 @@ export function buildSettingsUiMarkup(settings = {}, compatibility = null, track
             </section>
             <section class="memoryst-settings-group">
                 <h4>Backfill</h4>
-                <p class="memoryst-settings-group-copy">Import existing chat history into memory.</p>
+                <p class="memoryst-settings-group-copy">Import existing chat history into memory. With no file chosen and nothing pasted, the button imports the chat that is open now - the way to recover turns missed while the backend was down. Already stored facts are recognised as duplicates.</p>
                 <div style="margin-top:8px;">
                     <label style="font-weight:600;">Upload .jsonl file (SillyTavern chat format):</label><br>
                     <!-- SillyTavern hides every file input globally - a rule setting
@@ -885,21 +885,29 @@ export function renderSettingsUi({
                 return;
             }
 
-            // Fall back to text area
+            // Then the text area, then the chat that is open.
             const raw = backfillText?.value?.trim();
-            if (!raw) {
-                backfillStatus.textContent = 'Paste messages or select a .jsonl file.';
-                return;
-            }
-
-            const messages = parseTextFormat(raw);
-            if (messages.length === 0) {
-                backfillStatus.textContent = 'No valid messages. Use format: "user: text"';
-                return;
+            let messages;
+            let source;
+            if (raw) {
+                messages = parseTextFormat(raw);
+                source = '';
+                if (messages.length === 0) {
+                    backfillStatus.textContent = 'No valid messages. Use format: "user: text"';
+                    return;
+                }
+            } else {
+                const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
+                messages = (ctx?.messages || []).filter(message => message.text);
+                source = ' from the open chat';
+                if (messages.length === 0) {
+                    backfillStatus.textContent = 'Open a chat, paste messages or select a .jsonl file.';
+                    return;
+                }
             }
 
             backfillBtn.disabled = true;
-            backfillStatus.textContent = `Processing ${messages.length} messages...`;
+            backfillStatus.textContent = `Processing ${messages.length} messages${source}...`;
             try {
                 await runBackfill(messages);
             } catch (e) {

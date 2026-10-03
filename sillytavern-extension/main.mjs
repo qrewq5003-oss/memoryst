@@ -313,7 +313,14 @@ function refreshSettingsUi() {
         },
         getChatContext: () => {
             const ctx = getChatContext();
-            return { chatId: ctx.chatId, characterId: ctx.characterId };
+            return {
+                chatId: ctx.chatId,
+                characterId: ctx.characterId,
+                // The whole open chat, for Backfill with no file and nothing pasted - the
+                // recovery the outage toast points at. The chat file itself sits in Termux's
+                // private storage, where a browser file picker on Android cannot reach.
+                messages: recentMessages(ctx.chat, ctx.chat?.length || 0),
+            };
         },
     });
 }

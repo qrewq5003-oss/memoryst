@@ -387,3 +387,67 @@ test('no file chosen leaves the readout empty rather than showing undefined', ()
 
     assert.equal(readout.textContent, '');
 });
+
+// The outage toast sends the user here to recover missed turns. The chat file sits in
+// Termux's private storage, which a browser file picker on Android cannot open - so with
+// nothing chosen and nothing pasted, the button has to read the open chat itself.
+async function clickBackfill({ messages, pasted = '' }) {
+    const document = new FakeDocument();
+    const requests = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+        requests.push({ url, body: JSON.parse(init.body) });
+        return {
+            ok: true,
+            status: 200,
+            json: async () => ({ stored: 3, skipped: 0, duplicates: 2, processed: messages.length }),
+        };
+    };
+    try {
+        mountSettingsUi({
+            document,
+            settings: { ...DEFAULT_SETTINGS, memoryServiceUrl: 'http://memoryst.test' },
+            onChange() {},
+            getChatContext: () => ({ chatId: 'Mai - 2026-10-02', characterId: 'Mai.png', messages }),
+        });
+        const panel = document.host.querySelector('#memoryst-settings-panel');
+        panel.querySelector('#memoryst-backfill-file').files = [];
+        panel.querySelector('#memoryst-backfill-text').value = pasted;
+        await panel.querySelector('#memoryst-backfill-btn').listeners.get('click')();
+        return { requests, status: panel.querySelector('#memoryst-backfill-status').textContent };
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+}
+
+test('Backfill with nothing chosen imports the open chat', async () => {
+    const messages = [
+        { role: 'user', text: 'Ты дома?' },
+        { role: 'assistant', text: 'Дома.' },
+        { role: 'assistant', text: '' },
+    ];
+    const { requests, status } = await clickBackfill({ messages });
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, 'http://memoryst.test/memory/backfill');
+    assert.deepEqual(requests[0].body, {
+        chat_id: 'Mai - 2026-10-02',
+        character_id: 'Mai.png',
+        messages: messages.slice(0, 2),
+    });
+    assert.match(status, /Done: 3 stored/);
+});
+
+test('pasted text still wins over the open chat', async () => {
+    const { requests } = await clickBackfill({
+        messages: [{ role: 'user', text: 'из чата' }],
+        pasted: 'user: из поля',
+    });
+    assert.deepEqual(requests[0].body.messages, [{ role: 'user', text: 'из поля' }]);
+});
+
+test('no open chat and nothing given: says what to do, sends nothing', async () => {
+    const { requests, status } = await clickBackfill({ messages: [] });
+    assert.deepEqual(requests, []);
+    assert.match(status, /Open a chat/);
+});
