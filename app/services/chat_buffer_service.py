@@ -156,6 +156,32 @@ def drop_chat_buffer(chat_id: str, character_id: str | None = None) -> None:
         _next_sequence.pop(key, None)
 
 
+def flush_all_buffers() -> int:
+    """Cool every hot message into chat_messages. Called on server shutdown.
+
+    The buffer exists so a swipe or edit of the newest messages leaves no stale row,
+    and losing it on a crash is the accepted price. Losing it on every *ordinary*
+    restart was not: measured 2026-10-03, 60 of 587 memories pointed at source
+    messages that were never written, and two short chats (no more than
+    HOT_BUFFER_SIZE messages) had facts but no raw history at all - nothing ever
+    pushed their messages out of the buffer.
+
+    Messages keep their ids, so source_message_ids stay valid. After the restart the
+    extension resends its recent window and intake dedup finds these rows instead of
+    adding new ones. The cost is the one the buffer was meant to avoid, at most once
+    per restart: if the newest message is swiped afterwards, its old text stays.
+
+    The sequence counters are kept: they already agree with what was written.
+    """
+    flushed = 0
+    for key in list(_buffers):
+        buffer = _buffers.pop(key)
+        for message in buffer:
+            insert_chat_message(message)
+            flushed += 1
+    return flushed
+
+
 def reset_all_buffers() -> None:
     """Clear all in-memory buffer state. Intended for test isolation."""
     _buffers.clear()

@@ -11,6 +11,7 @@ from app.config import config, validate_security
 from app.db import init_schema
 from app.routes.memory_api import router as memory_router
 from app.routes.ui import router as ui_router
+from app.services import chat_buffer_service
 from app.services.backup_service import run_backup
 from app.version import SERVICE_VERSION, get_version_info
 
@@ -70,6 +71,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.exception("Startup database backup failed")
     init_schema()
     yield
+    try:
+        flushed = chat_buffer_service.flush_all_buffers()
+        logger.info("Shutdown: wrote %d hot-buffer messages to chat_messages", flushed)
+    except Exception:
+        logger.exception("Shutdown: could not write the hot buffer")
 
 
 app = FastAPI(
