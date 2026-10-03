@@ -26,7 +26,7 @@
 //
 // MEMORY_EXTENSION_BUILD below is the precise identifier and moves on every change;
 // this one is the human-facing summary and moves on features.
-export const EXTENSION_VERSION = '1.4.0';
+export const EXTENSION_VERSION = '1.5.0';
 
 // Keep in sync with PROTOCOL_VERSION in app/version.py.
 export const MEMORY_PROTOCOL_VERSION = 1;
@@ -35,7 +35,7 @@ export const MEMORY_PROTOCOL_VERSION = 1;
 // record: ES modules are cached aggressively (and Android has no hard-reload gesture), so
 // "the fix is not working" and "the fix is not loaded" are otherwise indistinguishable -
 // which cost several rounds of the live tracker test. Bump on every extension change.
-export const MEMORY_EXTENSION_BUILD = '0b26074';
+export const MEMORY_EXTENSION_BUILD = 'dfdba76';
 
 /**
  * Compare the extension's embedded protocol version against the backend's
@@ -52,7 +52,8 @@ export const MEMORY_EXTENSION_BUILD = '0b26074';
  *   'mismatch'         - protocols differ; warn (direction included in message)
  *   'backend_outdated' - backend did not report a protocol version (predates
  *                        this endpoint / field); warn
- *   'unreachable'      - could not reach the backend; console-only, no banner
+ *   'unreachable'      - could not reach the backend; no banner here - the toast
+ *                        comes from backend-status.mjs, shared with every request
  */
 export function compareVersions({
     extensionProtocol,
