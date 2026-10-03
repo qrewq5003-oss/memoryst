@@ -1,4 +1,4 @@
-import { previewText } from './audit.mjs?v=dfdba76';
+import { previewText } from './audit.mjs?v=9d3b3ba';
 
 export const LORE_ANCHOR_PROMPT_KEY = 'memoryst-lore-anchor';
 export const DEFAULT_MAX_LORE_ANCHOR_ITEMS = 1;
