@@ -40,8 +40,15 @@ import {
     resolvePreGenerationHookNames,
     willAppendUserMessage,
 } from './audit.mjs?v=9d3b3ba';
-import { classifyOutcome, createBackendStatus } from './backend-status.mjs?v=9d3b3ba';
-import { lastUserText, recentMessages } from './chat-history.mjs?v=9d3b3ba';
+import { backendBackMessage, classifyOutcome, createBackendStatus } from './backend-status.mjs?v=9d3b3ba';
+import {
+    boundaryAfterCatchUp,
+    boundaryAfterStore,
+    planCatchUp,
+    readBoundary,
+    writeBoundary,
+} from './catch-up.mjs?v=9d3b3ba';
+import { lastUserText, messagesInRange, recentMessages } from './chat-history.mjs?v=9d3b3ba';
 import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=9d3b3ba';
 import {
     normalizeExtensionSettings,
@@ -82,6 +89,7 @@ import {
 } from './injectors.mjs?v=9d3b3ba';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
+    DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DISCARD_TIMEOUT_MS,
     DEFAULT_RETRIEVE_TIMEOUT_MS,
     DEFAULT_STORE_TIMEOUT_MS,
@@ -121,6 +129,9 @@ let currentCompatibility = null;
 // Said once when the backend stops answering and once when it is back - see
 // backend-status.mjs for why the console alone cost an evening of memory.
 const backendStatus = createBackendStatus();
+// The chat a catch-up is running for, so a second successful turn does not start
+// another over the same range while the first is still extracting.
+let catchUpInFlight = null;
 // character_id -> the trackers the backend last stored for them. Filled on CHAT_CHANGED
 // and after a manual update; the lorebook handler only ever reads it, so a mention never
 // triggers a regeneration (or an await) in the injection path.
@@ -347,7 +358,119 @@ function reportBackendOutcome(kind, outcome) {
             closeButton: true,
         });
     } else {
-        globalThis.toastr?.success?.(notice.message, 'memoryst');
+        // Whether the missed turns come back on their own depends on the chat, which
+        // backend-status does not know about.
+        const ctx = getChatContext();
+        const autoCatchUp = readBoundary(getContext()?.chatMetadata, ctx?.chatId || null) !== null;
+        globalThis.toastr?.success?.(backendBackMessage(notice.missedStores, autoCatchUp), 'memoryst');
+    }
+}
+
+/**
+ * Move the processed boundary after a store, and catch up if a gap sits behind it.
+ * See catch-up.mjs for the rules; this only reads and writes SillyTavern's metadata.
+ */
+function advanceProcessedBoundary(chatContext, storeResult) {
+    const rawContext = getContext();
+    const chatMetadata = rawContext?.chatMetadata;
+    const chatId = chatContext?.chatId || null;
+    if (!chatMetadata || !chatId) {
+        return;
+    }
+
+    // A turn counts as processed only if the backend answered and its extraction LLM did
+    // not fail - a 200 with extraction_failed is a turn that still needs doing.
+    const ok = Boolean(storeResult.result) && !storeResult.result.extraction_failed;
+    const boundary = readBoundary(chatMetadata, chatId);
+    const next = boundaryAfterStore({
+        boundary,
+        chatLength: chatContext.chat?.length || 0,
+        windowSize: settings.recentMessagesCount,
+        ok,
+    });
+    if (next !== boundary) {
+        writeBoundary(chatMetadata, chatId, next);
+        rawContext.saveMetadataDebounced?.();
+    }
+    if (ok) {
+        catchUp(chatContext, next);
+    }
+}
+
+/**
+ * Re-send what the processed boundary says was never stored. Fire-and-forget: it runs
+ * one extraction call per scene and must not hold up the turn that triggered it.
+ */
+async function catchUp(chatContext, boundary) {
+    const chat = chatContext.chat || [];
+    const range = planCatchUp({
+        boundary,
+        chatLength: chat.length,
+        windowSize: settings.recentMessagesCount,
+    });
+    if (!range || catchUpInFlight) {
+        return;
+    }
+    const messages = messagesInRange(chat, range.start, range.end);
+    if (!messages.length) {
+        return;
+    }
+
+    const chatId = chatContext.chatId;
+    catchUpInFlight = chatId;
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (settings.apiKey) {
+            headers['X-API-Key'] = settings.apiKey;
+        }
+        const body = { chat_id: chatId, character_id: chatContext.characterId, messages };
+        if (chatContext.characterName) {
+            body.character_name = chatContext.characterName;
+        }
+        if (chatContext.userName) {
+            body.user_name = chatContext.userName;
+        }
+        if (settings.sceneExtractionModel) {
+            body.model = settings.sceneExtractionModel;
+        }
+
+        const response = await fetchWithTimeout(
+            `${settings.memoryServiceUrl}/memory/backfill`,
+            { method: 'POST', headers, body: JSON.stringify(body) },
+            { timeoutMs: DEFAULT_BACKFILL_TIMEOUT_MS },
+        );
+        if (!response.ok) {
+            console.warn('[memoryst] Catch-up failed:', response.status);
+            return;
+        }
+        const result = await response.json();
+        // An older backend does not report failed scenes; treat that as success, which
+        // is no worse than having no catch-up at all.
+        const ok = !result.failed_scenes;
+
+        // The user may have switched chats while this ran; the metadata in hand would
+        // then belong to the other chat.
+        const rawContext = getContext();
+        if (getChatContext()?.chatId !== chatId || !rawContext?.chatMetadata) {
+            return;
+        }
+        const current = readBoundary(rawContext.chatMetadata, chatId);
+        const next = boundaryAfterCatchUp({ boundary: current, range, ok });
+        if (next !== current) {
+            writeBoundary(rawContext.chatMetadata, chatId, next);
+            rawContext.saveMetadataDebounced?.();
+        }
+        console.log('[memoryst] Catch-up', range.start, '-', range.end, ok ? 'done' : 'had failed scenes', result);
+        if (ok) {
+            globalThis.toastr?.info?.(
+                `memoryst дописал пропущенное: сообщений ${messages.length}, новых фактов ${result.stored ?? 0}.`,
+                'memoryst',
+            );
+        }
+    } catch (error) {
+        console.warn('[memoryst] Catch-up error:', error?.message || error);
+    } finally {
+        catchUpInFlight = null;
     }
 }
 
@@ -1203,6 +1326,7 @@ async function onMessageRendered(_messageId, renderType) {
                 previewChars: settings.auditPreviewChars,
             });
             notifyStaleTrackers(storeResult);
+            advanceProcessedBoundary(chatContext, storeResult);
             lastStoredTurn = buildStoredTurn({
                 chatId: chatContext?.chatId || null,
                 characterId: chatContext?.characterId || null,

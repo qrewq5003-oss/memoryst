@@ -81,6 +81,21 @@ All four are stored as **numbers/booleans, never words**: `setExtensionPrompt` r
 
 **Current pattern:** retrieve runs before generation and affects the current reply. Store still runs after render for the completed exchange.
 
+**Processed boundary and catch-up (since 1.7.0).** A store sends only the last
+`Recent Messages Count` messages, so turns missed during a longer outage - or while the
+extraction LLM was failing - used to be lost for good. The extension now keeps, in the
+chat's own metadata (`chat_metadata.memoryst`, saved in the chat file), the highest
+message memoryst is known to have processed. It moves only when a store succeeds *and*
+the backend did not report `extraction_failed`. When a gap sits behind the store window,
+the next successful turn re-sends it in the background through `/memory/backfill`
+(at most 40 messages at a time; a longer gap continues on later turns), and a toast
+says when it is done. Facts already stored are skipped, so the overlap is harmless.
+Idea borrowed from SillyTavern Memory Books' "highest processed message".
+
+A chat from before 1.7.0 has no boundary: it starts at the end of the chat on the
+first good turn, and anything missed before that still needs **Backfill Current Chat**.
+A branch does not inherit its parent's boundary - the chat id is stored beside it.
+
 ## Lorebook Ephemeral Anchors
 
 The extension now supports a separate lorebook bridge for curated canonical anchors.
@@ -405,10 +420,12 @@ This extension uses the following SillyTavern APIs:
 2. **No memories being stored:**
    - A red "memoryst не отвечает" toast means the backend is down, and every turn from
      then on is not stored. It is shown once per outage and stays until closed. When the
-     backend answers again a green toast says how many turns were missed. To recover
-     them, press **Backfill Current Chat** with no file chosen and nothing pasted: it
-     re-reads the open chat, and facts already stored come back as duplicates. Since 1.5.0 (open-chat Backfill since 1.6.0) - before that an
-     outage was reported to the browser console only.
+     backend answers again a green toast says how many turns were missed. Since 1.7.0
+     they are re-sent on their own after the next turn (see *Processed boundary* under
+     How It Works). In a chat older than that, press **Backfill Current Chat** with no
+     file chosen and nothing pasted: it re-reads the open chat, and facts already stored
+     come back as duplicates. Since 1.5.0 (open-chat Backfill since 1.6.0) - before that
+     an outage was reported to the browser console only.
    - Ensure extension is enabled in SillyTavern
    - Check that chat has started (character selected)
 

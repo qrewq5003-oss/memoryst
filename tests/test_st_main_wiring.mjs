@@ -180,3 +180,119 @@ test('a normal turn retrieves once, on MESSAGE_SENT, not on the hook before it',
     await st.emit('generate_before_combine_prompts', 'normal', {}, false);
     assert.equal(st.calls('/memory/retrieve').length, 1);
 });
+
+// ---------------------------------------------------------------- processed boundary
+
+const boundaryOf = st => st.context.chatMetadata.memoryst?.processedThrough;
+
+async function playTurns(st, count, label = 'ход') {
+    for (let i = 0; i < count; i += 1) {
+        await st.userSends(`${label} ${i}`);
+        await st.characterReplies(`ответ на ${label} ${i}`);
+    }
+}
+
+test('a good turn marks the chat processed to its end, and saves it in the chat file', async () => {
+    const st = await loadMain();
+    await playTurns(st, 1);
+    assert.equal(boundaryOf(st), st.context.chat.length - 1);
+    assert.equal(st.context.chatMetadata.memoryst.chatId, st.context.chatId);
+    assert.ok(st.metadataSaves >= 1);
+    assert.deepEqual(st.calls('/memory/backfill'), [], 'nothing to catch up');
+});
+
+test('after an outage the missed turns are re-sent on their own once the backend is back', async () => {
+    const st = await loadMain();
+    await playTurns(st, 1);
+    const before = boundaryOf(st);
+
+    st.backend = networkDown;
+    await playTurns(st, 6, 'пропущенный');
+    assert.equal(boundaryOf(st), before, 'an outage does not move the boundary');
+
+    st.backend = defaultBackend;
+    await playTurns(st, 1, 'после');
+
+    const [backfill] = st.calls('/memory/backfill');
+    assert.ok(backfill, 'catch-up ran');
+    assert.equal(backfill.body.messages[0].text, 'пропущенный 0');
+    assert.equal(backfill.body.messages.at(-1).text, 'ответ на после 0');
+    assert.equal(backfill.body.character_id, 'Mai.png');
+    assert.equal(boundaryOf(st), st.context.chat.length - 1);
+
+    const levels = st.toasts.map(toast => toast.level);
+    assert.deepEqual(levels, ['error', 'success', 'info']);
+    assert.match(st.toasts[1].message, /допишет их сам/);
+    assert.match(st.toasts[2].message, /дописал пропущенное/);
+});
+
+test('a failing extraction LLM is caught up too, though the backend answered 200', async () => {
+    const failing = (path, init) => (path.startsWith('/memory/store')
+        ? { ok: true, status: 200, json: async () => ({ stored: 0, updated: 0, skipped: 0, items: [], created_ids: [], extraction_method: 'regex_fallback', extraction_failed: true }) }
+        : defaultBackend(path, init));
+    const st = await loadMain();
+    await playTurns(st, 1);
+    const before = boundaryOf(st);
+
+    st.backend = failing;
+    await playTurns(st, 6, 'неизвлечённый');
+    assert.equal(boundaryOf(st), before);
+    assert.deepEqual(st.calls('/memory/backfill'), []);
+
+    st.backend = defaultBackend;
+    await playTurns(st, 1, 'после');
+    assert.equal(st.calls('/memory/backfill').length, 1);
+    assert.equal(boundaryOf(st), st.context.chat.length - 1);
+});
+
+test('a catch-up whose scenes failed keeps the range open for the next turn', async () => {
+    const st = await loadMain();
+    await playTurns(st, 1);
+    const before = boundaryOf(st);
+    st.backend = networkDown;
+    await playTurns(st, 6, 'пропущенный');
+
+    st.backend = (path, init) => (path.startsWith('/memory/backfill')
+        ? { ok: true, status: 200, json: async () => ({ processed: 12, stored: 0, skipped: 0, duplicates: 0, failed_scenes: 1 }) }
+        : defaultBackend(path, init));
+    await playTurns(st, 1, 'после');
+    assert.equal(boundaryOf(st), before);
+
+    st.backend = defaultBackend;
+    await playTurns(st, 1, 'ещё');
+    assert.equal(st.calls('/memory/backfill').length, 2);
+    assert.equal(boundaryOf(st), st.context.chat.length - 1);
+});
+
+test('a branch does not inherit its parent\'s boundary', async () => {
+    const st = await loadMain();
+    st.context.chatMetadata.memoryst = { chatId: 'parent chat', processedThrough: 0 };
+    st.context.chat.push(...Array.from({ length: 30 }, (_, i) => ({ is_user: i % 2 === 0, mes: `старое ${i}` })));
+    await playTurns(st, 1);
+    assert.deepEqual(st.calls('/memory/backfill'), [], 'unknown boundary: no surprise re-read of 30 messages');
+    assert.equal(st.context.chatMetadata.memoryst.chatId, st.context.chatId);
+});
+
+test('switching chats during a catch-up does not write one chat\'s progress into another', async () => {
+    const st = await loadMain();
+    await playTurns(st, 1);
+    st.backend = networkDown;
+    await playTurns(st, 6, 'пропущенный');
+
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    st.backend = (path, init) => (path.startsWith('/memory/backfill')
+        ? held.then(() => defaultBackend(path, init))
+        : defaultBackend(path, init));
+    await playTurns(st, 1, 'после');
+    assert.equal(st.calls('/memory/backfill').length, 1, 'catch-up is running');
+
+    st.context.chatId = 'Camila - 2026-09-22@11h55m22s610ms';
+    st.context.chatMetadata = {};
+    st.context.chat = [];
+    await st.emit('chat_id_changed');
+    release();
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.deepEqual(st.context.chatMetadata, {}, 'the new chat keeps clean metadata');
+});

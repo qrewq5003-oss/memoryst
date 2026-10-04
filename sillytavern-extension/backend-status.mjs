@@ -50,9 +50,19 @@ export function classifyOutcome({ httpStatus, error } = {}) {
 export const BACKEND_DOWN_MESSAGE =
     'memoryst не отвечает — ходы не попадают в память. Проверьте, запущен ли сервер.';
 
-export function backendBackMessage(missedStores) {
+/**
+ * @param {number} missedStores
+ * @param {boolean} [autoCatchUp] - the chat has a processed boundary, so catch-up
+ *     (catch-up.mjs) will re-send the missed range on its own after the next turn.
+ *     Without one - a chat from before 1.7.0 - only Backfill recovers it.
+ */
+export function backendBackMessage(missedStores, autoCatchUp = false) {
     if (!missedStores) {
         return 'memoryst снова на связи.';
+    }
+    if (autoCatchUp) {
+        return `memoryst снова на связи. Не сохранено ходов: ${missedStores} — `
+            + 'memoryst допишет их сам после следующего хода.';
     }
     return `memoryst снова на связи. Не сохранено ходов: ${missedStores} — `
         + 'их допишет кнопка Backfill Current Chat в панели memoryst.';
@@ -95,7 +105,7 @@ export function createBackendStatus() {
         }
         const missed = missedStores;
         missedStores = 0;
-        return { level: 'success', message: backendBackMessage(missed) };
+        return { level: 'success', message: backendBackMessage(missed), missedStores: missed };
     }
 
     return {

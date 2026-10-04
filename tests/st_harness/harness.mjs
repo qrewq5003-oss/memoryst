@@ -57,6 +57,11 @@ export function defaultBackend(path, { method }) {
             items: [{ id: 'm-new' }], created_ids: ['m-new'], extraction_method: 'llm',
         });
     }
+    if (path.startsWith('/memory/backfill')) {
+        return jsonResponse(200, {
+            processed: 0, stored: 2, skipped: 0, duplicates: 1, scenes: 1, failed_scenes: 0,
+        });
+    }
     if (method === 'DELETE') {
         return jsonResponse(200, { deleted: true });
     }
@@ -86,7 +91,12 @@ export async function loadMain({ settings = {}, backend = defaultBackend } = {})
             name1: 'Wanted',
             name2: 'Mai',
             chat: [{ is_user: false, mes: 'Привет. Ты сегодня рано.' }],
+            // SillyTavern's chat_metadata: saved in the chat file. The processed boundary
+            // (catch-up.mjs) lives here.
+            chatMetadata: {},
+            saveMetadataDebounced: () => { harness.metadataSaves += 1; },
         },
+        metadataSaves: 0,
         listeners(event) {
             if (!listeners.has(event)) {
                 listeners.set(event, []);

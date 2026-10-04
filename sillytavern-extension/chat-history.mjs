@@ -51,6 +51,22 @@ export function recentMessages(chat, count) {
 }
 
 /**
+ * Messages `start`..`end` inclusive, as {role, text}, empty ones dropped.
+ *
+ * For catch-up, which addresses the chat by position (see catch-up.mjs) rather than
+ * by "the last N". Out-of-range bounds are clamped, never wrapped.
+ */
+export function messagesInRange(chat, start, end) {
+    if (!Array.isArray(chat) || !Number.isInteger(start) || !Number.isInteger(end)) {
+        return [];
+    }
+    return chat
+        .slice(Math.max(0, start), Math.max(0, end + 1))
+        .map(message => ({ role: roleOf(message), text: textOf(message) }))
+        .filter(message => message.text);
+}
+
+/**
  * The text of the most recent user message, searching backwards, or '' if there is none.
  *
  * The backwards scan matters: the query for this turn is the message the user just sent,
