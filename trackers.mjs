@@ -11,8 +11,8 @@
 import {
     DEFAULT_TRACKERS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=48e7cb4';
-import { resolveStableCharacterId } from './scope.mjs?v=48e7cb4';
+} from './http.mjs?v=518cb0f';
+import { resolveStableCharacterId } from './scope.mjs?v=518cb0f';
 
 export const TRACKER_PROMPT_KEY = 'memoryst-tracker';
 

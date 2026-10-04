@@ -39,27 +39,28 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=48e7cb4';
-import { backendBackMessage, classifyOutcome, createBackendStatus } from './backend-status.mjs?v=48e7cb4';
+} from './audit.mjs?v=518cb0f';
+import { backendBackMessage, classifyOutcome, createBackendStatus } from './backend-status.mjs?v=518cb0f';
 import {
     boundaryAfterCatchUp,
     boundaryAfterStore,
     planCatchUp,
     readBoundary,
     writeBoundary,
-} from './catch-up.mjs?v=48e7cb4';
-import { lastUserText, messagesInRange, recentMessages } from './chat-history.mjs?v=48e7cb4';
-import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=48e7cb4';
+} from './catch-up.mjs?v=518cb0f';
+import { lastUserText, messagesInRange, recentMessages } from './chat-history.mjs?v=518cb0f';
+import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=518cb0f';
+import { summarizeEntriesLoaded } from './wi-recon.mjs?v=518cb0f';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=48e7cb4';
-import { mountSettingsUi } from './settings-ui.mjs?v=48e7cb4';
-import { resolveEffectiveScope } from './scope.mjs?v=48e7cb4';
+} from './settings.mjs?v=518cb0f';
+import { mountSettingsUi } from './settings-ui.mjs?v=518cb0f';
+import { resolveEffectiveScope } from './scope.mjs?v=518cb0f';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=48e7cb4';
+} from './lore-anchors.mjs?v=518cb0f';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -67,26 +68,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=48e7cb4';
+} from './trackers.mjs?v=518cb0f';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=48e7cb4';
+} from './version.mjs?v=518cb0f';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=48e7cb4';
+} from './injection.mjs?v=518cb0f';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=48e7cb4';
+} from './supersede.mjs?v=518cb0f';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=48e7cb4';
+} from './injectors.mjs?v=518cb0f';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_BACKFILL_TIMEOUT_MS,
@@ -98,7 +99,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=48e7cb4';
+} from './http.mjs?v=518cb0f';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
@@ -121,6 +122,9 @@ let lastStoredTurn = null;
 // Lorebook text never passes through extension_prompts, so the only place to measure it
 // is the activation handler, which already receives the entries.
 let currentWorldInfoSummary = { entry_count: 0, chars: 0 };
+// Reconnaissance for a possible future hand-over of Memory Books' digests to memoryst's
+// scoring. Read-only: see wi-recon.mjs for why nothing here may mutate these entries yet.
+let currentWorldInfoScanPlan = null;
 let pendingTurnKey = null;
 let currentMemoryPromptBlock = '';
 let currentRetrieveBudget = null;
@@ -246,6 +250,7 @@ function refreshPromptInsertionAudit(record = pendingInteractionAudit) {
     record.prompt_competition = {
         ...summarizeForeignInjectors(getContext()?.extensionPrompts || {}),
         world_info: currentWorldInfoSummary,
+        world_info_scan: currentWorldInfoScanPlan,
     };
     record.applied_to_current_turn = anyBlock;
 }
@@ -927,6 +932,28 @@ function getCharacterRoster() {
     return Array.isArray(rawContext?.characters) ? rawContext.characters : [];
 }
 
+/**
+ * Record what the scan was handed, before it picks anything. Changes nothing.
+ *
+ * This is the only hook that could suppress an entry - it runs before selection and core
+ * honours `entry.disable` - but two other installed extensions subscribe to it too, and
+ * SillyTavern-LorebookOrdering already sets `disable` here for its own token budget.
+ * `already_disabled` above zero in the audit means it ran first; that is the fact this
+ * pass exists to establish.
+ */
+function onWorldInfoEntriesLoaded(payload) {
+    if (!settings.enabled) {
+        return;
+    }
+    try {
+        currentWorldInfoScanPlan = summarizeEntriesLoaded(payload);
+        trace(`wi_scan(${currentWorldInfoScanPlan.total_count}/${currentWorldInfoScanPlan.already_disabled})`);
+    } catch (error) {
+        // A reconnaissance pass must never cost a turn.
+        console.warn('[memoryst] world info recon failed:', error?.message || error);
+    }
+}
+
 function onWorldInfoActivated(entries = []) {
     worldInfoActivationCount += 1;
     trace(`wi(${(entries || []).length})`);
@@ -1380,6 +1407,7 @@ function onChatChanged() {
     turnEventTrace = [];
     lastStoredTurn = null;
     currentWorldInfoSummary = { entry_count: 0, chars: 0 };
+    currentWorldInfoScanPlan = null;
     clearMemoryPrompt();
     clearLoreAnchorPrompt();
     clearTrackerPrompt();
@@ -1433,6 +1461,9 @@ function init() {
         eventSource.on(event_types.MESSAGE_EDITED, onMessageEdited);
     }
     eventSource.on(event_types.WORLD_INFO_ACTIVATED || 'WORLD_INFO_ACTIVATED', onWorldInfoActivated);
+    // Subscribed last on purpose: this pass is meant to observe what other handlers did,
+    // so being late is the point rather than a weakness.
+    eventSource.on(event_types.WORLDINFO_ENTRIES_LOADED || 'WORLDINFO_ENTRIES_LOADED', onWorldInfoEntriesLoaded);
     exposeAuditHelpers();
     refreshSettingsUi();
     refreshTrackersFor(getChatContext()?.characterId || null);
