@@ -318,6 +318,9 @@ class BackfillResponse(BaseModel):
     # cruder extractor for every scene looked identical to one that did not.
     extraction_methods: dict[str, int] = Field(default_factory=dict)
     scenes: int = 0
+    # Scenes where the LLM was asked and failed. The extension's catch-up re-sends the
+    # range when this is non-zero instead of marking it processed.
+    failed_scenes: int = 0
 
 
 @router.post("/backfill", response_model=BackfillResponse)
@@ -355,6 +358,7 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
     candidates: list[CreateMemoryRequest] = []
     extraction_methods: dict[str, int] = {}
     scenes = 0
+    llm_failures: list[bool] = []
 
     for start in range(0, len(request.messages), scene_size):
         batch = request.messages[start : start + scene_size]
@@ -378,6 +382,7 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
             model=request.model,
             character_name=request.character_name,
             user_name=request.user_name,
+            on_llm_failure=lambda: llm_failures.append(True),
         )
         candidates.extend(scene_candidates)
         if method:
@@ -436,6 +441,7 @@ def backfill_endpoint(request: BackfillRequest) -> BackfillResponse:
         stored=stored,
         skipped=skipped,
         duplicates=duplicates,
+        failed_scenes=len(llm_failures),
     )
 
 

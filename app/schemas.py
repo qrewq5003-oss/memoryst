@@ -190,6 +190,11 @@ class StoreMemoryResponse(BaseModel):
     # failed and the cruder rule-based extractor ran instead. None: no messages
     # to extract from at all. See scene_extractor.extract_scene_memories.
     extraction_method: Literal["llm", "regex_fallback"] | None = None
+    # True when the LLM was asked and failed, so this turn was not properly processed
+    # and the extension must not move its processed boundary past it. Additive, like
+    # created_ids: an older extension ignores it, and an older backend simply never
+    # reports a failure - the extension then behaves as it did before.
+    extraction_failed: bool = False
     # Per-tracker "messages since last update" counters, so the extension can drive its
     # reminder toast off the response it already gets every turn instead of polling.
     # Additive: a client that doesn't know about trackers ignores it.

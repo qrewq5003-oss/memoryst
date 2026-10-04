@@ -1,4 +1,5 @@
 import sys
+from collections.abc import Callable
 from typing import Literal
 
 from app.schemas import ChatMessageItem, CreateMemoryRequest, MemoryMetadata, MessageInput
@@ -42,6 +43,7 @@ def extract_scene_memories(
     model: str | None = None,
     character_name: str | None = None,
     user_name: str | None = None,
+    on_llm_failure: Callable[[], None] | None = None,
 ) -> tuple[list[CreateMemoryRequest], ExtractionMethod | None]:
     """
     Stage 3 entry point: extract memory candidates from a whole scene at once.
@@ -72,6 +74,13 @@ def extract_scene_memories(
     so "success" is no longer indistinguishable between the LLM path and the
     (intentionally cruder) fallback path - see CLAUDE.md's scene-extraction-llm-failing
     investigation for why this mattered.
+
+    `on_llm_failure` is called when the LLM was asked and failed - the one
+    "regex_fallback" that means the scene was *not* properly processed. The other two
+    (nothing tripped the pre-filter; no LLM configured) are final answers. The
+    extension's processed boundary must not move past a failure, or the turn is lost
+    for good, so the caller needs to tell them apart. A callback rather than a third
+    tuple member keeps every existing caller and test double working unchanged.
     """
     if not messages:
         return [], None
@@ -103,6 +112,8 @@ def extract_scene_memories(
         messages, model=model, character_name=character_name, user_name=user_name
     )
     if facts is None:
+        if on_llm_failure is not None:
+            on_llm_failure()
         candidates = _rule_based_fallback(chat_id, character_id, messages)
         print(
             f"[scene_extractor] chat={chat_id} char={character_id}: "

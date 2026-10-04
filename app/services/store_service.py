@@ -135,6 +135,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
     )
 
     # Extract candidates from the whole scene at once
+    llm_failures: list[bool] = []
     candidates, extraction_method = extract_scene_memories(
         chat_id=request.chat_id,
         character_id=request.character_id,
@@ -142,6 +143,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         model=request.model,
         character_name=request.character_name,
         user_name=request.user_name,
+        on_llm_failure=lambda: llm_failures.append(True),
     )
 
     stored_items: list[MemoryItem] = []
@@ -327,6 +329,7 @@ def store_memories(request: StoreMemoryRequest) -> StoreMemoryResponse:
         created_ids=created_ids,
         debug=StoreDebugPayload(candidates=debug_candidates) if request.debug else None,
         extraction_method=extraction_method,
+        extraction_failed=bool(llm_failures),
         # Piggybacked, not fetched: the extension already calls /memory/store every turn,
         # so its reminder toast costs no extra request. Empty until a tracker exists.
         trackers=tracker_service.list_tracker_counters(request.chat_id, request.character_id),

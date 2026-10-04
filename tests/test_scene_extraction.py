@@ -415,6 +415,49 @@ class StoreEndpointWiringTests(unittest.TestCase):
         buffered_id = chat_buffer_service.get_hot_buffer("chat-1", "char-1")[0].id
         self.assertEqual(stored_item.metadata.source_message_ids, [buffered_id])
 
+    def test_store_says_the_turn_was_not_processed_when_the_llm_failed(self) -> None:
+        # The extension's processed boundary must not move past a failed turn, and a
+        # failure looks exactly like "nothing to remember" through extraction_method.
+        with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
+            "app.services.llm_extractor.extract_scene_facts", return_value=None
+        ):
+            response = store_memories(
+                StoreMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    messages=[MessageInput(role="assistant", text="Алиса работает врачом в Риме.")],
+                )
+            )
+        self.assertTrue(response.extraction_failed)
+
+    def test_nothing_to_extract_is_not_a_failure(self) -> None:
+        with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
+            "app.services.llm_extractor.extract_scene_facts"
+        ) as facts_mock:
+            response = store_memories(
+                StoreMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    messages=[MessageInput(role="user", text="Привет!")],
+                )
+            )
+        facts_mock.assert_not_called()
+        self.assertEqual(response.extraction_method, "regex_fallback")
+        self.assertFalse(response.extraction_failed)
+
+    def test_no_llm_configured_is_not_a_failure(self) -> None:
+        # Rule-based is then the permanent mode; calling it a failure would pin the
+        # boundary forever and re-send every turn.
+        with patch("app.services.scene_extractor.is_llm_enabled", return_value=False):
+            response = store_memories(
+                StoreMemoryRequest(
+                    chat_id="chat-1",
+                    character_id="char-1",
+                    messages=[MessageInput(role="assistant", text="Алиса работает врачом в Риме.")],
+                )
+            )
+        self.assertFalse(response.extraction_failed)
+
     def test_store_response_reports_regex_fallback_when_llm_call_fails(self) -> None:
         with patch("app.services.scene_extractor.is_llm_enabled", return_value=True), patch(
             "app.services.llm_extractor.extract_scene_facts", return_value=None

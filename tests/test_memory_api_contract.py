@@ -349,6 +349,25 @@ class BackfillUsesTheSceneExtractorTests(_ApiCase):
 
         self.assertEqual(response.json()["extraction_methods"], {"llm": 1, "regex_fallback": 1})
 
+    def test_backfill_counts_scenes_where_the_llm_failed(self) -> None:
+        messages = [{"role": "user", "text": f"реплика {i}"} for i in range(10)]
+
+        def fake_extract(*args, on_llm_failure=None, **kwargs):
+            fake_extract.calls += 1
+            if fake_extract.calls == 2 and on_llm_failure:
+                on_llm_failure()
+                return [], "regex_fallback"
+            return [], "llm"
+        fake_extract.calls = 0
+
+        with patch("app.services.scene_extractor.extract_scene_memories", fake_extract):
+            response = self.client.post("/memory/backfill", json={
+                "chat_id": "chat-1", "character_id": "char-1",
+                "messages": messages, "scene_size": 5,
+            })
+
+        self.assertEqual(response.json()["failed_scenes"], 1)
+
     def test_an_import_of_nothing_makes_no_llm_call(self) -> None:
         with patch("app.services.scene_extractor.extract_scene_memories",
                    side_effect=AssertionError("must not be called")):
