@@ -74,7 +74,14 @@ NANOGPT_EMBED_URL = "https://nano-gpt.com/api/v1/embeddings"
 COHERE_EMBED_URL = "https://api.cohere.ai/v2/embed"
 
 
-def _call_embed_openai_shaped(text: str | list[str]) -> list[list[float]]:
+def _embed_timeout(is_query: bool) -> httpx.Timeout:
+    """Deadline for one embedding call - see EMBED_*_TIMEOUT in config for why two."""
+    if is_query:
+        return httpx.Timeout(config.EMBED_QUERY_TIMEOUT, connect=config.EMBED_CONNECT_TIMEOUT)
+    return httpx.Timeout(config.EMBED_DOCUMENT_TIMEOUT, connect=config.EMBED_CONNECT_TIMEOUT)
+
+
+def _call_embed_openai_shaped(text: str | list[str], is_query: bool = False) -> list[list[float]]:
     """OpenAI-shaped /v1/embeddings, which is what nano-gpt serves.
 
     Its batch path actually works, unlike the Google one below: a list of 50 texts is
@@ -90,7 +97,7 @@ def _call_embed_openai_shaped(text: str | list[str]) -> list[list[float]]:
         NANOGPT_EMBED_URL,
         headers={"Authorization": f"Bearer {key}"},
         json={"model": config.active_embedding_model(), "input": batch},
-        timeout=180,
+        timeout=_embed_timeout(is_query),
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Embedding API error {resp.status_code}: {resp.text[:300]}")
@@ -118,14 +125,14 @@ def _call_embed_cohere(text: str | list[str], is_query: bool = False) -> list[li
             "input_type": "search_query" if is_query else "search_document",
             "truncate": "END",
         },
-        timeout=180,
+        timeout=_embed_timeout(is_query),
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Embedding API error {resp.status_code}: {resp.text[:300]}")
     return resp.json()["embeddings"]["float"]
 
 
-def _call_embed(text: str | list[str]) -> list[list[float]]:
+def _call_embed(text: str | list[str], is_query: bool = False) -> list[list[float]]:
     _ensure_keys()
     if not _keys:
         raise RuntimeError("No Google API keys configured")
@@ -154,7 +161,7 @@ def _call_embed(text: str | list[str]) -> list[list[float]]:
                 "outputDimensionality": config.GOOGLE_EMBEDDING_DIM,
             }
 
-        resp = httpx.post(api_url, json=payload, timeout=30)
+        resp = httpx.post(api_url, json=payload, timeout=_embed_timeout(is_query))
 
         if resp.status_code == 200:
             data = resp.json()
@@ -431,10 +438,10 @@ def get_key_count() -> int:
 def _dispatch_embed(text: str | list[str], is_query: bool = False) -> list[list[float]]:
     provider = (config.EMBEDDING_PROVIDER or "google").lower()
     if provider == "nanogpt":
-        return _call_embed_openai_shaped(text)
+        return _call_embed_openai_shaped(text, is_query=is_query)
     if provider == "cohere":
         return _call_embed_cohere(text, is_query=is_query)
-    return _call_embed(text)
+    return _call_embed(text, is_query=is_query)
 
 
 def embed_text(text: str, is_query: bool = False) -> list[float]:
@@ -528,7 +535,9 @@ def query_similar(text: str, *, n_results: int = 10, chat_id: str | None = None,
     if not is_vector_store_enabled():
         return []
     try:
-        embedding = embed_text(text)
+        # is_query: a short deadline (this blocks generation), and for Cohere the
+        # query-side encoder - which was never used live until 2026-10-03.
+        embedding = embed_text(text, is_query=True)
     except Exception as exc:
         print(f"[vector_store] could not embed the query: {exc}", file=sys.stderr, flush=True)
         return []

@@ -172,6 +172,16 @@ class Config:
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "")
     EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "0"))
     COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    # Embedding deadlines, split because the two callers want opposite things. A query
+    # embedding runs inside /memory/retrieve, which blocks generation, and the extension
+    # abandons retrieve after 8s (http.mjs) - a vector arriving later serves nobody, so the
+    # whole call gets EMBED_QUERY_TIMEOUT. Documents include backfill batches of 50, which
+    # legitimately take long, so they keep a long read. Connect is short for both: a
+    # flat 180 let an unreachable provider hold a request for the OS's ~2-minute TCP
+    # timeout ([Errno 110] in data/server.log, 2026-09-22). Live query embedding: ~66ms.
+    EMBED_CONNECT_TIMEOUT: float = float(os.getenv("EMBED_CONNECT_TIMEOUT", "5"))
+    EMBED_QUERY_TIMEOUT: float = float(os.getenv("EMBED_QUERY_TIMEOUT", "6"))
+    EMBED_DOCUMENT_TIMEOUT: float = float(os.getenv("EMBED_DOCUMENT_TIMEOUT", "180"))
 
     CHROMADB_PATH: str = os.getenv("CHROMADB_PATH", "data/chromadb")
 

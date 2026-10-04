@@ -181,3 +181,64 @@ class BatchSplittingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmbeddingDeadlineTests(unittest.TestCase):
+    """A query embedding blocks generation; a document embedding does not.
+
+    Both used to run under a flat timeout=180, and in data/server.log on 2026-09-22 an
+    unreachable provider held /memory/retrieve for the OS's ~2-minute TCP connect timeout
+    ([Errno 110]) - long after the extension had given up at 8s.
+    """
+
+    def setUp(self) -> None:
+        for attr in ("EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "LLM_API_KEY", "COHERE_API_KEY"):
+            self.addCleanup(setattr, config, attr, getattr(config, attr))
+        config.EMBEDDING_PROVIDER = "nanogpt"
+        config.EMBEDDING_MODEL = "bge-m3"
+        config.LLM_API_KEY = "k1"
+        self.timeouts = []
+
+    def _fake_post(self, url, headers=None, json=None, timeout=None):
+        self.timeouts.append(timeout)
+        return _Response(payload=_openai_payload([[1.0, 0.0]] * len(json.get("input", [1]))))
+
+    def test_the_query_on_the_retrieve_path_gets_the_short_deadline(self) -> None:
+        with patch.object(vector_store.httpx, "post", self._fake_post), \
+             patch.object(vector_store, "is_vector_store_enabled", return_value=True), \
+             patch.object(vector_store, "_use_chroma", return_value=False), \
+             patch.object(vector_store, "_sqlite_query", return_value=[]):
+            vector_store.query_similar("где ты работаешь?", chat_id="chat-1")
+
+        [timeout] = self.timeouts
+        self.assertEqual(timeout.connect, config.EMBED_CONNECT_TIMEOUT)
+        self.assertEqual(timeout.read, config.EMBED_QUERY_TIMEOUT)
+        # Under the extension's 8s retrieve deadline, or the vector arrives for nobody.
+        self.assertLess(config.EMBED_QUERY_TIMEOUT, 8)
+
+    def test_documents_keep_a_long_read_but_a_short_connect(self) -> None:
+        with patch.object(vector_store.httpx, "post", self._fake_post):
+            vector_store.embed_batch(["факт"] * 50)
+
+        [timeout] = self.timeouts
+        self.assertEqual(timeout.read, config.EMBED_DOCUMENT_TIMEOUT)
+        self.assertEqual(timeout.connect, config.EMBED_CONNECT_TIMEOUT)
+        self.assertLess(config.EMBED_CONNECT_TIMEOUT, 30)
+
+    def test_cohere_queries_on_the_retrieve_path_use_the_query_encoder(self) -> None:
+        # Never happened live before 2026-10-03: query_similar did not pass is_query.
+        config.EMBEDDING_PROVIDER = "cohere"
+        config.COHERE_API_KEY = "c1"
+        sent = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            sent.update(json)
+            return _Response(payload={"embeddings": {"float": [[1.0]]}})
+
+        with patch.object(vector_store.httpx, "post", fake_post), \
+             patch.object(vector_store, "is_vector_store_enabled", return_value=True), \
+             patch.object(vector_store, "_use_chroma", return_value=False), \
+             patch.object(vector_store, "_sqlite_query", return_value=[]):
+            vector_store.query_similar("где ты работаешь?")
+
+        self.assertEqual(sent["input_type"], "search_query")
