@@ -1,17 +1,17 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=9d3b3ba';
+} from './settings.mjs?v=48e7cb4';
 import {
     PROMPT_POSITION_OPTIONS,
     PROMPT_ROLE_OPTIONS,
-} from './injection.mjs?v=9d3b3ba';
+} from './injection.mjs?v=48e7cb4';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
     fetchWithTimeout,
-} from './http.mjs?v=9d3b3ba';
+} from './http.mjs?v=48e7cb4';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];

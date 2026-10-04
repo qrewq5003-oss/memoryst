@@ -39,27 +39,27 @@ import {
     pushAuditRecord,
     resolvePreGenerationHookNames,
     willAppendUserMessage,
-} from './audit.mjs?v=9d3b3ba';
-import { backendBackMessage, classifyOutcome, createBackendStatus } from './backend-status.mjs?v=9d3b3ba';
+} from './audit.mjs?v=48e7cb4';
+import { backendBackMessage, classifyOutcome, createBackendStatus } from './backend-status.mjs?v=48e7cb4';
 import {
     boundaryAfterCatchUp,
     boundaryAfterStore,
     planCatchUp,
     readBoundary,
     writeBoundary,
-} from './catch-up.mjs?v=9d3b3ba';
-import { lastUserText, messagesInRange, recentMessages } from './chat-history.mjs?v=9d3b3ba';
-import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=9d3b3ba';
+} from './catch-up.mjs?v=48e7cb4';
+import { lastUserText, messagesInRange, recentMessages } from './chat-history.mjs?v=48e7cb4';
+import { chooseMemoryBlock, shouldRetrieve, shouldStore } from './retrieve-policy.mjs?v=48e7cb4';
 import {
     normalizeExtensionSettings,
     serializeExtensionSettings,
-} from './settings.mjs?v=9d3b3ba';
-import { mountSettingsUi } from './settings-ui.mjs?v=9d3b3ba';
-import { resolveEffectiveScope } from './scope.mjs?v=9d3b3ba';
+} from './settings.mjs?v=48e7cb4';
+import { mountSettingsUi } from './settings-ui.mjs?v=48e7cb4';
+import { resolveEffectiveScope } from './scope.mjs?v=48e7cb4';
 import {
     buildLoreAnchorBlock,
     LORE_ANCHOR_PROMPT_KEY,
-} from './lore-anchors.mjs?v=9d3b3ba';
+} from './lore-anchors.mjs?v=48e7cb4';
 import {
     buildTrackerBlock,
     evaluateTrackerToasts,
@@ -67,26 +67,26 @@ import {
     mergeTrackerMatches,
     resolveTrackerCharacterIds,
     TRACKER_PROMPT_KEY,
-} from './trackers.mjs?v=9d3b3ba';
+} from './trackers.mjs?v=48e7cb4';
 import {
     MEMORY_EXTENSION_BUILD,
     MEMORY_PROTOCOL_VERSION,
     compareVersions,
-} from './version.mjs?v=9d3b3ba';
+} from './version.mjs?v=48e7cb4';
 import {
     findEnumDrift,
     resolveInjectionSettings,
-} from './injection.mjs?v=9d3b3ba';
+} from './injection.mjs?v=48e7cb4';
 import {
     buildStoredTurn,
     isSupersedingRender,
     shouldDiscardAfterDelete,
     shouldDiscardAfterEdit,
-} from './supersede.mjs?v=9d3b3ba';
+} from './supersede.mjs?v=48e7cb4';
 import {
     summarizeForeignInjectors,
     summarizeWorldInfo,
-} from './injectors.mjs?v=9d3b3ba';
+} from './injectors.mjs?v=48e7cb4';
 import {
     DEFAULT_AUDIT_TIMEOUT_MS,
     DEFAULT_BACKFILL_TIMEOUT_MS,
@@ -98,7 +98,7 @@ import {
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
-} from './http.mjs?v=9d3b3ba';
+} from './http.mjs?v=48e7cb4';
 
 // === SETTINGS POLICY ===
 // SillyTavern-facing knobs are grouped conceptually as:
