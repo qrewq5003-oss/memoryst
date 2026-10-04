@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass
 
 from app.repositories.memory_repo import create_memory, get_memory_by_id, list_memories, set_review_status, update_memory
+from app.services import vector_store
 from app.schemas import CreateMemoryRequest, MemoryItem, MemoryMetadata, UpdateMemoryRequest
 from app.services import text_features
 from app.services.conflict_resolver import (
@@ -249,6 +250,25 @@ def _count_new_inputs(memories: list[MemoryItem], existing_summary: MemoryItem |
     return sum(1 for memory in memories if memory.id not in known_ids)
 
 
+def _embed_summary(memory_id: str, content: str, chat_id: str, character_id: str) -> None:
+    """Give a summary the same vector every other memory gets.
+
+    Summaries were the one kind that never got one: `store_service` embeds each extracted
+    fact right after writing it, and this module wrote summaries without ever calling
+    `vector_store`. The 52 summaries that do have a vector got it from a one-off backfill
+    on 2026-09-21; every one written since was invisible to semantic retrieval.
+
+    Re-embedding on update is not optional either. A rolling summary is rewritten in
+    place, so a vector made from its previous text would keep describing a summary that no
+    longer exists - the stale-row failure `CLAUDE.md` warns about, with nothing to notice
+    it because the row looks embedded.
+
+    Best-effort, like add_memory itself: an embedding provider that is down or out of
+    quota must cost the summary its semantic reach, never the summary.
+    """
+    vector_store.add_memory(memory_id, content, {"chat_id": chat_id, "character_id": character_id})
+
+
 def generate_rolling_summary(
     chat_id: str,
     character_id: str,
@@ -346,6 +366,7 @@ def generate_rolling_summary(
                 metadata=summary_metadata,
             )
         )
+        _embed_summary(created.id, created.content, chat_id, character_id)
         return RollingSummaryResult(
             action="created",
             chat_id=chat_id,
@@ -367,6 +388,8 @@ def generate_rolling_summary(
             metadata=summary_metadata,
         ),
     )
+    if updated is not None:
+        _embed_summary(updated.id, updated.content, chat_id, character_id)
     return RollingSummaryResult(
         action="updated" if updated is not None else "skipped_update_failed",
         chat_id=chat_id,
@@ -555,6 +578,9 @@ def generate_tiered_consolidation(
             metadata=summary_metadata,
         )
     )
+    # A tiered consolidation is a summary too, and was missing its vector for the same
+    # reason the rolling one was.
+    _embed_summary(created.id, created.content, chat_id, character_id)
 
     # A source that this same batch's conflict resolution just marked "superseded"
     # (see apply_conflict_resolutions above) keeps that more specific status - it
