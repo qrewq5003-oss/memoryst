@@ -24,7 +24,7 @@ from app.main import app
 from app.repositories.memory_repo import create_memory, list_chat_group_summaries, upsert_tracker
 from app.routes.ui import ui_memories_page
 from app.schemas import CreateMemoryRequest, ListMemoriesResponse, MemoryItem, MemoryMetadata
-from app.ui_helpers.presentation import character_display_name, resolve_selected_group
+from app.ui_helpers.presentation import build_chat_title, character_display_name, resolve_selected_group
 from tests.conftest_helpers import build_group_summaries
 
 ST_CHAT_ID = "Valeria Mendoza - 2026-07-09@22h06m04s351ms"
@@ -82,6 +82,33 @@ class CharacterDisplayNameTests(unittest.TestCase):
         self.assertIsNone(character_display_name("chat-1", "20"))
         self.assertIsNone(character_display_name("chat-1", ""))
         self.assertIsNone(character_display_name("chat-1", None))
+
+
+class ChatTitleTests(unittest.TestCase):
+    def test_a_sillytavern_id_becomes_a_name_and_a_readable_date(self) -> None:
+        # The generic label stripped the hyphens - "Apex 2026 10 12@17h45m11s969ms" -
+        # which read worse than the raw id and kept the milliseconds.
+        self.assertEqual(build_chat_title("Apex - 2026-10-12@17h45m11s969ms"), "Apex · 12 Oct 2026, 17:45")
+        self.assertEqual(build_chat_title(ST_CHAT_ID), "Valeria Mendoza · 9 Jul 2026, 22:06")
+        # Names with their own hyphens or digits survive intact.
+        self.assertEqual(build_chat_title("Paris1893 - 2026-07-31@14h51m48s966ms"), "Paris1893 · 31 Jul 2026, 14:51")
+
+    def test_anything_else_keeps_the_generic_label(self) -> None:
+        self.assertEqual(build_chat_title("summer_trip/chat-room_alpha"), "Summer Trip Chat Room Alpha")
+        self.assertEqual(build_chat_title("Valeria Mendoza2"), "Valeria Mendoza2")
+
+    def test_the_sidebar_shows_the_title_and_the_raw_id_for_the_selected_chat(self) -> None:
+        memories = ListMemoriesResponse(
+            items=[_memory("m", "x", chat_id=ST_CHAT_ID, character_id="Valeria Mendoza1.png", updated_at="2026-09-21T00:00:00+00:00")],
+            total=1, limit=50, offset=0,
+        )
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+        ):
+            body = ui_memories_page(_request(), selected_chat_id=ST_CHAT_ID).body.decode()
+        self.assertIn('class="chat-group-title">Valeria Mendoza · 9 Jul 2026, 22:06<', body)
+        self.assertIn(f"<code>{ST_CHAT_ID}</code>", body)
 
 
 class GroupSummariesByChatTests(unittest.TestCase):
@@ -162,7 +189,10 @@ class SidebarMergesSplitChatsTests(unittest.TestCase):
         self.assertEqual(body.count('class="chat-group-title">Valeria'), 1, "the chat appears once in the list")
         # Resolved by chat although the link carried an old index.
         self.assertIn("Current scope", body)
-        self.assertIn("Character: Valeria Mendoza", body)
+        # The name heads the title, so no "Character:" line repeats it - and no index
+        # is ever shown as one.
+        self.assertIn('class="chat-group-title">Valeria Mendoza · ', body)
+        self.assertNotIn("Character: Valeria Mendoza", body)
         self.assertNotIn("Character: 20", body)
         # Both memories, whichever id they were written under.
         self.assertIn("Валерия работает в кафе.", body)
@@ -172,6 +202,19 @@ class SidebarMergesSplitChatsTests(unittest.TestCase):
             self.assertIsNone(call.kwargs.get("character_id"), "the list must not be narrowed to one id")
         # The footer says which ids the chat has carried, current one first.
         self.assertIn("Character ID: <code>Valeria Mendoza1.png, 20</code>", body)
+
+    def test_an_avatar_name_is_shown_when_the_chat_id_does_not_carry_it(self) -> None:
+        memories = ListMemoriesResponse(
+            items=[_memory("m", "x", chat_id="chat-manual", character_id="Mai.png", updated_at="2026-09-21T00:00:00+00:00")],
+            total=1, limit=50, offset=0,
+        )
+        with (
+            patch("app.routes.ui.list_chat_group_summaries", return_value=build_group_summaries(memories)),
+            patch("app.routes.ui.list_ui_filtered_memories", return_value=memories),
+        ):
+            body = ui_memories_page(_request(), selected_chat_id="chat-manual").body.decode()
+        self.assertIn("Character: Mai", body)
+        self.assertNotIn("Mai.png</span>", body)
 
     def test_an_index_only_chat_shows_no_character_line_at_all(self) -> None:
         memories = self._split_chat()

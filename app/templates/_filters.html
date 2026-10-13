@@ -13,17 +13,17 @@
                     <span class="filter-bar-count">{{ memories["total"] if memories["total"] else 0 }}</span>
                 </div>
                 <div class="chiprow">
-                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}" {% if not filters["layer"] and not filters["pinned"] and not filters["archived"] %}aria-current="true"{% endif %}>Все</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}" {% if not filters["layer"] and not filters["pinned"] and not filters["archived"] %}aria-current="true"{% endif %}>All</a>
                     <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;layer=stable" {% if filters["layer"] == 'stable' %}aria-current="true"{% endif %}>Stable</a>
                     <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;layer=episodic" {% if filters["layer"] == 'episodic' %}aria-current="true"{% endif %}>Episodic</a>
-                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;pinned=true" {% if filters["pinned"] == 'true' %}aria-current="true"{% endif %}>Закреплённые</a>
-                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;freshness=stale" {% if filters["freshness"] == 'stale' %}aria-current="true"{% endif %}>Устаревшие</a>
-                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;archived=true" {% if filters["archived"] == 'true' %}aria-current="true"{% endif %}>Архив</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;pinned=true" {% if filters["pinned"] == 'true' %}aria-current="true"{% endif %}>Pinned</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;freshness=stale" {% if filters["freshness"] == 'stale' %}aria-current="true"{% endif %}>Stale</a>
+                    <a class="chip chip-filter" href="/ui?{{ filters["scope_query"] }}&amp;archived=true" {% if filters["archived"] == 'true' %}aria-current="true"{% endif %}>Archived</a>
                 </div>
             </div>
 
             <details class="filter-details">
-                <summary>Все фильтры</summary>
+                <summary>All filters</summary>
             <form method="GET" action="/ui" class="filter-form">
                 {% if filters["view"] == "all" %}
                 <input type="hidden" name="view" value="all">

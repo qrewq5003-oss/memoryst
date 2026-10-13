@@ -120,7 +120,6 @@
         --danger-solid:  #C4443B;  --danger-solid-hover: #D95A50;
         --danger-outline: #E4736A;
         --danger-ink:     #FFFFFF;
-    --danger-outline: #E4736A;
         --info:          #7FADF5;  --info-bg:    #16294A;
         --violet:        #AC9AF0;  --violet-bg:  #251F45;
         --selected-ink:   #E8EFF4;
@@ -208,10 +207,6 @@ section {
     margin-bottom: 20px;
     border-radius: 14px;
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-}
-
-.page-header {
-    margin-bottom: 18px;
 }
 
 .page-subtitle {
@@ -457,37 +452,6 @@ button.danger:hover {
     margin-top: 8px;
 }
 
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-}
-
-th, td {
-    padding: 10px;
-    text-align: left;
-    border-bottom: 1px solid var(--line);
-}
-
-th {
-    background: var(--surface-2);
-    font-weight: 600;
-}
-
-.id-cell {
-    font-family: monospace;
-    font-size: var(--f1);
-}
-
-.content-cell {
-    max-width: 400px;
-    word-break: break-word;
-}
-
-.date-cell {
-    font-size: var(--f1);
-}
-
 /* Card actions.
 
    These were 4px/8px buttons in a nowrap row - about 24px of height against the
@@ -546,18 +510,6 @@ th {
 .actions-cell button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -3px;
-}
-
-tr.pinned {
-    background: var(--panel-warn-bg);
-}
-
-tr.archived {
-    opacity: 0.7;
-}
-
-details {
-    display: inline-block;
 }
 
 summary {
@@ -811,63 +763,9 @@ summary {
     opacity: 0.82;
 }
 
-.memory-card-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 14px;
-    align-items: flex-start;
-    flex-wrap: wrap;
-}
-
-.memory-id-row {
-    margin-bottom: 8px;
-}
-
 .memory-id {
     font-size: var(--f1);
     word-break: break-all;
-}
-
-.memory-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 8px;
-}
-
-.badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 999px;
-    font-size: var(--f1);
-    font-weight: 600;
-    line-height: 1;
-    text-transform: capitalize;
-}
-
-.badge-type {
-    background: var(--info-bg);
-    color: var(--info);
-}
-
-.badge-source {
-    background: var(--ok-bg);
-    color: var(--ok);
-}
-
-.badge-layer {
-    background: var(--violet-bg);
-    color: var(--violet);
-}
-
-.badge-pinned {
-    background: var(--warn-bg);
-    color: var(--warn);
-}
-
-.badge-archived {
-    background: var(--line);
-    color: var(--ink-2);
 }
 
 .badge-freshness-fresh {
@@ -898,31 +796,6 @@ summary {
 .badge-activity-active {
     background: var(--accent-bg);
     color: var(--accent-strong);
-}
-
-.consolidation-select {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: var(--f2);
-    color: var(--ink-2);
-}
-
-.consolidation-select-candidate {
-    color: var(--danger);
-    font-weight: 600;
-}
-
-.memory-meta-line {
-    color: var(--ink-2);
-    font-size: var(--f2);
-}
-
-.memory-touch-line {
-    color: var(--ink-3);
-    font-size: var(--f2);
-    margin-top: 6px;
 }
 
 .memory-preview {
@@ -992,10 +865,6 @@ summary {
     .scope-summary {
         flex-direction: column;
         align-items: flex-start;
-    }
-
-    .memory-card-header {
-        flex-direction: column;
     }
 
     .actions-cell {
@@ -1228,13 +1097,23 @@ summary {
     margin-left: auto;
 }
 
-/* Page header carries navigation now that Tools is its own destination. */
+/* Page header carries navigation now that Tools is its own destination. One row:
+   the title sits at the size of a section heading and the buttons beside it, so
+   the content starts about 60px higher on a phone than with the old h1 and a
+   subtitle under it. */
 .page-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: var(--f4);
+    line-height: 1.2;
 }
 
 .page-nav .button {

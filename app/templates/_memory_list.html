@@ -68,7 +68,7 @@
                     <details class="result-details consolidation-details" data-memory-id="{{ item["id"] }}" data-part="consolidation">
                         <summary>Consolidation Signals ({{ item["consolidation_candidates"]|length }})</summary>
                         <div class="details-body">
-                            <a href="/ui/memory/{{ item["id"] }}">Открыть подробности</a>
+                            <a href="/ui/memory/{{ item["id"] }}">Open details</a>
                         </div>
                     </details>
                     {% endif %}
@@ -76,7 +76,7 @@
                     <details class="result-details memory-inspect" data-memory-id="{{ item["id"] }}">
                         <summary>Inspect Details</summary>
                         <div class="details-body">
-                            <a href="/ui/memory/{{ item["id"] }}">Открыть подробности</a>
+                            <a href="/ui/memory/{{ item["id"] }}">Open details</a>
                         </div>
                     </details>
                 
@@ -101,13 +101,13 @@
             {% if memories["total"] and memories["total"] > 0 %}
             <div class="pagination">
                 {% if filters["offset"] and filters["offset"] > 0 %}
-                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button secondary">Назад</a>
+                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] - filters["limit"] }}" class="button secondary">Previous</a>
                 {% else %}
                 <span></span>
                 {% endif %}
-                <span class="pagination-state">{{ (filters["offset"] or 0) + 1 }}&ndash;{{ [(filters["offset"] or 0) + filters["limit"], memories["total"]]|min }} из {{ memories["total"] }}</span>
+                <span class="pagination-state">{{ (filters["offset"] or 0) + 1 }}&ndash;{{ [(filters["offset"] or 0) + filters["limit"], memories["total"]]|min }} of {{ memories["total"] }}</span>
                 {% if memories["offset"] + memories["limit"] < memories["total"] %}
-                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">Ещё</a>
+                <a href="?{{ filters["query_string"] }}&offset={{ filters["offset"] + filters["limit"] }}" class="button">More</a>
                 {% else %}
                 <span></span>
                 {% endif %}

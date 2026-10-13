@@ -1,6 +1,6 @@
 """
 Stage C: /ui/tools renders a Trackers section with a card per tracker type, each with an
-"Обновить" button wired to POST /memory/tracker/update. These are HTTP-level render
+"Update" button wired to POST /memory/tracker/update. These are HTTP-level render
 checks only (the button's fetch/DOM-update behavior lives in _scripts.html and is out
 of reach of a Python test) - see test_tracker_api.py for the error_detail contract the
 JS reads on failure.
@@ -96,7 +96,7 @@ class UiTrackersRenderTests(unittest.TestCase):
         response = self._get()
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("ещё не сгенерирован", response.text)
+        self.assertIn("not generated yet", response.text)
 
     def test_existing_tracker_content_and_watermark_are_rendered(self) -> None:
         upsert_tracker(
@@ -115,7 +115,7 @@ class UiTrackersRenderTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Milan: arrived.", response.text)
-        self.assertIn("сообщений с обновления", response.text)
+        self.assertIn("messages since update", response.text)
 
     def test_all_chats_view_has_no_single_scope_for_trackers(self) -> None:
         self._seed_chat_group()

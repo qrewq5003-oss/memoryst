@@ -46,7 +46,7 @@ class UiHttpSmokeTests(unittest.TestCase):
         response = self.client.get("/ui/tools")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Consolidation", response.text)
-        self.assertIn("Инструменты разработчика", response.text)
+        self.assertIn("Developer tools", response.text)
 
     def test_ui_with_selected_chat_renders(self) -> None:
         response = self.client.get(

@@ -312,10 +312,10 @@ async function refreshTrackerCard(chatId, charId, trackerType) {
         const data = await resp.json();
         const item = (data.items || []).find(i => i.tracker_type === trackerType);
         if (item) {
-            meta.textContent = `обновлено: ${item.updated_at} | сообщений с обновления: ${item.messages_since_update}`;
+            meta.textContent = `updated: ${item.updated_at} | messages since update: ${item.messages_since_update}`;
             content.textContent = item.content || '';
         } else {
-            meta.textContent = 'ещё не сгенерирован';
+            meta.textContent = 'not generated yet';
             content.textContent = '';
         }
     } catch (e) {
@@ -341,7 +341,7 @@ document.querySelectorAll('.tracker-update-btn').forEach(btn => {
         // Enter "working" state immediately, before the request even goes out.
         const originalLabel = btn.textContent;
         btn.disabled = true;
-        btn.textContent = 'Обновляется…';
+        btn.textContent = 'Updating…';
         if (status) {
             status.textContent = '';
             status.className = 'tracker-status';
@@ -409,7 +409,7 @@ document.addEventListener('toggle', async (event) => {
     if (!body) return;
 
     details.dataset.loaded = 'pending';
-    body.textContent = 'Загружаю…';
+    body.textContent = 'Loading…';
     try {
         const part = details.dataset.part || 'inspect';
         const response = await fetch(`/ui/memory/${encodeURIComponent(details.dataset.memoryId)}/fragment?part=${part}`);
@@ -420,7 +420,7 @@ document.addEventListener('toggle', async (event) => {
         // Leave the fallback link in place: a failed fetch must not strand the
         // user with an empty disclosure.
         details.dataset.loaded = '';
-        body.innerHTML = `<a href="/ui/memory/${encodeURIComponent(details.dataset.memoryId)}">Открыть подробности</a>`;
+        body.innerHTML = `<a href="/ui/memory/${encodeURIComponent(details.dataset.memoryId)}">Open details</a>`;
     }
 }, true);
 

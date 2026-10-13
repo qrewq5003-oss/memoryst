@@ -61,6 +61,33 @@ _ST_CHAT_ID_RE = re.compile(r"^(?P<name>.+?) - \d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{
 _AVATAR_SUFFIX_RE = re.compile(r"\.(png|webp|jpe?g|gif)$", re.IGNORECASE)
 
 
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+_ST_CHAT_ID_FULL_RE = re.compile(
+    r"^(?P<name>.+?) - (?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})@(?P<hh>\d{2})h(?P<mm>\d{2})m\d{2}s\d{3}ms$"
+)
+
+
+def build_chat_title(chat_id: str) -> str:
+    """
+    The sidebar title for a chat: "Apex · 12 Oct 2026, 17:45" for a SillyTavern id.
+
+    The generic label used to strip the hyphens out of the id - "Apex 2026 10 12@17h45m11s969ms" -
+    which made the date harder to read than the raw id and kept the milliseconds that
+    distinguish nothing a person would look at. Anything that is not an ST id keeps the
+    generic treatment.
+    """
+    compact = " ".join((chat_id or "").split())
+    match = _ST_CHAT_ID_FULL_RE.match(compact)
+    if not match:
+        return build_friendly_scope_label(chat_id)
+    month = int(match.group("m"))
+    month_label = _MONTHS[month - 1] if 1 <= month <= 12 else match.group("m")
+    return (
+        f"{match.group('name')} · {int(match.group('d'))} {month_label} {match.group('y')}, "
+        f"{match.group('hh')}:{match.group('mm')}"
+    )
+
+
 def character_display_name(chat_id: str, character_id: str | None) -> str | None:
     """
     A name a person can read, or None when there is nothing worth showing.
@@ -145,6 +172,11 @@ def build_chat_groups(group_summaries: list[dict[str, Any]]) -> list[dict[str, A
     groups = []
     for row in group_summaries:
         character_ids = list(row.get("character_ids") or [row["character_id"]])
+        title = build_chat_title(row["chat_id"])
+        character_label = character_display_name(row["chat_id"], row["character_id"])
+        if character_label and title.startswith(character_label):
+            # The title already opens with the name; a second line repeating it is noise.
+            character_label = None
         group = {
             "chat_id": row["chat_id"],
             "character_id": row["character_id"],
@@ -157,9 +189,9 @@ def build_chat_groups(group_summaries: list[dict[str, Any]]) -> list[dict[str, A
             "episodic_count": row["episodic_count"],
             "last_updated": row["last_updated"],
             "last_updated_days": days_since(row["last_updated"]),
-            "display_label": build_friendly_scope_label(row["chat_id"]),
-            "display_character_label": character_display_name(row["chat_id"], row["character_id"]),
-            "has_friendly_label": build_friendly_scope_label(row["chat_id"]) != row["chat_id"],
+            "display_label": title,
+            "display_character_label": character_label,
+            "has_friendly_label": title != row["chat_id"],
         }
         groups.append(group)
     return groups

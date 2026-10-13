@@ -14,13 +14,13 @@
         <article class="tracker-card">
             <div class="tracker-card-header">
                 <strong>{{ t.label }}</strong>
-                <button type="button" class="tracker-update-btn" data-tracker-type="{{ t.tracker_type }}">Обновить</button>
+                <button type="button" class="tracker-update-btn" data-tracker-type="{{ t.tracker_type }}">Update</button>
             </div>
             <div class="tracker-meta" id="tracker-meta-{{ t.tracker_type }}">
                 {% if t.item %}
-                обновлено: {{ t.item.updated_at }} | сообщений с обновления: {{ t.item.messages_since_update }}
+                updated: {{ t.item.updated_at }} | messages since update: {{ t.item.messages_since_update }}
                 {% else %}
-                ещё не сгенерирован
+                not generated yet
                 {% endif %}
             </div>
             <div class="tracker-status" id="tracker-status-{{ t.tracker_type }}"></div>
@@ -55,7 +55,7 @@
             <label>Model: <select id="consolidate-model" class="model-select"><option value="">default</option></select></label>
         </div>
         <div class="control-row">
-            <button type="submit" id="consolidate-submit">Консолидировать выбранное (<span id="consolidate-selected-count">0</span>)</button>
+            <button type="submit" id="consolidate-submit">Consolidate selected (<span id="consolidate-selected-count">0</span>)</button>
             <button type="button" id="consolidate-select-all">Select all not-yet-consolidated ({{ consolidation_all_candidate_ids|length }})</button>
             <button type="button" id="consolidate-clear-selection">Clear selection</button>
             <span id="consolidate-result" class="action-status"></span>
@@ -122,7 +122,7 @@
 </section>
 
 <details class="dev-tools-panel">
-<summary>Инструменты разработчика</summary>
+<summary>Developer tools</summary>
 
 <section class="debug-tools">
     <h2>Store Pipeline</h2>
