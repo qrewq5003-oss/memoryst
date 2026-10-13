@@ -38,9 +38,11 @@
                     <span class="scope-pill">Current scope</span>
                     {% endif %}
                 </span>
+                {#- No line at all when there is no name: the remaining ids are card
+                    indexes, and "Character: 20" read as a value while meaning nothing. -#}
                 {%- if group["is_selected"] and group["has_friendly_label"] %}
-                <span class="chat-group-meta">Character: {{ group["display_character_label"] }} · <code>{{ group["chat_id"] }}</code></span>
-                {%- else %}
+                <span class="chat-group-meta">{% if group["display_character_label"] %}Character: {{ group["display_character_label"] }} · {% endif %}<code>{{ group["chat_id"] }}</code></span>
+                {%- elif group["display_character_label"] %}
                 <span class="chat-group-meta">Character: {{ group["display_character_label"] }}</span>
                 {%- endif %}
                 {#- The labels stay. Four bare numbers would have saved ~5KB and cost the

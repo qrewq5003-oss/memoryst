@@ -168,7 +168,11 @@ def _render_memories_page(
         view=view_mode,
     )
     active_chat_id = selected_group["chat_id"] if selected_group else None
+    # The chat's current identity - what the forms that need one id get. The list and
+    # the consolidation pool below are scoped by chat alone: a chat that carried
+    # several ids over its life (card indexes that shifted) is still one chat.
     active_character_id = selected_group["character_id"] if selected_group else None
+    active_character_ids = list(selected_group["character_ids"]) if selected_group else []
 
     # SQL-level filtered + sorted + paginated results for display
     if view_mode == "all":
@@ -186,10 +190,9 @@ def _render_memories_page(
             limit=limit,
             offset=offset,
         )
-    elif active_chat_id and active_character_id:
+    elif active_chat_id:
         memories = list_ui_filtered_memories(
             chat_id=active_chat_id,
-            character_id=active_character_id,
             memory_type=type,
             source=source,
             layer=layer,
@@ -217,10 +220,9 @@ def _render_memories_page(
             limit=UI_SEARCH_SCAN_LIMIT,
             offset=0,
         ).items
-    elif active_chat_id and active_character_id:
+    elif active_chat_id:
         consolidation_items = list_ui_filtered_memories(
             chat_id=active_chat_id,
-            character_id=active_character_id,
             memory_type=type,
             source=source,
             layer=layer,
@@ -237,11 +239,16 @@ def _render_memories_page(
     # Trackers only make sense pinned to one chat/character - "All Chats" has no single
     # scope for a document that gets rewritten in place, so the section stays hidden there.
     trackers_display = None
-    if view_mode != "all" and active_chat_id and active_character_id:
-        items_by_type = {
-            item.tracker_type: item
-            for item in list_tracker_items(active_chat_id, active_character_id)
-        }
+    if view_mode != "all" and active_chat_id and active_character_ids:
+        # Trackers are keyed by character_id, and a chat that changed ids may hold a
+        # tracker under an old one. Read them all; the most recently rewritten of
+        # each type is the live document.
+        items_by_type: dict[str, Any] = {}
+        for tracker_character_id in active_character_ids:
+            for item in list_tracker_items(active_chat_id, tracker_character_id):
+                current = items_by_type.get(item.tracker_type)
+                if current is None or item.updated_at > current.updated_at:
+                    items_by_type[item.tracker_type] = item
         trackers_display = [
             {
                 "tracker_type": tracker_type,
@@ -365,15 +372,14 @@ def _render_memories_page(
     scope_meta: list[dict[str, str]] = []
     if view_mode != "all":
         scope_title = selected_group["display_label"] if selected_group else (active_chat_id or "Select a chat")
-        scope_subtitle = (
-            f"Character: {selected_group['display_character_label']}"
-            if selected_group
-            else (f"Character: {active_character_id}" if active_character_id else None)
-        )
+        character_label = selected_group["display_character_label"] if selected_group else None
+        scope_subtitle = f"Character: {character_label}" if character_label else None
         if active_chat_id:
             scope_meta.append({"label": "Chat ID", "value": active_chat_id})
-        if active_character_id:
-            scope_meta.append({"label": "Character ID", "value": active_character_id})
+        if active_character_ids:
+            # Every id the chat has carried, so a reader can tell a merged chat from
+            # one that always had a single identity.
+            scope_meta.append({"label": "Character ID", "value": ", ".join(active_character_ids)})
 
     filters = {
         "chat_id": active_chat_id,

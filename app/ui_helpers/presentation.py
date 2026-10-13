@@ -52,6 +52,33 @@ def build_friendly_scope_label(value: str) -> str:
     return shorten_display_text(compact)
 
 
+# SillyTavern names a chat file "<character name> - <timestamp>", so the name is in the
+# chat id even when nothing else holds it. The alternative, the avatar file, is a
+# worse label ("Alina1.png" - ST appends a digit when two cards share a name), and the
+# ids from before 2026-09-20 are not labels at all: they are the card's position in
+# the array that day.
+_ST_CHAT_ID_RE = re.compile(r"^(?P<name>.+?) - \d{4}-\d{2}-\d{2}@\d{2}h\d{2}m\d{2}s\d{3}ms$")
+_AVATAR_SUFFIX_RE = re.compile(r"\.(png|webp|jpe?g|gif)$", re.IGNORECASE)
+
+
+def character_display_name(chat_id: str, character_id: str | None) -> str | None:
+    """
+    A name a person can read, or None when there is nothing worth showing.
+
+    Order: the character name inside a SillyTavern chat id; then an avatar filename
+    without its extension; then nothing. Nothing, rather than the bare id, because
+    the ids that remain are card indexes - "Character: 20" told the reader as much as
+    an empty line and looked like a value.
+    """
+    match = _ST_CHAT_ID_RE.match(" ".join((chat_id or "").split()))
+    if match:
+        return match.group("name")
+    cleaned = " ".join((character_id or "").split())
+    if cleaned and _AVATAR_SUFFIX_RE.search(cleaned):
+        return _AVATAR_SUFFIX_RE.sub("", cleaned)
+    return None
+
+
 def sorted_breakdown(items: dict[str, int]) -> list[dict[str, Any]]:
     """Convert a counter dict into a stable list for template rendering."""
     return [
@@ -117,9 +144,13 @@ def build_chat_groups(group_summaries: list[dict[str, Any]]) -> list[dict[str, A
     """Build sidebar chat groups from pre-aggregated SQL summaries."""
     groups = []
     for row in group_summaries:
+        character_ids = list(row.get("character_ids") or [row["character_id"]])
         group = {
             "chat_id": row["chat_id"],
             "character_id": row["character_id"],
+            # Every id the chat has carried; the primary one first. The template shows
+            # the list only for the selected chat, where ids are of any use.
+            "character_ids": [row["character_id"]] + [c for c in character_ids if c != row["character_id"]],
             "total_count": row["total_count"],
             "summary_count": row["summary_count"],
             "stable_count": row["stable_count"],
@@ -127,7 +158,7 @@ def build_chat_groups(group_summaries: list[dict[str, Any]]) -> list[dict[str, A
             "last_updated": row["last_updated"],
             "last_updated_days": days_since(row["last_updated"]),
             "display_label": build_friendly_scope_label(row["chat_id"]),
-            "display_character_label": build_friendly_scope_label(row["character_id"]),
+            "display_character_label": character_display_name(row["chat_id"], row["character_id"]),
             "has_friendly_label": build_friendly_scope_label(row["chat_id"]) != row["chat_id"],
         }
         groups.append(group)
@@ -144,12 +175,14 @@ def resolve_selected_group(
     if view == "all":
         return None
 
-    if requested_chat_id and requested_character_id:
+    # The chat alone decides. requested_character_id is accepted for the links and
+    # redirects that still carry one - including an old index that no longer heads
+    # the group - and ignored: matching on it is how a chat split across ids used to
+    # resolve to one of its halves.
+    del requested_character_id
+    if requested_chat_id:
         for group in chat_groups:
-            if (
-                group["chat_id"] == requested_chat_id
-                and group["character_id"] == requested_character_id
-            ):
+            if group["chat_id"] == requested_chat_id:
                 return group
 
     return chat_groups[0] if chat_groups else None

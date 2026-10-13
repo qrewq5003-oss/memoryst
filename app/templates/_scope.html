@@ -22,7 +22,11 @@
         {% if not scope_is_all_chats and filters["selected_chat_id"] %}
         <form method="POST" action="/ui/delete-chat" class="form-inline" onsubmit="return confirm('Delete this chat\'s memories, trackers and raw message history? This cannot be undone.');">
             <input type="hidden" name="chat_id" value="{{ filters["selected_chat_id"] }}">
-            <input type="hidden" name="character_id" value="{{ filters["selected_character_id"] or '' }}">
+            {#- No character_id on purpose: the sidebar entry is the whole chat, so the
+                delete must be too. Narrowing to the current id would leave the rows
+                written under an earlier one, and the entry would survive its own
+                deletion. -#}
+            <input type="hidden" name="character_id" value="">
             <input type="hidden" name="redirect_query" value="{{ filters["redirect_query"] }}">
             <button type="submit" class="button button-danger-outline">Delete Chat</button>
         </form>

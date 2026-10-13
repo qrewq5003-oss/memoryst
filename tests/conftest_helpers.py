@@ -4,14 +4,19 @@ from app.schemas import ListMemoriesResponse, MemoryItem
 
 
 def build_group_summaries(memories: ListMemoriesResponse) -> list[dict[str, object]]:
-    """Derive chat group summaries from a ListMemoriesResponse for test mocking."""
-    groups: dict[tuple[str, str], dict[str, object]] = {}
+    """Derive chat group summaries from a ListMemoriesResponse for test mocking.
+
+    One group per chat, as list_chat_group_summaries returns since 2026-10-13: the
+    character_id is the one on the most recently updated row, character_ids every one
+    seen."""
+    groups: dict[str, dict[str, object]] = {}
     for item in memories.items:
-        key = (item.chat_id, item.character_id)
+        key = item.chat_id
         if key not in groups:
             groups[key] = {
                 "chat_id": item.chat_id,
                 "character_id": item.character_id,
+                "character_ids": [],
                 "total_count": 0,
                 "summary_count": 0,
                 "stable_count": 0,
@@ -19,6 +24,8 @@ def build_group_summaries(memories: ListMemoriesResponse) -> list[dict[str, obje
                 "last_updated": item.updated_at,
             }
         g = groups[key]
+        if item.character_id not in g["character_ids"]:
+            g["character_ids"].append(item.character_id)
         g["total_count"] = int(g["total_count"]) + 1
         if item.type == "summary" or item.metadata.is_summary:
             g["summary_count"] = int(g["summary_count"]) + 1
@@ -28,6 +35,7 @@ def build_group_summaries(memories: ListMemoriesResponse) -> list[dict[str, obje
             g["episodic_count"] = int(g["episodic_count"]) + 1
         if item.updated_at > str(g["last_updated"]):
             g["last_updated"] = item.updated_at
+            g["character_id"] = item.character_id
     return sorted(groups.values(), key=lambda g: str(g["last_updated"]), reverse=True)
 
 

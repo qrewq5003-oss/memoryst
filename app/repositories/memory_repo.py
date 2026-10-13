@@ -250,8 +250,22 @@ def list_chat_group_summaries(
     pinned: bool | None = None,
 ) -> list[dict[str, object]]:
     """
-    Lightweight query for the chat sidebar: returns one row per (chat_id, character_id)
-    with counts and last_updated, without loading full memory rows.
+    Lightweight query for the chat sidebar: returns one row per chat_id with counts and
+    last_updated, without loading full memory rows.
+
+    One row per chat, not per (chat_id, character_id). character_id used to be the index
+    of the card in SillyTavern's array and shifted whenever cards were added or
+    reordered, so a single chat accumulated several ids over its life - 11 of 62 chats
+    had two or three on 2026-10-13 - and each id made its own sidebar entry with its own
+    counts: the same chat listed twice, and neither entry complete. Retrieval has been
+    scoped by chat alone since 2026-09-20 (see text_utils.scope_character_id); the
+    sidebar now agrees with it.
+
+    `character_id` in the row is the one on the most recently updated row - the chat's
+    current identity, which is what the forms that still need one id (trackers, the
+    Tools page) should talk to. `character_ids` is every id the chat has ever carried,
+    as a JSON array, for the readers that must cover all of them (trackers written
+    under an old index, the scope footer).
 
     Trackers are excluded from every count, but not from the grouping. The distinction
     matters in both directions:
@@ -299,7 +313,10 @@ def list_chat_group_summaries(
             f"""
             SELECT
                 chat_id,
+                -- A bare column next to MAX() takes its value from the row that holds
+                -- the maximum: documented SQLite behaviour, relied on here on purpose.
                 character_id,
+                json_group_array(DISTINCT character_id) AS character_ids,
                 SUM(CASE WHEN type != 'tracker' THEN 1 ELSE 0 END) AS total_count,
                 SUM(CASE WHEN type = 'tracker' THEN 1 ELSE 0 END) AS tracker_count,
                 -- COALESCE, because json_extract returns NULL for a row whose metadata
@@ -314,13 +331,18 @@ def list_chat_group_summaries(
                 MAX(updated_at) AS last_updated
             FROM memories
             {where_sql}
-            GROUP BY chat_id, character_id
+            GROUP BY chat_id
             ORDER BY last_updated DESC
             """,
             params,
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        summaries = []
+        for row in rows:
+            summary = dict(row)
+            summary["character_ids"] = json.loads(summary["character_ids"] or "[]")
+            summaries.append(summary)
+        return summaries
 
 
 SORT_ORDERS = {
