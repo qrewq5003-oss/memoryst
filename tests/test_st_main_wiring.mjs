@@ -97,6 +97,25 @@ test('a 5xx on store is an outage; a 4xx is an answer', async () => {
     assert.deepEqual(rejecting.toasts, []);
 });
 
+test('a throw after the answer - bad JSON on a 200 - is our bug, not an outage', async () => {
+    // The backend answered. Whatever goes wrong after that is on this side, and the
+    // sticky outage toast must not fire for it: it would tell the user to check a
+    // server that is up.
+    const badJson = { ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token <'); } };
+    const st = await loadMain({ backend: () => badJson });
+    assert.deepEqual(st.toasts, [], 'handshake: no outage toast');
+
+    await st.userSends('Привет');
+    assert.equal(st.prompts.get('memoryst').value, '', 'retrieve: nothing injected');
+    await st.characterReplies('Привет!');
+    assert.deepEqual(st.toasts, [], 'retrieve and store: still no outage toast');
+    assert.equal(st.calls('/memory/store').length, 1);
+    assert.ok(
+        st.console.some(line => line.level === 'error' && /Store error/.test(line.text)),
+        'the failure is still logged as ours',
+    );
+});
+
 test('a swipe takes back what the rejected reply stored, using created_ids only', async () => {
     const st = await loadMain();
     await st.userSends('Что на ужин?');

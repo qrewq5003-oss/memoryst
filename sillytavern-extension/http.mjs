@@ -16,6 +16,8 @@
  * settings (see settings.mjs) and the fire-and-forget ones are the constants below.
  */
 
+import { classifyOutcome } from './backend-status.mjs?v=518cb0f';
+
 // Blocks generation - the user is watching a chat that has not replied yet. Short.
 export const DEFAULT_RETRIEVE_TIMEOUT_MS = 8000;
 
@@ -122,4 +124,62 @@ export async function fetchWithTimeout(url, options = {}, {
         // keeps a timer alive per turn, which on a long chat is not nothing.
         clearTimeout(timer);
     }
+}
+
+/**
+ * The headers every request to memoryst carries.
+ *
+ * Was assembled by hand at ten call sites, each a two-line `if (apiKey)`. Ten copies of
+ * a header are ten places to spell it differently; a new endpoint became an eleventh.
+ *
+ * @param {string} [apiKey] - sent as X-API-Key when non-empty; the backend's auth
+ *     contract (app/auth.py)
+ * @param {object} [options]
+ * @param {boolean} [options.json] - false for GET/DELETE, which carry no body
+ */
+export function backendHeaders(apiKey = '', { json = true } = {}) {
+    const headers = {};
+    if (json) {
+        headers['Content-Type'] = 'application/json';
+    }
+    if (apiKey) {
+        headers['X-API-Key'] = apiKey;
+    }
+    return headers;
+}
+
+/**
+ * One request to the backend, with the deadline and the availability report attached.
+ *
+ * Returns `{ response }` when the backend answered - any status, the caller reads it -
+ * and `{ error, timedOut }` when it did not. The outcome goes to `onOutcome` as
+ * backend-status.mjs classifies it ('ok' / 'rejected' / 'down' / 'timeout').
+ *
+ * The report is made here and only here, which is the point: only a request that got
+ * no answer says anything about the backend. A throw *after* the response - bad JSON,
+ * a bug in the caller's own handling - is the caller's, happens outside this function,
+ * and is not an outage. retrieve and store used to keep a `responded` flag each to
+ * hold that line; the shape of this function holds it instead.
+ *
+ * @param {object} params
+ * @param {string} params.url
+ * @param {object} [params.init] - passed to fetch
+ * @param {number} [params.timeoutMs]
+ * @param {Function} [params.onOutcome] - receives the classified outcome
+ * @param {Function} [params.fetchImpl] - injected in tests
+ */
+export async function callBackend({ url, init = {}, timeoutMs, onOutcome, fetchImpl } = {}) {
+    const deps = {};
+    if (timeoutMs !== undefined) deps.timeoutMs = timeoutMs;
+    if (fetchImpl !== undefined) deps.fetchImpl = fetchImpl;
+
+    let response;
+    try {
+        response = await fetchWithTimeout(url, init, deps);
+    } catch (error) {
+        onOutcome?.(classifyOutcome({ error }));
+        return { error, timedOut: isTimeoutError(error) };
+    }
+    onOutcome?.(classifyOutcome({ httpStatus: response.status }));
+    return { response };
 }

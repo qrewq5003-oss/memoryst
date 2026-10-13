@@ -83,21 +83,20 @@ test('a second outage warns again', () => {
     assert.equal(status.record('store', 'down').level, 'error');
 });
 
-// main.mjs imports SillyTavern and cannot be loaded here, so its wiring is checked as
-// text: every request that tells us something about the backend must report it, and a
-// throw after a response must not be mistaken for an outage.
-test('main.mjs reports every request, and only unanswered throws count as down', () => {
+// The wiring itself is exercised in test_st_main_wiring.mjs (bad JSON after a 200 must
+// not toast). This text check is the cheaper half: every request that tells us something
+// about the backend goes through callBackend, which is the one place that reports - so
+// a new endpoint pasted in with a bare fetchWithTimeout and its own try/catch would be
+// a copy with the report missing.
+test('main.mjs reports every request through callBackend, never by hand', () => {
     const source = readFileSync(new URL('../sillytavern-extension/main.mjs', import.meta.url), 'utf8');
     for (const kind of ['handshake', 'retrieve', 'store']) {
         assert.match(
             source,
-            new RegExp(`reportBackendOutcome\\('${kind}', classifyOutcome\\(\\{ httpStatus: response\\.status \\}\\)\\)`),
-            `${kind}: answered requests are not reported`,
-        );
-        assert.match(
-            source,
-            new RegExp(`if \\(!responded\\) \\{\\s+reportBackendOutcome\\('${kind}', classifyOutcome\\(\\{ error \\}\\)\\)`),
-            `${kind}: a throw is reported without checking whether a response arrived`,
+            new RegExp(`onOutcome: outcome => reportBackendOutcome\\('${kind}', outcome\\)`),
+            `${kind}: not reported through callBackend`,
         );
     }
+    assert.doesNotMatch(source, /classifyOutcome/, 'classification belongs to callBackend, not to a caller');
+    assert.doesNotMatch(source, /responded/, 'the responded flag was replaced by the shape of callBackend');
 });

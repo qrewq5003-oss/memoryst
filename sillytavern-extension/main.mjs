@@ -40,7 +40,7 @@ import {
     resolvePreGenerationHookNames,
     willAppendUserMessage,
 } from './audit.mjs?v=518cb0f';
-import { backendBackMessage, classifyOutcome, createBackendStatus } from './backend-status.mjs?v=518cb0f';
+import { backendBackMessage, createBackendStatus } from './backend-status.mjs?v=518cb0f';
 import {
     boundaryAfterCatchUp,
     boundaryAfterStore,
@@ -96,8 +96,9 @@ import {
     DEFAULT_STORE_TIMEOUT_MS,
     DEFAULT_TRACKERS_TIMEOUT_MS,
     DEFAULT_VERSION_TIMEOUT_MS,
+    backendHeaders,
+    callBackend,
     fetchWithTimeout,
-    isTimeoutError,
     resolveTimeoutMs,
 } from './http.mjs?v=518cb0f';
 
@@ -424,10 +425,6 @@ async function catchUp(chatContext, boundary) {
     const chatId = chatContext.chatId;
     catchUpInFlight = chatId;
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (settings.apiKey) {
-            headers['X-API-Key'] = settings.apiKey;
-        }
         const body = { chat_id: chatId, character_id: chatContext.characterId, messages };
         if (chatContext.characterName) {
             body.character_name = chatContext.characterName;
@@ -441,7 +438,7 @@ async function catchUp(chatContext, boundary) {
 
         const response = await fetchWithTimeout(
             `${settings.memoryServiceUrl}/memory/backfill`,
-            { method: 'POST', headers, body: JSON.stringify(body) },
+            { method: 'POST', headers: backendHeaders(settings.apiKey), body: JSON.stringify(body) },
             { timeoutMs: DEFAULT_BACKFILL_TIMEOUT_MS },
         );
         if (!response.ok) {
@@ -486,43 +483,36 @@ async function checkBackendCompatibility() {
 
     let backendInfo = null;
     let reachable = true;
-    let responded = false;
 
-    try {
-        const headers = {};
-        if (settings.apiKey) {
-            headers['X-API-Key'] = settings.apiKey;
-        }
+    // The build travels on the handshake so a reload alone proves which copy the
+    // browser loaded. Every other report of it rides an audit record, and those are
+    // written by a turn - which is one step too late to answer "did my change ship".
+    const { response, error } = await callBackend({
+        url: `${settings.memoryServiceUrl}/memory/version`
+            + `?build=${encodeURIComponent(MEMORY_EXTENSION_BUILD)}`,
+        init: { method: 'GET', headers: backendHeaders(settings.apiKey, { json: false }) },
+        timeoutMs: DEFAULT_VERSION_TIMEOUT_MS,
+        onOutcome: outcome => reportBackendOutcome('handshake', outcome),
+    });
 
-        // The build travels on the handshake so a reload alone proves which copy the
-        // browser loaded. Every other report of it rides an audit record, and those are
-        // written by a turn - which is one step too late to answer "did my change ship".
-        const response = await fetchWithTimeout(
-            `${settings.memoryServiceUrl}/memory/version`
-                + `?build=${encodeURIComponent(MEMORY_EXTENSION_BUILD)}`,
-            { method: 'GET', headers },
-            { timeoutMs: DEFAULT_VERSION_TIMEOUT_MS },
-        );
-
-        responded = true;
-        reportBackendOutcome('handshake', classifyOutcome({ httpStatus: response.status }));
-        if (response.ok) {
-            backendInfo = await response.json();
-        } else if (response.status === 404) {
-            // Backend predates the /memory/version endpoint -> treat as outdated
-            // (backendInfo stays null so compareVersions reports backend_outdated).
-            backendInfo = null;
-        } else {
-            reachable = false;
-        }
-    } catch (error) {
+    if (!response) {
         reachable = false;
-        // Only a request that got no answer says anything about the backend: a throw
-        // after the response (bad JSON, a bug in our own handling) is not an outage.
-        if (!responded) {
-            reportBackendOutcome('handshake', classifyOutcome({ error }));
-        }
         console.warn('[memoryst] Version check request failed:', error?.message || error);
+    } else if (response.ok) {
+        try {
+            backendInfo = await response.json();
+        } catch (parseError) {
+            // Answered, so not an outage (callBackend already reported it as such) -
+            // but nothing to compare against either.
+            reachable = false;
+            console.warn('[memoryst] Version check request failed:', parseError?.message || parseError);
+        }
+    } else if (response.status === 404) {
+        // Backend predates the /memory/version endpoint -> treat as outdated
+        // (backendInfo stays null so compareVersions reports backend_outdated).
+        backendInfo = null;
+    } else {
+        reachable = false;
     }
 
     currentCompatibility = compareVersions({
@@ -589,65 +579,34 @@ async function storeMemories() {
         return { called: false, reason: decision.reason };
     }
 
-    let responded = false;
-    try {
-        const headers = {
-            'Content-Type': 'application/json',
-        };
+    const body = {
+        chat_id: chatContext.chatId,
+        character_id: chatContext.characterId,
+        messages: messages,
+        debug: settings.auditEnabled,
+    };
+    // Optional on the backend, so an older service simply ignores them.
+    if (chatContext.characterName) {
+        body.character_name = chatContext.characterName;
+    }
+    if (chatContext.userName) {
+        body.user_name = chatContext.userName;
+    }
+    if (settings.sceneExtractionModel) {
+        body.model = settings.sceneExtractionModel;
+    }
 
-        // Use X-API-Key header as per backend contract
-        if (settings.apiKey) {
-            headers['X-API-Key'] = settings.apiKey;
-        }
+    const failed = error => ({ called: true, messages, error: error?.message || String(error) });
 
-        const body = {
-            chat_id: chatContext.chatId,
-            character_id: chatContext.characterId,
-            messages: messages,
-            debug: settings.auditEnabled,
-        };
-        // Optional on the backend, so an older service simply ignores them.
-        if (chatContext.characterName) {
-            body.character_name = chatContext.characterName;
-        }
-        if (chatContext.userName) {
-            body.user_name = chatContext.userName;
-        }
-        if (settings.sceneExtractionModel) {
-            body.model = settings.sceneExtractionModel;
-        }
+    const { response, error, timedOut } = await callBackend({
+        url: `${settings.memoryServiceUrl}/memory/store`,
+        init: { method: 'POST', headers: backendHeaders(settings.apiKey), body: JSON.stringify(body) },
+        timeoutMs: resolveTimeoutMs(settings.storeTimeoutMs, DEFAULT_STORE_TIMEOUT_MS),
+        onOutcome: outcome => reportBackendOutcome('store', outcome),
+    });
 
-        const response = await fetchWithTimeout(
-            `${settings.memoryServiceUrl}/memory/store`,
-            { method: 'POST', headers, body: JSON.stringify(body) },
-            { timeoutMs: resolveTimeoutMs(settings.storeTimeoutMs, DEFAULT_STORE_TIMEOUT_MS) },
-        );
-        responded = true;
-        reportBackendOutcome('store', classifyOutcome({ httpStatus: response.status }));
-
-        if (response.ok) {
-            const result = await response.json();
-            console.log('[memoryst] Stored:', result.stored, 'Skipped:', result.skipped, 'Extraction method:', result.extraction_method);
-            return {
-                called: true,
-                messages,
-                result,
-            };
-        } else {
-            console.error('[memoryst] Store failed:', response.status);
-            return {
-                called: true,
-                messages,
-                error: `store_http_${response.status}`,
-            };
-        }
-    } catch (error) {
-        // Only a request that got no answer says anything about the backend: a throw
-        // after the response (bad JSON, a bug in our own handling) is not an outage.
-        if (!responded) {
-            reportBackendOutcome('store', classifyOutcome({ error }));
-        }
-        if (isTimeoutError(error)) {
+    if (!response) {
+        if (timedOut) {
             // The request was abandoned here, not on the server: the backend goes on and
             // very likely still writes the memories. What is lost is this turn's store
             // result - the audit section and the tracker counters that ride along with it.
@@ -658,11 +617,22 @@ async function storeMemories() {
         } else {
             console.error('[memoryst] Store error:', error);
         }
-        return {
-            called: true,
-            messages,
-            error: error?.message || String(error),
-        };
+        return failed(error);
+    }
+    if (!response.ok) {
+        console.error('[memoryst] Store failed:', response.status);
+        return { called: true, messages, error: `store_http_${response.status}` };
+    }
+
+    try {
+        const result = await response.json();
+        console.log('[memoryst] Stored:', result.stored, 'Skipped:', result.skipped, 'Extraction method:', result.extraction_method);
+        return { called: true, messages, result };
+    } catch (parseError) {
+        // After the answer, so ours and not the backend's: the availability report
+        // already went out as 'ok' from callBackend, and that is right.
+        console.error('[memoryst] Store error:', parseError);
+        return failed(parseError);
     }
 }
 
@@ -690,96 +660,40 @@ async function retrieveMemories() {
     // retrieve that had ignored it.
     const recent_messages = getRecentMessagesForRetrieve(settings.recentMessagesCount);
 
-    let responded = false;
-    try {
-        const headers = {
-            'Content-Type': 'application/json',
+    // Every way this turn ends up without memory looks the same to the audit: the
+    // prompt is cleared, and `error` says why. The shape is read by audit.mjs - keep it.
+    const failed = error => {
+        clearMemoryPrompt();
+        return {
+            called: true,
+            userInput: user_input,
+            recentMessages: recent_messages,
+            error,
+            memoryBlock: '',
+            promptApplied: false,
         };
+    };
 
-        // Use X-API-Key header as per backend contract
-        if (settings.apiKey) {
-            headers['X-API-Key'] = settings.apiKey;
-        }
+    const { response, error, timedOut } = await callBackend({
+        url: `${settings.memoryServiceUrl}/memory/retrieve`,
+        init: {
+            method: 'POST',
+            headers: backendHeaders(settings.apiKey),
+            body: JSON.stringify({
+                chat_id: chatContext.chatId,
+                character_id: chatContext.characterId,
+                user_input: user_input,
+                recent_messages: recent_messages,
+                limit: settings.retrieveLimit,
+                debug: settings.auditEnabled,
+            }),
+        },
+        timeoutMs: resolveTimeoutMs(settings.retrieveTimeoutMs, DEFAULT_RETRIEVE_TIMEOUT_MS),
+        onOutcome: outcome => reportBackendOutcome('retrieve', outcome),
+    });
 
-        const response = await fetchWithTimeout(
-            `${settings.memoryServiceUrl}/memory/retrieve`,
-            {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    chat_id: chatContext.chatId,
-                    character_id: chatContext.characterId,
-                    user_input: user_input,
-                    recent_messages: recent_messages,
-                    limit: settings.retrieveLimit,
-                    debug: settings.auditEnabled,
-                }),
-            },
-            { timeoutMs: resolveTimeoutMs(settings.retrieveTimeoutMs, DEFAULT_RETRIEVE_TIMEOUT_MS) },
-        );
-        responded = true;
-        reportBackendOutcome('retrieve', classifyOutcome({ httpStatus: response.status }));
-
-        if (response.ok) {
-            const result = await response.json();
-            const retrievedItems = result.items || [];
-            const budgeted = buildBudgetedMemoryBlock({
-                items: retrievedItems,
-                maxPromptMemories: settings.maxPromptMemories,
-                maxPromptChars: settings.maxPromptChars,
-                maxSummaryItems: settings.maxSummaryItems,
-                maxStableItems: settings.maxStableItems,
-                maxEpisodicItems: settings.maxEpisodicItems,
-            });
-            const injectedMemoryBlock = chooseMemoryBlock({
-                budgetedBlock: budgeted.memoryBlock,
-                backendBlock: result.memory_block,
-            });
-            console.log(
-                '[memoryst] Retrieved:',
-                retrievedItems.length,
-                'items; injected:',
-                budgeted.injectedItemCount,
-                'trimmed:',
-                budgeted.trimmedItemCount,
-            );
-
-            if (injectedMemoryBlock) {
-                setMemoryPrompt(injectedMemoryBlock);
-                console.log('[memoryst] Budgeted memory block set for CURRENT generation');
-            } else {
-                clearMemoryPrompt();
-            }
-
-            return {
-                called: true,
-                userInput: user_input,
-                recentMessages: recent_messages,
-                result,
-                memoryBlock: injectedMemoryBlock,
-                rawMemoryBlock: result.memory_block || '',
-                budget: budgeted,
-                promptApplied: Boolean(injectedMemoryBlock),
-            };
-        } else {
-            console.error('[memoryst] Retrieve failed:', response.status);
-            clearMemoryPrompt();
-            return {
-                called: true,
-                userInput: user_input,
-                recentMessages: recent_messages,
-                error: `retrieve_http_${response.status}`,
-                memoryBlock: '',
-                promptApplied: false,
-            };
-        }
-    } catch (error) {
-        // Only a request that got no answer says anything about the backend: a throw
-        // after the response (bad JSON, a bug in our own handling) is not an outage.
-        if (!responded) {
-            reportBackendOutcome('retrieve', classifyOutcome({ error }));
-        }
-        if (isTimeoutError(error)) {
+    if (!response) {
+        if (timedOut) {
             console.warn(
                 '[memoryst] Retrieve timed out after', error.timeoutMs,
                 'ms; this turn generates without injected memory',
@@ -787,18 +701,60 @@ async function retrieveMemories() {
         } else {
             console.error('[memoryst] Retrieve error:', error);
         }
-        clearMemoryPrompt();
+        return failed(error?.message || String(error));
+    }
+    if (!response.ok) {
+        console.error('[memoryst] Retrieve failed:', response.status);
+        return failed(`retrieve_http_${response.status}`);
+    }
+
+    try {
+        const result = await response.json();
+        const retrievedItems = result.items || [];
+        const budgeted = buildBudgetedMemoryBlock({
+            items: retrievedItems,
+            maxPromptMemories: settings.maxPromptMemories,
+            maxPromptChars: settings.maxPromptChars,
+            maxSummaryItems: settings.maxSummaryItems,
+            maxStableItems: settings.maxStableItems,
+            maxEpisodicItems: settings.maxEpisodicItems,
+        });
+        const injectedMemoryBlock = chooseMemoryBlock({
+            budgetedBlock: budgeted.memoryBlock,
+            backendBlock: result.memory_block,
+        });
+        console.log(
+            '[memoryst] Retrieved:',
+            retrievedItems.length,
+            'items; injected:',
+            budgeted.injectedItemCount,
+            'trimmed:',
+            budgeted.trimmedItemCount,
+        );
+
+        if (injectedMemoryBlock) {
+            setMemoryPrompt(injectedMemoryBlock);
+            console.log('[memoryst] Budgeted memory block set for CURRENT generation');
+        } else {
+            clearMemoryPrompt();
+        }
+
         return {
             called: true,
             userInput: user_input,
             recentMessages: recent_messages,
-            error: error?.message || String(error),
-            memoryBlock: '',
-            promptApplied: false,
+            result,
+            memoryBlock: injectedMemoryBlock,
+            rawMemoryBlock: result.memory_block || '',
+            budget: budgeted,
+            promptApplied: Boolean(injectedMemoryBlock),
         };
+    } catch (parseError) {
+        // After the answer, so ours and not the backend's: callBackend has already
+        // reported 'ok', and the outage toast must not fire for a bug of our own.
+        console.error('[memoryst] Retrieve error:', parseError);
+        return failed(parseError?.message || String(parseError));
     }
-
-    return { called: false, reason: 'unknown', memoryBlock: '' };
 }
 
 /**
@@ -816,10 +772,7 @@ async function discardStoredTurn(reason) {
         return;
     }
 
-    const headers = {};
-    if (settings.apiKey) {
-        headers['X-API-Key'] = settings.apiKey;
-    }
+    const headers = backendHeaders(settings.apiKey, { json: false });
 
     let deleted = 0;
     for (const memoryId of turn.memoryIds) {
@@ -1140,13 +1093,9 @@ function persistIntegrationAudit(record) {
  */
 function sendAuditToBackend(record) {
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (settings.apiKey) {
-            headers['X-API-Key'] = settings.apiKey;
-        }
         fetchWithTimeout(
             `${settings.memoryServiceUrl}/memory/audit`,
-            { method: 'POST', headers, body: JSON.stringify(record) },
+            { method: 'POST', headers: backendHeaders(settings.apiKey), body: JSON.stringify(record) },
             { timeoutMs: DEFAULT_AUDIT_TIMEOUT_MS },
         ).catch(() => {});
     } catch (error) {

@@ -6,6 +6,8 @@ import {
     DEFAULT_STORE_TIMEOUT_MS,
     MAX_TIMEOUT_MS,
     MIN_TIMEOUT_MS,
+    backendHeaders,
+    callBackend,
     fetchWithTimeout,
     isTimeoutError,
     resolveTimeoutMs,
@@ -184,4 +186,80 @@ test('a settings.json written before timeouts existed gets the defaults', () => 
     });
     assert.equal(normalized.retrieveTimeoutMs, DEFAULT_RETRIEVE_TIMEOUT_MS);
     assert.equal(normalized.storeTimeoutMs, DEFAULT_STORE_TIMEOUT_MS);
+});
+
+test('backendHeaders: the key only when there is one, the content type only with a body', () => {
+    assert.deepEqual(backendHeaders('secret'), { 'Content-Type': 'application/json', 'X-API-Key': 'secret' });
+    assert.deepEqual(backendHeaders(''), { 'Content-Type': 'application/json' });
+    assert.deepEqual(backendHeaders(undefined), { 'Content-Type': 'application/json' });
+    assert.deepEqual(backendHeaders('secret', { json: false }), { 'X-API-Key': 'secret' });
+    assert.deepEqual(backendHeaders('', { json: false }), {});
+});
+
+test('callBackend: an answer comes back as the response, and is reported by status', async () => {
+    const outcomes = [];
+    const { response, error, timedOut } = await callBackend({
+        url: 'http://backend/memory/store',
+        init: { method: 'POST' },
+        timeoutMs: 1000,
+        fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+        onOutcome: outcome => outcomes.push(outcome),
+    });
+    assert.equal(response.status, 503);
+    assert.equal(error, undefined);
+    assert.equal(timedOut, undefined);
+    assert.deepEqual(outcomes, ['down']);
+});
+
+test('callBackend: a 2xx and a 4xx are both answers', async () => {
+    const outcomes = [];
+    for (const status of [200, 422]) {
+        await callBackend({
+            url: 'http://backend/x',
+            fetchImpl: async () => ({ ok: status < 300, status, json: async () => ({}) }),
+            onOutcome: outcome => outcomes.push(outcome),
+        });
+    }
+    assert.deepEqual(outcomes, ['ok', 'rejected']);
+});
+
+test('callBackend: no answer comes back as the error, with the timeout told apart', async () => {
+    const outcomes = [];
+    const timeout = await callBackend({
+        url: 'http://backend/memory/retrieve',
+        timeoutMs: 30,
+        fetchImpl: hangingFetch(),
+        onOutcome: outcome => outcomes.push(outcome),
+    });
+    assert.equal(timeout.response, undefined);
+    assert.ok(isTimeoutError(timeout.error));
+    assert.equal(timeout.timedOut, true);
+
+    const refused = await callBackend({
+        url: 'http://backend/memory/retrieve',
+        timeoutMs: 1000,
+        fetchImpl: async () => { throw new TypeError('Failed to fetch'); },
+        onOutcome: outcome => outcomes.push(outcome),
+    });
+    assert.equal(refused.error.message, 'Failed to fetch');
+    assert.equal(refused.timedOut, false);
+    assert.deepEqual(outcomes, ['timeout', 'down']);
+});
+
+test('callBackend: a throw after the answer is the caller\'s, so it is never reported', async () => {
+    // The whole reason the report lives inside callBackend: reading the body happens
+    // outside it, so a bad JSON cannot be mistaken for an outage by construction.
+    const outcomes = [];
+    const { response } = await callBackend({
+        url: 'http://backend/x',
+        fetchImpl: async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad'); } }),
+        onOutcome: outcome => outcomes.push(outcome),
+    });
+    await assert.rejects(response.json());
+    assert.deepEqual(outcomes, ['ok']);
+});
+
+test('callBackend works without an onOutcome, for callers with nothing to report to', async () => {
+    const { response } = await callBackend({ url: 'http://backend/x', fetchImpl: okFetch({ a: 1 }) });
+    assert.deepEqual(await response.json(), { a: 1 });
 });

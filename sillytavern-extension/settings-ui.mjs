@@ -10,6 +10,7 @@ import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
+    backendHeaders,
     fetchWithTimeout,
 } from './http.mjs?v=518cb0f';
 
@@ -297,12 +298,9 @@ export async function loadSceneExtractionModelOptions({
     }
 
     try {
-        const headers = {};
-        if (apiKey) headers['X-API-Key'] = apiKey;
-
         const resp = await fetchWithTimeout(
             `${memoryServiceUrl}/memory/models`,
-            { headers },
+            { headers: backendHeaders(apiKey, { json: false }) },
             { timeoutMs: DEFAULT_MODELS_TIMEOUT_MS, fetchImpl },
         );
         if (!resp.ok) {
@@ -828,14 +826,12 @@ export function renderSettingsUi({
         const charId = ctx.characterId || 'backfill';
 
         const url = `${settings.memoryServiceUrl}/memory/backfill`;
-        const headers = { 'Content-Type': 'application/json' };
-        if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
 
         const resp = await fetchWithTimeout(
             url,
             {
                 method: 'POST',
-                headers,
+                headers: backendHeaders(settings.apiKey),
                 body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
             },
             { timeoutMs: DEFAULT_BACKFILL_TIMEOUT_MS },
@@ -936,12 +932,10 @@ export function renderSettingsUi({
 
             try {
                 const url = `${settings.memoryServiceUrl}/memory/chat/${encodeURIComponent(chatId)}`;
-                const headers = {};
-                if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
 
                 const resp = await fetchWithTimeout(
                     url,
-                    { method: 'DELETE', headers },
+                    { method: 'DELETE', headers: backendHeaders(settings.apiKey, { json: false }) },
                     { timeoutMs: DEFAULT_DELETE_CHAT_TIMEOUT_MS },
                 );
 
