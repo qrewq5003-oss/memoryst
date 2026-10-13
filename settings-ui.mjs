@@ -1,17 +1,18 @@
 import {
     LONG_CHAT_RECOMMENDED_BASELINE,
     applyRecommendedBaselineSettings,
-} from './settings.mjs?v=518cb0f';
+} from './settings.mjs?v=a53b53f';
 import {
     PROMPT_POSITION_OPTIONS,
     PROMPT_ROLE_OPTIONS,
-} from './injection.mjs?v=518cb0f';
+} from './injection.mjs?v=a53b53f';
 import {
     DEFAULT_BACKFILL_TIMEOUT_MS,
     DEFAULT_DELETE_CHAT_TIMEOUT_MS,
     DEFAULT_MODELS_TIMEOUT_MS,
+    backendHeaders,
     fetchWithTimeout,
-} from './http.mjs?v=518cb0f';
+} from './http.mjs?v=a53b53f';
 
 // 'ok' and 'unknown' (no fetch attempted yet) stay silent; only a real failure warns.
 export const TRACKER_WARNING_STATUSES = ['unsupported', 'error'];
@@ -297,12 +298,9 @@ export async function loadSceneExtractionModelOptions({
     }
 
     try {
-        const headers = {};
-        if (apiKey) headers['X-API-Key'] = apiKey;
-
         const resp = await fetchWithTimeout(
             `${memoryServiceUrl}/memory/models`,
-            { headers },
+            { headers: backendHeaders(apiKey, { json: false }) },
             { timeoutMs: DEFAULT_MODELS_TIMEOUT_MS, fetchImpl },
         );
         if (!resp.ok) {
@@ -680,34 +678,81 @@ export function findSettingsUiHost(documentRef) {
     return null;
 }
 
-export function renderSettingsUi({
-    document,
-    settings,
-    onSettingsChanged,
-    onApplyRecommendedBaseline,
-    getChatContext,
-    compatibility = null,
-    trackerStatus = null,
-    fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
-}) {
-    const host = findSettingsUiHost(document);
-    if (!host || typeof host.querySelector !== 'function') {
-        return false;
+/**
+ * Parse a .jsonl export into messages, counting what it had to ignore.
+ *
+ * Skipped lines used to vanish silently, so a file in an unexpected shape gave
+ * "No valid messages in .jsonl file" - indistinguishable from an empty file, and
+ * offering the reader nothing to act on.
+ */
+export function parseJsonl(raw) {
+    const messages = [];
+    let unparsable = 0;
+    let unrecognized = 0;
+    for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+            const obj = JSON.parse(trimmed);
+            // SillyTavern format: {name, mes, is_user}
+            if (obj.mes && typeof obj.is_user === 'boolean') {
+                const role = obj.is_user ? 'user' : 'assistant';
+                const text = (obj.mes || '').trim();
+                if (text) messages.push({ role, text });
+            }
+            // Standard format: {role, content}
+            else if (obj.role && obj.content) {
+                messages.push({ role: obj.role, text: obj.content });
+            }
+            // The first line of a SillyTavern export is chat metadata, not a
+            // message - expected, so it isn't reported as ignored.
+            else if (!obj.chat_metadata) {
+                unrecognized += 1;
+            }
+        } catch (e) {
+            unparsable += 1;
+        }
     }
+    return { messages, unparsable, unrecognized };
+}
 
-    let panel = host.querySelector('#memoryst-settings-panel');
-    if (!panel) {
-        panel = document.createElement('div');
-        panel.id = 'memoryst-settings-panel';
-        host.appendChild(panel);
-    }
+export function describeIgnoredLines({ unparsable, unrecognized }) {
+    const parts = [];
+    if (unparsable) parts.push(`${unparsable} not valid JSON`);
+    if (unrecognized) parts.push(`${unrecognized} in an unrecognized shape`);
+    return parts.length ? ` Ignored ${parts.join(', ')}.` : '';
+}
 
-    panel.innerHTML = buildSettingsUiMarkup(settings, compatibility, trackerStatus);
+export function parseTextFormat(raw) {
+    return raw.split('\n')
+        .map(line => {
+            const match = line.match(/^(user|assistant|system):\s*(.+)$/i);
+            if (match) return { role: match[1].toLowerCase(), text: match[2].trim() };
+            return null;
+        })
+        .filter(Boolean);
+}
 
+// ------------------------------------------------------------------ binding
+//
+// One bind<Group> per group of controls, each wiring its own handlers; renderSettingsUi
+// only draws the panel and calls them in order. They were one 280-line function, which
+// is why the buttons had no tests: a single one could only be reached by rendering the
+// whole panel and knowing where in that function its handler sat.
+//
+// Every binder tolerates a missing element: the markup is the source of truth, and a
+// control that is not there is simply not wired, not a throw at mount.
+
+function canListen(element) {
+    return Boolean(element) && typeof element.addEventListener === 'function';
+}
+
+/** The generic fields - every entry of SETTINGS_UI_FIELDS, saved on each change. */
+function bindSettingFields(panel, { onSettingsChanged }) {
     for (const section of SETTINGS_UI_FIELDS) {
         for (const field of section.fields) {
             const input = panel.querySelector(`[data-memory-setting="${field.key}"]`);
-            if (!input || typeof input.addEventListener !== 'function') {
+            if (!canListen(input)) {
                 continue;
             }
 
@@ -718,29 +763,36 @@ export function renderSettingsUi({
             });
         }
     }
+}
 
+function bindBaseline(panel, { settings, onApplyRecommendedBaseline }) {
     const baselineButton = panel.querySelector('#memoryst-apply-baseline');
-    if (baselineButton && typeof baselineButton.addEventListener === 'function') {
-        baselineButton.addEventListener('click', () => {
-            onApplyRecommendedBaseline(applyRecommendedBaselineSettings(settings));
-        });
+    if (!canListen(baselineButton)) {
+        return;
     }
+    baselineButton.addEventListener('click', () => {
+        onApplyRecommendedBaseline(applyRecommendedBaselineSettings(settings));
+    });
+}
 
-    // Scene Extraction Model: a <select> populated from the backend's live
-    // /memory/models catalog (like the backend web UI's consolidate-model/
-    // scene-model selects), with an explicit Confirm button rather than
-    // save-on-select - deliberately NOT part of the generic SETTINGS_UI_FIELDS
-    // loop above, since it needs an async catalog fetch and its own save
-    // gesture. Confirm reuses the exact same onSettingsChanged callback every
-    // other field already uses (a flat `{...settings, [key]: value}` merge in
-    // index.js, not a re-normalize) - so this can't reintroduce the earlier
-    // bug where re-running normalizeExtensionSettings on an already-flat
-    // runtime settings object silently reset memoryServiceUrl to its default.
+/**
+ * Scene Extraction Model: a <select> populated from the backend's live
+ * /memory/models catalog (like the backend web UI's consolidate-model/
+ * scene-model selects), with an explicit Confirm button rather than
+ * save-on-select - deliberately NOT part of the generic SETTINGS_UI_FIELDS
+ * loop, since it needs an async catalog fetch and its own save gesture.
+ * Confirm reuses the exact same onSettingsChanged callback every other field
+ * already uses (a flat `{...settings, [key]: value}` merge in main.mjs, not a
+ * re-normalize) - so this can't reintroduce the earlier bug where re-running
+ * normalizeExtensionSettings on an already-flat runtime settings object
+ * silently reset memoryServiceUrl to its default.
+ */
+function bindSceneExtraction(panel, { settings, onSettingsChanged, fetchImpl }) {
     const sceneModelSelect = panel.querySelector('#memoryst-scene-extraction-model');
     const sceneModelSaveBtn = panel.querySelector('#memoryst-scene-extraction-save');
     const sceneModelResult = panel.querySelector('#memoryst-scene-extraction-result');
 
-    if (sceneModelSaveBtn && sceneModelSelect && typeof sceneModelSaveBtn.addEventListener === 'function') {
+    if (sceneModelSelect && canListen(sceneModelSaveBtn)) {
         sceneModelSaveBtn.addEventListener('click', () => {
             onSettingsChanged('sceneExtractionModel', sceneModelSelect.value);
             if (sceneModelResult) {
@@ -759,68 +811,21 @@ export function renderSettingsUi({
             fetchImpl,
         });
     }
+}
 
+/**
+ * Backfill: a chosen .jsonl file first, then the pasted text, then the chat that is
+ * open. The last is what the outage toast sends the user to (backend-status.mjs): the
+ * chat file sits in Termux's private storage, which a browser file picker on Android
+ * cannot open, so with nothing chosen and nothing pasted the button reads the chat
+ * itself.
+ */
+function bindBackfill(panel, { settings, getChatContext }) {
     const backfillBtn = panel.querySelector('#memoryst-backfill-btn');
     const backfillText = panel.querySelector('#memoryst-backfill-text');
     const backfillFile = panel.querySelector('#memoryst-backfill-file');
     const backfillStatus = panel.querySelector('#memoryst-backfill-status');
     const backfillFilename = panel.querySelector('#memoryst-backfill-filename');
-    const deleteChatBtn = panel.querySelector('#memoryst-delete-chat-btn');
-
-    /**
-     * Parse a .jsonl export into messages, counting what it had to ignore.
-     *
-     * Skipped lines used to vanish silently, so a file in an unexpected shape gave
-     * "No valid messages in .jsonl file" - indistinguishable from an empty file, and
-     * offering the reader nothing to act on.
-     */
-    function parseJsonl(raw) {
-        const messages = [];
-        let unparsable = 0;
-        let unrecognized = 0;
-        for (const line of raw.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            try {
-                const obj = JSON.parse(trimmed);
-                // SillyTavern format: {name, mes, is_user}
-                if (obj.mes && typeof obj.is_user === 'boolean') {
-                    const role = obj.is_user ? 'user' : 'assistant';
-                    const text = (obj.mes || '').trim();
-                    if (text) messages.push({ role, text });
-                }
-                // Standard format: {role, content}
-                else if (obj.role && obj.content) {
-                    messages.push({ role: obj.role, text: obj.content });
-                }
-                // The first line of a SillyTavern export is chat metadata, not a
-                // message - expected, so it isn't reported as ignored.
-                else if (!obj.chat_metadata) {
-                    unrecognized += 1;
-                }
-            } catch (e) {
-                unparsable += 1;
-            }
-        }
-        return { messages, unparsable, unrecognized };
-    }
-
-    function describeIgnoredLines({ unparsable, unrecognized }) {
-        const parts = [];
-        if (unparsable) parts.push(`${unparsable} not valid JSON`);
-        if (unrecognized) parts.push(`${unrecognized} in an unrecognized shape`);
-        return parts.length ? ` Ignored ${parts.join(', ')}.` : '';
-    }
-
-    function parseTextFormat(raw) {
-        return raw.split('\n')
-            .map(line => {
-                const match = line.match(/^(user|assistant|system):\s*(.+)$/i);
-                if (match) return { role: match[1].toLowerCase(), text: match[2].trim() };
-                return null;
-            })
-            .filter(Boolean);
-    }
 
     async function runBackfill(messages) {
         const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
@@ -828,14 +833,12 @@ export function renderSettingsUi({
         const charId = ctx.characterId || 'backfill';
 
         const url = `${settings.memoryServiceUrl}/memory/backfill`;
-        const headers = { 'Content-Type': 'application/json' };
-        if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
 
         const resp = await fetchWithTimeout(
             url,
             {
                 method: 'POST',
-                headers,
+                headers: backendHeaders(settings.apiKey),
                 body: JSON.stringify({ chat_id: chatId, character_id: charId, messages }),
             },
             { timeoutMs: DEFAULT_BACKFILL_TIMEOUT_MS },
@@ -849,7 +852,7 @@ export function renderSettingsUi({
         }
     }
 
-    if (backfillFile && backfillFilename && typeof backfillFile.addEventListener === 'function') {
+    if (backfillFilename && canListen(backfillFile)) {
         backfillFile.addEventListener('change', () => {
             // The only confirmation of the choice: the input itself cannot be seen, so
             // without this a wrong file is discovered at Backfill time, after the reading.
@@ -857,107 +860,155 @@ export function renderSettingsUi({
         });
     }
 
-    if (backfillBtn) {
-        backfillBtn.addEventListener('click', async () => {
-            // Check file first
-            if (backfillFile && backfillFile.files.length > 0) {
-                backfillBtn.disabled = true;
-                backfillStatus.textContent = 'Reading file...';
-                try {
-                    const raw = await backfillFile.files[0].text();
-                    const parsed = parseJsonl(raw);
-                    const messages = parsed.messages;
-                    const ignored = describeIgnoredLines(parsed);
-                    if (messages.length === 0) {
-                        backfillStatus.textContent = ignored
-                            ? `No usable messages in .jsonl file.${ignored} Expected SillyTavern (mes/is_user) or role/content lines.`
-                            : 'No valid messages in .jsonl file.';
-                        backfillBtn.disabled = false;
-                        return;
-                    }
-                    backfillStatus.textContent = `Processing ${messages.length} messages from file...${ignored}`;
-                    await runBackfill(messages);
-                } catch (e) {
-                    backfillStatus.textContent = `Error: ${e.message}`;
-                } finally {
-                    backfillBtn.disabled = false;
-                }
-                return;
-            }
-
-            // Then the text area, then the chat that is open.
-            const raw = backfillText?.value?.trim();
-            let messages;
-            let source;
-            if (raw) {
-                messages = parseTextFormat(raw);
-                source = '';
-                if (messages.length === 0) {
-                    backfillStatus.textContent = 'No valid messages. Use format: "user: text"';
-                    return;
-                }
-            } else {
-                const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
-                messages = (ctx?.messages || []).filter(message => message.text);
-                source = ' from the open chat';
-                if (messages.length === 0) {
-                    backfillStatus.textContent = 'Open a chat, paste messages or select a .jsonl file.';
-                    return;
-                }
-            }
-
+    if (!canListen(backfillBtn)) {
+        return;
+    }
+    backfillBtn.addEventListener('click', async () => {
+        // Check file first
+        if (backfillFile && backfillFile.files.length > 0) {
             backfillBtn.disabled = true;
-            backfillStatus.textContent = `Processing ${messages.length} messages${source}...`;
+            backfillStatus.textContent = 'Reading file...';
             try {
+                const raw = await backfillFile.files[0].text();
+                const parsed = parseJsonl(raw);
+                const messages = parsed.messages;
+                const ignored = describeIgnoredLines(parsed);
+                if (messages.length === 0) {
+                    backfillStatus.textContent = ignored
+                        ? `No usable messages in .jsonl file.${ignored} Expected SillyTavern (mes/is_user) or role/content lines.`
+                        : 'No valid messages in .jsonl file.';
+                    backfillBtn.disabled = false;
+                    return;
+                }
+                backfillStatus.textContent = `Processing ${messages.length} messages from file...${ignored}`;
                 await runBackfill(messages);
             } catch (e) {
                 backfillStatus.textContent = `Error: ${e.message}`;
             } finally {
                 backfillBtn.disabled = false;
             }
-        });
-    }
+            return;
+        }
 
-    if (deleteChatBtn) {
-        deleteChatBtn.addEventListener('click', async () => {
+        // Then the text area, then the chat that is open.
+        const raw = backfillText?.value?.trim();
+        let messages;
+        let source;
+        if (raw) {
+            messages = parseTextFormat(raw);
+            source = '';
+            if (messages.length === 0) {
+                backfillStatus.textContent = 'No valid messages. Use format: "user: text"';
+                return;
+            }
+        } else {
             const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
-            const chatId = ctx.chatId;
-            if (!chatId) {
-                backfillStatus.textContent = 'No chat selected.';
+            messages = (ctx?.messages || []).filter(message => message.text);
+            source = ' from the open chat';
+            if (messages.length === 0) {
+                backfillStatus.textContent = 'Open a chat, paste messages or select a .jsonl file.';
                 return;
             }
+        }
 
-            if (!confirm(`Delete ALL memories for chat "${chatId}"? This cannot be undone.`)) {
-                return;
-            }
+        backfillBtn.disabled = true;
+        backfillStatus.textContent = `Processing ${messages.length} messages${source}...`;
+        try {
+            await runBackfill(messages);
+        } catch (e) {
+            backfillStatus.textContent = `Error: ${e.message}`;
+        } finally {
+            backfillBtn.disabled = false;
+        }
+    });
+}
 
-            deleteChatBtn.disabled = true;
-            backfillStatus.textContent = 'Deleting...';
-
-            try {
-                const url = `${settings.memoryServiceUrl}/memory/chat/${encodeURIComponent(chatId)}`;
-                const headers = {};
-                if (settings.apiKey) headers['X-API-Key'] = settings.apiKey;
-
-                const resp = await fetchWithTimeout(
-                    url,
-                    { method: 'DELETE', headers },
-                    { timeoutMs: DEFAULT_DELETE_CHAT_TIMEOUT_MS },
-                );
-
-                if (resp.ok) {
-                    const r = await resp.json();
-                    backfillStatus.textContent = `Deleted ${r.deleted} memories for this chat.`;
-                } else {
-                    backfillStatus.textContent = `Error: ${resp.status} ${resp.statusText}`;
-                }
-            } catch (e) {
-                backfillStatus.textContent = `Error: ${e.message}`;
-            } finally {
-                deleteChatBtn.disabled = false;
-            }
-        });
+/** Delete Chat Memories: shares the Backfill status line, since it sits next to it. */
+function bindDeleteChat(panel, { settings, getChatContext, confirmImpl }) {
+    const deleteChatBtn = panel.querySelector('#memoryst-delete-chat-btn');
+    const backfillStatus = panel.querySelector('#memoryst-backfill-status');
+    if (!canListen(deleteChatBtn)) {
+        return;
     }
+
+    deleteChatBtn.addEventListener('click', async () => {
+        const ctx = typeof getChatContext === 'function' ? getChatContext() : {};
+        const chatId = ctx.chatId;
+        if (!chatId) {
+            backfillStatus.textContent = 'No chat selected.';
+            return;
+        }
+
+        if (!confirmImpl(`Delete ALL memories for chat "${chatId}"? This cannot be undone.`)) {
+            return;
+        }
+
+        deleteChatBtn.disabled = true;
+        backfillStatus.textContent = 'Deleting...';
+
+        try {
+            const url = `${settings.memoryServiceUrl}/memory/chat/${encodeURIComponent(chatId)}`;
+
+            const resp = await fetchWithTimeout(
+                url,
+                { method: 'DELETE', headers: backendHeaders(settings.apiKey, { json: false }) },
+                { timeoutMs: DEFAULT_DELETE_CHAT_TIMEOUT_MS },
+            );
+
+            if (resp.ok) {
+                const r = await resp.json();
+                backfillStatus.textContent = `Deleted ${r.deleted} memories for this chat.`;
+            } else {
+                backfillStatus.textContent = `Error: ${resp.status} ${resp.statusText}`;
+            }
+        } catch (e) {
+            backfillStatus.textContent = `Error: ${e.message}`;
+        } finally {
+            deleteChatBtn.disabled = false;
+        }
+    });
+}
+
+/**
+ * Draw the panel into the extensions host and wire every control.
+ *
+ * Called on every refresh (main.mjs refreshSettingsUi), which rebuilds the DOM: that
+ * is why main.mjs only calls it when something it shows has changed (a tracker status
+ * flip, the handshake result), never on every chat change - rebuilding under the
+ * user's typing would eat their input.
+ */
+export function renderSettingsUi({
+    document,
+    settings,
+    onSettingsChanged,
+    onApplyRecommendedBaseline,
+    getChatContext,
+    compatibility = null,
+    trackerStatus = null,
+    fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
+    // The browser's confirm(); injected in tests. Absent one, a destructive click is
+    // refused rather than waved through.
+    confirmImpl = typeof confirm === 'function' ? confirm : () => false,
+}) {
+    const host = findSettingsUiHost(document);
+    if (!host || typeof host.querySelector !== 'function') {
+        return false;
+    }
+
+    let panel = host.querySelector('#memoryst-settings-panel');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'memoryst-settings-panel';
+        host.appendChild(panel);
+    }
+
+    panel.innerHTML = buildSettingsUiMarkup(settings, compatibility, trackerStatus);
+
+    bindSettingFields(panel, { onSettingsChanged });
+    bindBaseline(panel, { settings, onApplyRecommendedBaseline });
+    bindSceneExtraction(panel, { settings, onSettingsChanged, fetchImpl });
+    bindBackfill(panel, { settings, getChatContext });
+    bindDeleteChat(panel, { settings, getChatContext, confirmImpl });
 
     return true;
 }
@@ -974,6 +1025,7 @@ export function mountSettingsUi({
     retryDelayMs = 500,
     scheduleRetry = null,
     fetchImpl = typeof fetch !== 'undefined' ? fetch : undefined,
+    confirmImpl = undefined,
 }) {
     const rendered = renderSettingsUi({
         document,
@@ -984,6 +1036,7 @@ export function mountSettingsUi({
         compatibility,
         trackerStatus,
         fetchImpl,
+        ...(confirmImpl ? { confirmImpl } : {}),
     });
 
     if (rendered || retries <= 0) {
@@ -1008,6 +1061,7 @@ export function mountSettingsUi({
                 retryDelayMs,
                 scheduleRetry,
                 fetchImpl,
+                confirmImpl,
             });
         }, retryDelayMs);
     }
