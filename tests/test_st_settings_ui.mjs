@@ -451,3 +451,277 @@ test('no open chat and nothing given: says what to do, sends nothing', async () 
     assert.deepEqual(requests, []);
     assert.match(status, /Open a chat/);
 });
+
+// ---------------------------------------------------------------- the other buttons
+//
+// Every button of the panel, driven through the same fake DOM: this was the one open
+// remainder of finding 2 in docs/coverage_gap_audit_2026-10-03.md, and the safety net
+// the split of renderSettingsUi (docs/refactoring_plan_2026-10-13.md, item 2) needs.
+
+/** Mount the panel against a scripted backend; returns the panel and what was sent. */
+function mountPanel({ backend, chatContext = {}, settings = {}, confirmImpl, changes = [] } = {}) {
+    const document = new FakeDocument();
+    const requests = [];
+    const fetchImpl = async (url, init = {}) => {
+        // The panel loads the model catalog on mount; that one is covered above and
+        // is not what these tests send.
+        if (!String(url).endsWith('/memory/models')) {
+            requests.push({ url, method: init.method || 'GET', headers: init.headers, body: init.body ? JSON.parse(init.body) : null });
+        }
+        if (typeof backend !== 'function') {
+            return { ok: true, status: 200, json: async () => ({}) };
+        }
+        return backend(url, init);
+    };
+    const originalFetch = globalThis.fetch;
+    // The backfill and delete handlers do not take fetchImpl; they use the global.
+    globalThis.fetch = fetchImpl;
+    mountSettingsUi({
+        document,
+        settings: { ...DEFAULT_SETTINGS, memoryServiceUrl: 'http://memoryst.test', apiKey: 'secret', ...settings },
+        onSettingsChanged: (key, value) => changes.push([key, value]),
+        onApplyRecommendedBaseline() {},
+        getChatContext: () => chatContext,
+        fetchImpl,
+        confirmImpl,
+    });
+    const panel = document.host.querySelector('#memoryst-settings-panel');
+    const click = async id => panel.querySelector(id).listeners.get('click')();
+    const status = () => panel.querySelector('#memoryst-backfill-status').textContent;
+    const restore = () => { globalThis.fetch = originalFetch; };
+    return { panel, requests, click, status, restore, changes };
+}
+
+const jsonlExport = [
+    JSON.stringify({ chat_metadata: {}, user_name: 'Wanted', character_name: 'Mai' }),
+    JSON.stringify({ name: 'Wanted', mes: 'Ты дома?', is_user: true }),
+    JSON.stringify({ name: 'Mai', mes: 'Дома.', is_user: false }),
+    JSON.stringify({ role: 'user', content: 'из другого формата' }),
+    JSON.stringify({ name: 'Mai', mes: '   ', is_user: false }),
+    '{not json',
+    JSON.stringify({ something: 'else' }),
+    '',
+].join('\n');
+
+test('Backfill from a .jsonl file: both line shapes, the ignored ones counted', async () => {
+    const p = mountPanel({
+        backend: async () => ({ ok: true, status: 200, json: async () => ({ stored: 2, skipped: 0, duplicates: 1, processed: 3 }) }),
+        chatContext: { chatId: 'Mai - 2026-10-02', characterId: 'Mai.png', messages: [{ role: 'user', text: 'не это' }] },
+    });
+    try {
+        const fileInput = p.panel.querySelector('#memoryst-backfill-file');
+        fileInput.files = [{ name: 'Mai.jsonl', text: async () => jsonlExport }];
+        p.panel.querySelector('#memoryst-backfill-text').value = 'user: и не это';
+        const seen = [];
+        const backfillBtn = p.panel.querySelector('#memoryst-backfill-btn');
+        Object.defineProperty(backfillBtn, 'disabled', {
+            set(value) { seen.push(value); },
+            get() { return seen.at(-1) ?? false; },
+        });
+
+        await p.click('#memoryst-backfill-btn');
+
+        assert.equal(p.requests.length, 1, 'the file wins over the paste and the open chat');
+        assert.equal(p.requests[0].url, 'http://memoryst.test/memory/backfill');
+        assert.equal(p.requests[0].headers['X-API-Key'], 'secret');
+        assert.deepEqual(p.requests[0].body, {
+            chat_id: 'Mai - 2026-10-02',
+            character_id: 'Mai.png',
+            messages: [
+                { role: 'user', text: 'Ты дома?' },
+                { role: 'assistant', text: 'Дома.' },
+                { role: 'user', text: 'из другого формата' },
+            ],
+        });
+        assert.match(p.status(), /Done: 2 stored, 0 skipped, 1 duplicates \(3 processed\)/);
+        assert.deepEqual(seen, [true, false], 'the button is locked for the request and released after');
+    } finally {
+        p.restore();
+    }
+});
+
+test('a .jsonl with nothing usable says what it ignored, and sends nothing', async () => {
+    const p = mountPanel();
+    try {
+        const fileInput = p.panel.querySelector('#memoryst-backfill-file');
+        fileInput.files = [{ name: 'x.jsonl', text: async () => '{oops\n{"a":1}\n' }];
+        await p.click('#memoryst-backfill-btn');
+        assert.deepEqual(p.requests, []);
+        assert.match(p.status(), /No usable messages in \.jsonl file\. Ignored 1 not valid JSON, 1 in an unrecognized shape\./);
+
+        fileInput.files = [{ name: 'empty.jsonl', text: async () => '' }];
+        await p.click('#memoryst-backfill-btn');
+        assert.deepEqual(p.requests, []);
+        assert.equal(p.status(), 'No valid messages in .jsonl file.');
+        assert.equal(p.panel.querySelector('#memoryst-backfill-btn').disabled, false);
+    } finally {
+        p.restore();
+    }
+});
+
+test('a file that cannot be read is an error on the status line, not a hang', async () => {
+    const p = mountPanel();
+    try {
+        p.panel.querySelector('#memoryst-backfill-file').files = [{ name: 'x.jsonl', text: async () => { throw new Error('NotReadableError'); } }];
+        await p.click('#memoryst-backfill-btn');
+        assert.equal(p.status(), 'Error: NotReadableError');
+        assert.equal(p.panel.querySelector('#memoryst-backfill-btn').disabled, false);
+    } finally {
+        p.restore();
+    }
+});
+
+test('pasted text with no recognisable line explains the format', async () => {
+    const p = mountPanel();
+    try {
+        p.panel.querySelector('#memoryst-backfill-file').files = [];
+        p.panel.querySelector('#memoryst-backfill-text').value = 'просто текст без роли\nи ещё';
+        await p.click('#memoryst-backfill-btn');
+        assert.deepEqual(p.requests, []);
+        assert.equal(p.status(), 'No valid messages. Use format: "user: text"');
+    } finally {
+        p.restore();
+    }
+});
+
+test('Backfill reports a backend error and a transport error, and releases the button', async () => {
+    const http = mountPanel({
+        backend: async () => ({ ok: false, status: 500, statusText: 'Internal Server Error' }),
+        chatContext: { chatId: 'c', characterId: 'Mai.png', messages: [{ role: 'user', text: 'x' }] },
+    });
+    try {
+        http.panel.querySelector('#memoryst-backfill-file').files = [];
+        await http.click('#memoryst-backfill-btn');
+        assert.equal(http.status(), 'Error: 500 Internal Server Error');
+        assert.equal(http.panel.querySelector('#memoryst-backfill-btn').disabled, false);
+    } finally {
+        http.restore();
+    }
+
+    const network = mountPanel({
+        backend: async () => { throw new Error('Failed to fetch'); },
+        chatContext: { chatId: 'c', characterId: 'Mai.png', messages: [{ role: 'user', text: 'x' }] },
+    });
+    try {
+        network.panel.querySelector('#memoryst-backfill-file').files = [];
+        await network.click('#memoryst-backfill-btn');
+        assert.equal(network.status(), 'Error: Failed to fetch');
+        assert.equal(network.panel.querySelector('#memoryst-backfill-btn').disabled, false);
+    } finally {
+        network.restore();
+    }
+});
+
+test('Delete Chat Memories: no chat open means nothing to ask about', async () => {
+    let asked = 0;
+    const p = mountPanel({ chatContext: {}, confirmImpl: () => { asked += 1; return true; } });
+    try {
+        await p.click('#memoryst-delete-chat-btn');
+        assert.equal(asked, 0);
+        assert.deepEqual(p.requests, []);
+        assert.equal(p.status(), 'No chat selected.');
+    } finally {
+        p.restore();
+    }
+});
+
+test('Delete Chat Memories: declining the confirm sends nothing', async () => {
+    const questions = [];
+    const p = mountPanel({
+        chatContext: { chatId: 'Mai - 2026-10-02' },
+        confirmImpl: question => { questions.push(question); return false; },
+    });
+    try {
+        await p.click('#memoryst-delete-chat-btn');
+        assert.deepEqual(p.requests, []);
+        assert.equal(p.status(), '');
+        assert.match(questions[0], /Delete ALL memories for chat "Mai - 2026-10-02"\? This cannot be undone\./);
+    } finally {
+        p.restore();
+    }
+});
+
+test('Delete Chat Memories: confirmed, it deletes exactly this chat and says how many', async () => {
+    const p = mountPanel({
+        backend: async () => ({ ok: true, status: 200, json: async () => ({ deleted: 12 }) }),
+        chatContext: { chatId: 'Mai - 2026-10-02@12h40m36s920ms' },
+        confirmImpl: () => true,
+    });
+    try {
+        await p.click('#memoryst-delete-chat-btn');
+        assert.equal(p.requests.length, 1);
+        assert.equal(p.requests[0].method, 'DELETE');
+        assert.equal(p.requests[0].url, 'http://memoryst.test/memory/chat/Mai%20-%202026-10-02%4012h40m36s920ms');
+        assert.equal(p.requests[0].headers['X-API-Key'], 'secret');
+        assert.equal(p.requests[0].headers['Content-Type'], undefined, 'no body, no content type');
+        assert.equal(p.status(), 'Deleted 12 memories for this chat.');
+        assert.equal(p.panel.querySelector('#memoryst-delete-chat-btn').disabled, false);
+    } finally {
+        p.restore();
+    }
+});
+
+test('Delete Chat Memories reports a backend error and a transport error', async () => {
+    const http = mountPanel({
+        backend: async () => ({ ok: false, status: 404, statusText: 'Not Found' }),
+        chatContext: { chatId: 'c' },
+        confirmImpl: () => true,
+    });
+    try {
+        await http.click('#memoryst-delete-chat-btn');
+        assert.equal(http.status(), 'Error: 404 Not Found');
+        assert.equal(http.panel.querySelector('#memoryst-delete-chat-btn').disabled, false);
+    } finally {
+        http.restore();
+    }
+
+    const network = mountPanel({
+        backend: async () => { throw new Error('Failed to fetch'); },
+        chatContext: { chatId: 'c' },
+        confirmImpl: () => true,
+    });
+    try {
+        await network.click('#memoryst-delete-chat-btn');
+        assert.equal(network.status(), 'Error: Failed to fetch');
+        assert.equal(network.panel.querySelector('#memoryst-delete-chat-btn').disabled, false);
+    } finally {
+        network.restore();
+    }
+});
+
+test('without a confirm() at all, a delete is refused rather than waved through', async () => {
+    const p = mountPanel({ chatContext: { chatId: 'c' } });
+    try {
+        assert.equal(typeof globalThis.confirm, 'undefined', 'node has no confirm, which is the point');
+        await p.click('#memoryst-delete-chat-btn');
+        assert.deepEqual(p.requests, []);
+    } finally {
+        p.restore();
+    }
+});
+
+test('Confirm on the model select with the blank option saves the provider default', async () => {
+    const p = mountPanel({ backend: async () => ({ ok: true, json: async () => ({ models: ['deepseek-chat'] }) }) });
+    try {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        p.panel.querySelector('#memoryst-scene-extraction-model').value = '';
+        await p.click('#memoryst-scene-extraction-save');
+        assert.deepEqual(p.changes, [['sceneExtractionModel', '']]);
+        assert.equal(p.panel.querySelector('#memoryst-scene-extraction-result').textContent, 'Saved: (provider default)');
+    } finally {
+        p.restore();
+    }
+});
+
+test('a backend that answers the model catalog with an error says so, with the status', async () => {
+    const select = new FakeInput({ type: 'select' });
+    const resultEl = new FakeInput({ type: 'span' });
+    const ok = await loadSceneExtractionModelOptions({
+        select,
+        resultEl,
+        memoryServiceUrl: 'http://127.0.0.1:8001',
+        fetchImpl: async () => ({ ok: false, status: 502 }),
+    });
+    assert.equal(ok, false);
+    assert.equal(resultEl.textContent, 'Could not load model list: 502');
+});
